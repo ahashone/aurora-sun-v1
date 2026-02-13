@@ -164,7 +164,10 @@ class PlanningModule:
             db_session: Database session for task persistence (optional, lazy loaded)
         """
         self._db_session = db_session
-        self._session_data: dict[int, PlanningSession] = {}
+        # F-008: Use bounded state store instead of unbounded dict
+        from src.services.state_store import get_state_store
+        self._state_store = get_state_store()
+        self._session_key_prefix = "planning:session:"
 
     # =========================================================================
     # Module Protocol Implementation
@@ -183,12 +186,18 @@ class PlanningModule:
         Returns:
             ModuleResponse with welcome message and initial prompt
         """
-        # Initialize session data
+        # F-008: Use bounded state store with TTL
         user_id = ctx.user_id
-        if user_id not in self._session_data:
-            self._session_data[user_id] = PlanningSession()
+        session_key = f"{self._session_key_prefix}{user_id}"
+        session = self._state_store.get(session_key)
 
-        session = self._session_data[user_id]
+        if session is None:
+            session = PlanningSession()
+            # Store with 1 hour TTL
+            self._state_store.set(session_key, session, ttl=3600)
+
+        # Load user's vision and 90d goals
+        await self._load_vision_and_goals(ctx, session)
 
         # Load user's vision and 90d goals
         await self._load_vision_and_goals(ctx, session)
@@ -242,7 +251,9 @@ class PlanningModule:
         Returns:
             ModuleResponse with text, buttons, and state transitions
         """
-        session = self._session_data.get(ctx.user_id)
+        # F-008: Use bounded state store with TTL
+        session_key = f"{self._session_key_prefix}{ctx.user_id}"
+        session = self._state_store.get(session_key)
         if session is None:
             # Restart session if not found
             return await self.on_enter(ctx)
@@ -272,12 +283,14 @@ class PlanningModule:
         Args:
             ctx: Module context
         """
-        # Clean up session data
-        user_id = ctx.user_id
-        if user_id in self._session_data:
+        # F-008: Use bounded state store with TTL
+        session_key = f"{self._session_key_prefix}{ctx.user_id}"
+        session = self._state_store.get(session_key)
+        if session:
             # Optionally persist session data before cleanup
-            await self._persist_session(ctx, self._session_data[user_id])
-            del self._session_data[user_id]
+            await self._persist_session(ctx, session)
+            # Delete from state store
+            self._state_store.delete(session_key)
 
     def get_daily_workflow_hooks(self) -> DailyWorkflowHooks:
         """
