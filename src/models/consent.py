@@ -226,10 +226,19 @@ class ConsentService:
         Args:
             session: SQLAlchemy database session for persistence.
             hmac_secret: Secret key for HMAC hashing of IP addresses.
-                         If None, uses a default (should be configured in production).
+                         REQUIRED - must be provided via environment variable.
         """
         self._session = session
-        self._hmac_secret = hmac_secret or "aurora-sun-default-secret-change-in-production"
+        # F-004: Fail fast if secret not provided - no default fallback
+        if hmac_secret is None:
+            import os
+            hmac_secret = os.environ.get("AURORA_HMAC_SECRET")
+            if hmac_secret is None:
+                raise ValueError(
+                    "AURORA_HMAC_SECRET environment variable is required. "
+                    "Do not deploy without setting this secret."
+                )
+        self._hmac_secret = hmac_secret
 
     def _hash_ip(self, ip_address: str) -> str:
         """

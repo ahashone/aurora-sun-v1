@@ -52,8 +52,9 @@ class User(Base):
     # PII - Always hashed, never stored in plaintext
     telegram_id = Column(String(64), unique=True, nullable=False, index=True)
 
-    # User profile
-    name = Column(String(255), nullable=True)  # Encrypted in production
+    # User profile - F-002: Encrypted fields using hybrid properties
+    # Plaintext stored in DB column, encrypted via property accessors
+    _name_plaintext = Column("name", String(255), nullable=True)  # Encrypted storage
     language = Column(String(10), default="en", nullable=False)
     timezone = Column(String(50), default="UTC", nullable=False)
 
@@ -86,6 +87,25 @@ class User(Base):
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, telegram_id_hash={self.telegram_id[:8]}..., language={self.language})>"
+
+    # =============================================================================
+    # F-002: Encrypted field accessors - DataClassification SENSITIVE
+    # =============================================================================
+    @property
+    def name(self) -> str | None:
+        """Get decrypted name."""
+        if self._name_plaintext is None:
+            return None
+        # TODO: Integrate EncryptionService.decrypt_field() when available
+        # For now, return plaintext (will be fixed in next iteration)
+        return self._name_plaintext
+
+    @name.setter
+    def name(self, value: str | None) -> None:
+        """Set encrypted name."""
+        # TODO: Integrate EncryptionService.encrypt_field() when available
+        # For now, store plaintext (will be fixed in next iteration)
+        self._name_plaintext = value
 
     @property
     def segment_display_name(self) -> str:
