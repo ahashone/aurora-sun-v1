@@ -203,23 +203,24 @@ class CoachingEngine:
             return await self._handle_burnout(ctx)
 
         # Step 3: Route to segment-specific protocol
+        # FIX: Use SegmentContext fields instead of string comparison
+        # This follows the ARCHITECTURE.md rule: "Never if segment == 'AD' in code"
         segment = ctx.segment_context.core.code
+        features = ctx.segment_context.features
 
-        if segment == "AD":
-            return await self.pinch_activation(ctx)
-
-        elif segment == "AU":
-            return await self.inertia_protocol(ctx)
-
-        elif segment == "AH":
-            # AuDHD: Channel dominance check first (SW-19)
+        # Route based on segment features, not string comparison
+        # AuDHD has special handling via channel dominance check
+        if features.channel_dominance_enabled:
+            # AH: Channel dominance check first (SW-19)
             return await self._handle_audhd(ctx)
-
-        elif segment == "NT":
-            return await self.standard_motivation(ctx)
-
+        elif features.icnu_enabled:
+            # AD: ICNU-based activation
+            return await self.pinch_activation(ctx)
+        elif features.routine_anchoring:
+            # AU: Inertia protocol for routine-based users
+            return await self.inertia_protocol(ctx)
         else:
-            # CU (Custom) or unknown: default to standard motivation
+            # NT or CU: Standard motivation
             return await self.standard_motivation(ctx)
 
     async def pinch_activation(self, ctx: ModuleContext) -> CoachingResponse:

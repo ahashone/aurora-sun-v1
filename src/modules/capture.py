@@ -126,32 +126,35 @@ Respond with just the category name."""
         For quick capture (fire-and-forget), this is optional -
         we can capture directly from handle() without explicit entry.
         """
-        segment = ctx.segment_context.core.code
+        # FIX: Use SegmentContext fields instead of string comparison
+        # This follows the ARCHITECTURE.md rule: "Never if segment == 'AD' in code"
+        features = ctx.segment_context.features
+        ux = ctx.segment_context.ux
 
-        # Segment-adaptive entry message
-        if segment == "AD":
-            # ADHD: Minimal friction, encouraging
-            return ModuleResponse(
-                text="Got it! Just tell me what you need to capture - I'll handle the rest.",
-                next_state="capture",
-            )
-        elif segment == "AU":
+        # Segment-adaptive entry message based on features
+        if features.routine_anchoring:
             # Autism: Structured, clear expectations
             return ModuleResponse(
                 text="I'll capture your thought. Just type what you want to remember - "
                      "I'll classify it and store it in the right place.",
                 next_state="capture",
             )
-        elif segment == "AH":
+        elif features.channel_dominance_enabled:
             # AuDHD: Flexible, adaptive
             return ModuleResponse(
                 text="What's on your mind? I'll capture it and sort it for you.",
                 next_state="capture",
             )
-        else:
-            # NT: Standard flow
+        elif features.icnu_enabled:
+            # ADHD: Minimal friction, encouraging
             return ModuleResponse(
-                text="I'll capture that for you. What would you like to remember?",
+                text="Got it! Just tell me what you need to capture - I'll handle the rest.",
+                next_state="capture",
+            )
+        else:
+            # Neurotypical or Custom: Standard message
+            return ModuleResponse(
+                text="I've captured that. Let me organize it for you.",
                 next_state="capture",
             )
 
@@ -169,8 +172,6 @@ Respond with just the category name."""
         3. Route to destination
         4. One-line confirmation
         """
-        segment = ctx.segment_context.core.code
-
         # Check for voice input (stub)
         if ctx.metadata.get("is_voice_input", False):
             message = await self._process_voice_input(message, ctx)
@@ -193,7 +194,7 @@ Respond with just the category name."""
         confirmation = self._build_confirmation(
             content_type=classification["type"],
             content=classification["content"],
-            segment=segment,
+            segment_context=ctx.segment_context,
         )
 
         return ModuleResponse(
@@ -414,7 +415,7 @@ Respond with just the category name."""
         self,
         content_type: ContentType,
         content: str,
-        segment: str,
+        segment_context: Any,
     ) -> str:
         """
         Build a segment-adaptive confirmation message.
@@ -425,21 +426,14 @@ Respond with just the category name."""
         - AH: Adaptive based on current state
         - NT: Standard friendly
         """
+        # FIX: Use SegmentContext fields instead of string comparison
+        # This follows the ARCHITECTURE.md rule: "Never if segment == 'AD' in code"
+        features = segment_context.features
+
         # Truncate long content for confirmation
         display_content = content[:30] + "..." if len(content) > 30 else content
 
-        if segment == "AD":
-            # ADHD: Exciting, brief, novelty-positive
-            confirmations = {
-                "task": f"Captured! Task added: '{display_content}' - ready when you are.",
-                "idea": f"Nice one! Idea saved: '{display_content}'",
-                "note": f"Got it! Note stored: '{display_content}'",
-                "insight": f"Great insight! noted: '{display_content}'",
-                "question": f"Question captured: '{display_content}'",
-                "goal": f"Goal set: '{display_content}' - let's make it happen!",
-                "financial": f"Spent noted: '{display_content}'",
-            }
-        elif segment == "AU":
+        if features.routine_anchoring:
             # Autism: Clear, structured, no surprises
             confirmations = {
                 "task": f"Task captured and added to your planning inbox: '{display_content}'",
@@ -450,7 +444,7 @@ Respond with just the category name."""
                 "goal": f"Goal added: '{display_content}'",
                 "financial": f"Financial entry recorded: '{display_content}'",
             }
-        elif segment == "AH":
+        elif features.channel_dominance_enabled:
             # AuDHD: Flexible, adaptive
             confirmations = {
                 "task": f"Done! Task: '{display_content}' added to your list.",
@@ -461,19 +455,30 @@ Respond with just the category name."""
                 "goal": f"Goal recorded: '{display_content}'",
                 "financial": f"Financial note: '{display_content}'",
             }
+        elif features.icnu_enabled:
+            # ADHD: Exciting, brief, novelty-positive
+            confirmations = {
+                "task": f"Captured! Task added: '{display_content}' - ready when you are.",
+                "idea": f"Nice one! Idea saved: '{display_content}'",
+                "note": f"Got it! Note stored: '{display_content}'",
+                "insight": f"Great insight! noted: '{display_content}'",
+                "question": f"Question captured: '{display_content}'",
+                "goal": f"Goal set: '{display_content}' - let's make it happen!",
+                "financial": f"Spent noted: '{display_content}'",
+            }
         else:
             # NT / Default
             confirmations = {
                 "task": f"Task captured: '{display_content}'",
                 "idea": f"Idea saved: '{display_content}'",
                 "note": f"Note stored: '{display_content}'",
-                "insight": f"Insight recorded: '{display_content}'",
+                "insight": f"Insight noted: '{display_content}'",
                 "question": f"Question captured: '{display_content}'",
-                "goal": f"Goal added: '{display_content}'",
-                "financial": f"Financial entry: '{display_content}'",
+                "goal": f"Goal set: '{display_content}'",
+                "financial": f"Financial note: '{display_content}'",
             }
 
-        return confirmations.get(content_type, f"Captured: '{display_content}'")
+        return confirmations.get(content_type.value, f"Captured: '{display_content}'")
 
     async def _process_voice_input(
         self,
