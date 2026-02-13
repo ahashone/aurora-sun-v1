@@ -16,3 +16,5 @@
 | 2026-02-13 | Sub-processor registry: Anthropic, OpenAI, Groq, Telegram, Hetzner, Langfuse | docs/SUB-PROCESSOR-REGISTRY.md |
 | 2026-02-13 | Breach notification procedure: Detection, Containment, Assessment, Notification, Remediation | docs/BREACH-NOTIFICATION.md |
 | 2026-02-13 | Encryption unit tests: 39 tests (roundtrip, key rotation, destruction, hashing) | tests/src/lib/test_encryption.py |
+| 2026-02-13 | Daily Workflow Engine: DailyWorkflow class + LangGraph (daily_workflow.py, daily_graph.py) | src/workflows/ |
+| 2026-02-13 | Inline Coaching Engine: TensionEngine (quadrant mapping), CoachingEngine (segment-specific PINCH/Inertia protocols, burnout gate, crisis override) | src/services/ |

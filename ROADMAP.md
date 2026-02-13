@@ -175,12 +175,12 @@ This phase delivers the core experience: a user opens the app, plans their day g
 
 ### 1.4: Basic Inline Coaching
 
-- [ ] "I'm stuck" / "I can't start" detected during any module → coaching activates
-- [ ] No module exit required (coaching within current state)
-- [ ] ADHD → PINCH activation protocol
-- [ ] Autism → Inertia protocol (transition bridges, NOT "just start")
-- [ ] AuDHD → Channel check first, then route to ADHD or Autism protocol
-- [ ] Burnout gate: if burnout trajectory → recovery, not activation
+- [x] "I'm stuck" / "I can't start" detected during any module → coaching activates
+- [x] No module exit required (coaching within current state)
+- [x] ADHD → PINCH activation protocol
+- [x] Autism → Inertia protocol (transition bridges, NOT "just start")
+- [x] AuDHD → Channel check first, then route to ADHD or Autism protocol
+- [x] Burnout gate: if burnout trajectory → recovery, not activation
 
 **Exit Criterion:** A user can complete the full daily cycle (morning vision → plan → reminders → inline coaching → auto-evening review → reflection) without entering a single command. All segment-differentiated. Captures route to planning inbox. Encryption active on all SENSITIVE/ART.9 fields. Consent obtained before any data storage. Input sanitization and rate limiting active. DPIA v1 complete.
 

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import os
 import secrets
 import struct
@@ -766,9 +767,9 @@ class HashService:
             >>> hashed = hash_service.hash_pii("123456789")
             >>> # Store hashed in database, never the raw value
         """
-        hmac = hashlib.hmac.new(self._salt, digestmod=hashlib.sha256)
-        hmac.update(value.encode("utf-8"))
-        return base64.b64encode(hmac.digest()).decode()
+        h = hmac.new(self._salt, digestmod=hashlib.sha256)
+        h.update(value.encode("utf-8"))
+        return base64.b64encode(h.digest()).decode()
 
     def verify_pii(self, value: str, hash: str) -> bool:
         """
@@ -805,11 +806,11 @@ class HashService:
             lookup_salt = base64.b64decode(lookup_salt)
             context = b""
 
-        hmac = hashlib.hmac.new(lookup_salt, digestmod=hashlib.sha256)
+        h = hmac.new(lookup_salt, digestmod=hashlib.sha256)
         if context:
-            hmac.update(context)
-        hmac.update(value.encode("utf-8"))
-        return base64.b64encode(hmac.digest()).decode()
+            h.update(context)
+        h.update(value.encode("utf-8"))
+        return base64.b64encode(h.digest()).decode()
 
 
 # =============================================================================

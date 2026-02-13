@@ -1,0 +1,107 @@
+"""
+Goal Model for Aurora Sun V1.
+
+Data Classification: SENSITIVE (title contains personal goal data)
+
+References:
+- ARCHITECTURE.md Section 14 (Data Models)
+- ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
+"""
+
+from datetime import datetime
+from typing import Optional, TYPE_CHECKING
+
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index
+from sqlalchemy.orm import relationship
+
+from src.models.base import Base
+
+if TYPE_CHECKING:
+    from src.models.user import User
+    from src.models.vision import Vision
+
+
+class Goal(Base):
+    """
+    Goal model representing user goals derived from their vision.
+
+    Goal types:
+    - 90d: 90-day goals (derived from life vision)
+    - weekly: Weekly goals
+    - daily: Daily goals
+
+    Goal status:
+    - active: Currently being worked on
+    - completed: Goal achieved
+    - archived: No longer relevant
+
+    Attributes:
+        id: Primary key
+        user_id: Foreign key to users.id
+        vision_id: Foreign key to visions.id (optional, for 90d goals)
+        type: Goal type (90d | weekly | daily)
+        title: Goal title (encrypted in production)
+        key_results: JSON string of key results (encrypted in production)
+        status: Goal status (active | completed | archived)
+        created_at: Creation timestamp
+        updated_at: Last update timestamp
+
+    Data Classification: SENSITIVE
+    - title: Encrypted with AES-256-GCM (per-user key)
+    - key_results: Encrypted JSON
+    """
+
+    __tablename__ = "goals"
+
+    # Relationships
+    user = relationship("User", back_populates="goals")
+    vision = relationship("Vision", back_populates="goals")
+    tasks = relationship("Task", back_populates="goal", cascade="all, delete-orphan")
+
+    # Columns
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    vision_id = Column(
+        Integer,
+        ForeignKey("visions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    # Goal content
+    type = Column(String(10), nullable=False)  # 90d | weekly | daily
+    title = Column(Text, nullable=True)  # Encrypted in production
+    key_results = Column(Text, nullable=True)  # Encrypted JSON in production
+    status = Column(String(20), default="active", nullable=False)  # active | completed | archived
+
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+
+    # Table indices
+    __table_args__ = (
+        Index("idx_goal_user_type", "user_id", "type"),
+        Index("idx_goal_user_status", "user_id", "status"),
+        Index("idx_goal_vision_id", "vision_id"),
+        Index("idx_goal_created_at", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<Goal(id={self.id}, user_id={self.user_id}, type={self.type}, status={self.status})>"
+
+
+__all__ = ["Goal"]
