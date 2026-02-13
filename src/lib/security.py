@@ -447,17 +447,15 @@ class RateLimiter:
     _memory_fallback_enabled = True
 
     @classmethod
-    def _get_redis_client(cls):
+    async def _get_redis_client(cls):
         """
-        Get Redis client from event bus.
+        Get Redis client from RedisService.
 
         Returns Redis client or None if unavailable.
         """
         try:
-            # Will be implemented when event bus is available
-            # Placeholder for now - will integrate with actual Redis
             from src.services.redis_service import get_redis_client
-            return get_redis_client()
+            return await get_redis_client()
         except ImportError:
             logger.warning("rate_limiter_redis_service_not_available")
             return None
@@ -555,7 +553,7 @@ class RateLimiter:
         key = f"{cls.REDIS_PREFIX}{user_id}:{action}:{window}s"
 
         # Try Redis first
-        redis_client = cls._get_redis_client()
+        redis_client = await cls._get_redis_client()
         if redis_client:
             try:
                 return await cls._check_redis(redis_client, key, window, max_requests)
@@ -577,7 +575,7 @@ class RateLimiter:
         key = f"{cls.REDIS_PREFIX}{user_id}:{action}:{window}s"
 
         # Try Redis first
-        redis_client = cls._get_redis_client()
+        redis_client = await cls._get_redis_client()
         if redis_client:
             try:
                 return await cls._get_remaining_redis(redis_client, key, window, max_requests)
@@ -655,7 +653,7 @@ class RateLimiter:
             user_id: User's Telegram ID
             action: Optional specific action to reset (if None, resets all)
         """
-        redis_client = cls._get_redis_client()
+        redis_client = await cls._get_redis_client()
         if not redis_client:
             # Clear from memory
             for tier in RateLimitTier:

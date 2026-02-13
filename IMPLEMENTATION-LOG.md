@@ -18,3 +18,8 @@
 | 2026-02-13 | Encryption unit tests: 39 tests (roundtrip, key rotation, destruction, hashing) | tests/src/lib/test_encryption.py |
 | 2026-02-13 | Daily Workflow Engine: DailyWorkflow class + LangGraph (daily_workflow.py, daily_graph.py) | src/workflows/ |
 | 2026-02-13 | Inline Coaching Engine: TensionEngine (quadrant mapping), CoachingEngine (segment-specific PINCH/Inertia protocols, burnout gate, crisis override) | src/services/ |
+| 2026-02-13 | Phase 2: Neurostate Intelligence (6 sub-services: sensory, inertia, burnout, masking, channel, energy) | src/services/neurostate/, src/models/neurostate.py |
+| 2026-02-13 | Phase 2: Pattern Detection (5 destructive cycles + 18 daily burden signals) | src/services/pattern_detection.py |
+| 2026-02-13 | Phase 2: Energy System (IBNS, ICNU, Spoon-Drawer, Sensory+Cognitive) | src/services/energy_system.py |
+| 2026-02-13 | Phase 2: Revenue Tracker + Crisis Safety Net | src/services/revenue_tracker.py, src/services/crisis_service.py |
+| 2026-02-13 | Phase 2: EffectivenessService (intervention tracking, A/B testing, weekly reports) | src/services/effectiveness.py |

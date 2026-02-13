@@ -1,15 +1,37 @@
 # TODO -- Aurora Sun V1
 
 > Max ~30 items. Completed items visible 1 session, then remove.
-> Format: `- [ ] Task (→ ROADMAP X.Y, SW-N)`
 
 ---
 
-## Phase 1: Vertical Slice
+## Phase 1: Vertical Slice ✅ COMPLETE
 
-### 1.0 Security Foundation ✅ (COMPLETE)
+- [x] All Phase 1.0-1.4 tasks complete
 
-- [x] All 23 tasks completed
+---
+
+## Phase 2: Intelligence Layer ✅ COMPLETE
+
+- [x] NeurostateService (6 sub-services)
+- [x] Pattern Detection (5 cycles + 18 signals)
+- [x] Energy System (IBNS/ICNU/Spoon-Drawer)
+- [x] Revenue Tracker
+- [x] Crisis Safety Net
+- [x] EffectivenessService
+
+---
+
+## Phase 3: Knowledge + Aurora + Depth
+
+- [ ] Knowledge Layer (Neo4j, Qdrant, Letta)
+- [ ] Aurora Agent
+- [ ] Coaching Engine (Full)
+- [ ] Habit Module
+- [ ] Beliefs Module
+- [ ] Motifs Module
+- [ ] Second Brain Upgrade
+- [ ] FeedbackService
+- [ ] RIA Service
 
 ---
 
@@ -17,9 +39,5 @@
 
 | Date | Task | Notes |
 |------|------|-------|
-| 2026-02-13 | Created Git repo + folder structure | Initial commit pushed to GitHub |
-| 2026-02-13 | Phase 1.0 Security Foundation | 23/23 tasks complete |
-| 2026-02-13 | Phase 1.1 Foundation | Segment Engine, Module System, NLI, Bot Scaffold |
-| 2026-02-13 | Phase 1.2 Core Modules | Planning, Review, Capture, Future Letter |
-| 2026-02-13 | Phase 1.3 Daily Workflow | LangGraph-based daily workflow engine |
-| 2026-02-13 | Phase 1.4 Inline Coaching | PINCH, Inertia, Tension Engine |
+| 2026-02-13 | Phase 1 Complete | Security, Foundation, Modules, Workflow, Coaching |
+| 2026-02-13 | Phase 2 Complete | Neurostate, Patterns, Energy, Crisis, Effectiveness |
