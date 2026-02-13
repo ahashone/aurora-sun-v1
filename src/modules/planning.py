@@ -407,14 +407,15 @@ class PlanningModule:
         Returns:
             ModuleResponse
         """
-        # Check if user confirms alignment
+        # F-013: Use word boundary matching instead of substring
+        import re
         message_lower = message.lower().strip()
 
-        # Handle yes/no responses
-        yes_responses = ["yes", "y", "ja", "si", "da", "yeah", "yep", "sure", "ok", "okay"]
-        no_responses = ["no", "n", "nein", "nao", "no", "nope", "not really"]
+        # Strict yes/no patterns (word boundary matching)
+        yes_pattern = re.compile(r'\b(yes|y|ja|si|da|yeah|yep|sure|ok|okay)\b')
+        no_pattern = re.compile(r'\b(no|n|nein|nao|nope|not really)\b')
 
-        if any(yes_response in message_lower for yes_response in yes_responses):
+        if yes_pattern.search(message_lower):
             session.vision_aligned = True
 
             # Show pending tasks from previous sessions
@@ -434,7 +435,7 @@ class PlanningModule:
                     next_state=PlanningState.PRIORITIES,
                 )
 
-        elif any(no_response in message_lower for no_response in no_responses):
+        elif no_pattern.search(message_lower):
             # User says no - help them realign
             return ModuleResponse(
                 text=self._get_message(ctx, "realign_with_vision"),
@@ -661,13 +662,15 @@ class PlanningModule:
         Returns:
             ModuleResponse
         """
+        # F-013: Use word boundary matching instead of substring
+        import re
         message_lower = message.lower().strip()
 
-        # Handle confirmation
-        yes_responses = ["yes", "y", "ja", "si", "da", "yeah", "yep", "sure", "ok", "okay", "confirm", "commit"]
-        no_responses = ["no", "n", "nein", "nao", "nope", "change", "modify", "edit"]
+        # Strict confirmation patterns (word boundary matching)
+        yes_pattern = re.compile(r'\b(yes|y|ja|si|da|yep|sure|ok|okay|confirm|commit)\b')
+        no_pattern = re.compile(r'\b(no|n|nein|nao|nope|change|modify|edit)\b')
 
-        if any(yes_response in message_lower for yes_response in yes_responses):
+        if yes_pattern.search(message_lower):
             # Persist tasks
             await self._persist_tasks(ctx, session)
 
@@ -693,7 +696,7 @@ class PlanningModule:
                 },
             )
 
-        elif any(no_response in message_lower for no_response in no_responses):
+        elif no_pattern.search(message_lower):
             # User wants to modify - go back to breakdown
             return ModuleResponse(
                 text=self._get_message(ctx, "commitment_modify"),

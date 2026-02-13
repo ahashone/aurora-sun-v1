@@ -325,24 +325,30 @@ class OnboardingFlow:
         callback_data = update.callback_query.data
         user_data = self._user_data.get(user_hash, {})
 
+        # F-009: Strict allowlists for callback validation
+        VALID_LANGUAGES = {"en", "de", "sr", "el"}
+        VALID_SEGMENTS = {"AD", "AU", "AH", "NT", "CU"}
+
         if step.state == OnboardingStates.LANGUAGE:
-            # Language selection
+            # Language selection - strict validation
             if callback_data.startswith("lang_"):
                 language = callback_data.replace("lang_", "")
-                user_data["language"] = language
-                self._user_data[user_hash] = user_data
-                await self._advance_state(update, user_hash)
+                if language in VALID_LANGUAGES:
+                    user_data["language"] = language
+                    self._user_data[user_hash] = user_data
+                    await self._advance_state(update, user_hash)
 
         elif step.state == OnboardingStates.WORKING_STYLE:
-            # Segment selection
+            # Segment selection - strict validation
             if callback_data.startswith("segment_"):
                 segment = callback_data.replace("segment_", "")
-                user_data["segment"] = segment
-                self._user_data[user_hash] = user_data
-                await self._advance_state(update, user_hash)
+                if segment in VALID_SEGMENTS:
+                    user_data["segment"] = segment
+                    self._user_data[user_hash] = user_data
+                    await self._advance_state(update, user_hash)
 
         elif step.state == OnboardingStates.CONSENT:
-            # Consent response
+            # Consent response - exact match only
             if callback_data == "consent_accept":
                 user_data["consented"] = True
                 self._user_data[user_hash] = user_data

@@ -443,7 +443,8 @@ class DailyWorkflow:
 
         message = "\n".join(messages) if messages else "Good morning! Let's start your day."
 
-        logger.info(f"Morning activation for user {user_id}: {message[:50]}...")
+        # F-010: Log metadata only, not message content
+        logger.info(f"Morning activation for user {user_id}: message_len={len(message)}, interventions={len(interventions)}")
         return message, interventions
 
     async def run_neurostate_preflight(
