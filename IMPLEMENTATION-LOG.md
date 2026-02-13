@@ -15,3 +15,4 @@
 | 2026-02-13 | DPIA: Initial Data Protection Impact Assessment (GDPR Art. 35) | docs/DPIA.md |
 | 2026-02-13 | Sub-processor registry: Anthropic, OpenAI, Groq, Telegram, Hetzner, Langfuse | docs/SUB-PROCESSOR-REGISTRY.md |
 | 2026-02-13 | Breach notification procedure: Detection, Containment, Assessment, Notification, Remediation | docs/BREACH-NOTIFICATION.md |
+| 2026-02-13 | Encryption unit tests: 39 tests (roundtrip, key rotation, destruction, hashing) | tests/src/lib/test_encryption.py |

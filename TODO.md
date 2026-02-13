@@ -15,7 +15,7 @@
 - [x] Implement AES-256-GCM field-level encryption for SENSITIVE/ART.9 fields (→ ROADMAP 1.0)
 - [x] Implement 3-tier envelope encryption for FINANCIAL fields (→ ROADMAP 1.0)
 - [x] Implement HMAC-SHA256 hashing for PII identifiers (telegram_id, name) (→ ROADMAP 1.0)
-- [ ] Write unit tests: encrypt→decrypt roundtrip, key rotation, key destruction (→ ROADMAP 1.0)
+- [x] Write unit tests: encrypt→decrypt roundtrip, key rotation, key destruction (→ ROADMAP 1.0)
 - [x] Create ConsentRecord model (consent_version, language, timestamp, text_hash) (→ ROADMAP 1.0, SW-15)
 - [x] Implement consent gate in onboarding flow (explicit, not skippable, translated) (→ ROADMAP 1.0, SW-13)
 - [x] Implement consent withdrawal handler (→ ROADMAP 1.0, SW-15)
