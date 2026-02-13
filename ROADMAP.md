@@ -95,7 +95,7 @@ This phase delivers the core experience: a user opens the app, plans their day g
 
 #### Documentation
 - [ ] Sub-processor registry documented (Anthropic, OpenAI, Groq, Telegram, Hetzner, Langfuse)
-- [ ] Breach notification procedure documented
+- [x] Breach notification procedure documented
 - [ ] Data classification matrix for all Phase 1 tables
 
 ### 1.1: Foundation
