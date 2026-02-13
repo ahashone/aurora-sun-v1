@@ -95,12 +95,12 @@ class InputSanitizer:
 
     # Path traversal patterns
     PATH_TRAVERSAL_PATTERNS = [
-        re.compile(r"\.\.(\/|\\)"): "",  # ../
-        re.compile(r"^\/etc\/passwd", re.IGNORECASE): "",
-        re.compile(r"^\/etc\/shadow", re.IGNORECASE): "",
-        re.compile(r"^\/windows\/system32", re.IGNORECASE): "",
-        re.compile(r"%2e%2e", re.IGNORECASE): "",  # URL-encoded ../
-        re.compile(r"\.\.%2f", re.IGNORECASE): "",  # URL-encoded ../
+        (re.compile(r"\.\.(\/|\\)"), ""),  # ../
+        (re.compile(r"^\/etc\/passwd", re.IGNORECASE), ""),
+        (re.compile(r"^\/etc\/shadow", re.IGNORECASE), ""),
+        (re.compile(r"^\/windows\/system32", re.IGNORECASE), ""),
+        (re.compile(r"%2e%2e", re.IGNORECASE), ""),  # URL-encoded ../
+        (re.compile(r"\.\.%2f", re.IGNORECASE), ""),  # URL-encoded ../
     ]
 
     # Markdown: Potentially dangerous markdown patterns
@@ -211,7 +211,7 @@ class InputSanitizer:
         result = input_text
 
         # Apply all path traversal patterns
-        for pattern, replacement in cls.PATH_TRAVERSAL_PATTERNS.items():
+        for pattern, replacement in cls.PATH_TRAVERSAL_PATTERNS:
             if callable(replacement):
                 result = pattern.sub(replacement, result)
             else:
