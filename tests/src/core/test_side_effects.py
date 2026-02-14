@@ -9,10 +9,8 @@ Covers:
 - Priority-based sorting
 """
 
-import pytest
 
 from src.core.side_effects import SideEffect, SideEffectBatch, SideEffectType
-
 
 # =============================================================================
 # SideEffectType Tests

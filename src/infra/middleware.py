@@ -24,7 +24,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from contextvars import ContextVar
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -342,19 +342,19 @@ class LLMCostLimiterMiddleware:
             return True, None
 
         # Check global daily limit
-        global_key = f"llm_cost:global:daily:{datetime.utcnow().date()}"
+        global_key = f"llm_cost:global:daily:{datetime.now(UTC).date()}"
         global_cost = await self._get_cost(global_key)
         if global_cost + estimated_cost > self.global_daily_limit:
             return False, f"Global daily limit (${self.global_daily_limit}) exceeded"
 
         # Check user hourly limit
-        hourly_key = f"llm_cost:user:{user_id}:hourly:{datetime.utcnow().strftime('%Y-%m-%d-%H')}"
+        hourly_key = f"llm_cost:user:{user_id}:hourly:{datetime.now(UTC).strftime('%Y-%m-%d-%H')}"
         hourly_cost = await self._get_cost(hourly_key)
         if hourly_cost + estimated_cost > self.user_hourly_limit:
             return False, f"Hourly limit (${self.user_hourly_limit}) exceeded"
 
         # Check user daily limit
-        daily_key = f"llm_cost:user:{user_id}:daily:{datetime.utcnow().date()}"
+        daily_key = f"llm_cost:user:{user_id}:daily:{datetime.now(UTC).date()}"
         daily_cost = await self._get_cost(daily_key)
         if daily_cost + estimated_cost > self.user_daily_limit:
             return False, f"Daily limit (${self.user_daily_limit}) exceeded"
@@ -376,7 +376,7 @@ class LLMCostLimiterMiddleware:
         if self.redis_client is None:
             return
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Increment global daily cost
         global_key = f"llm_cost:global:daily:{now.date()}"
@@ -410,7 +410,7 @@ class LLMCostLimiterMiddleware:
         if self.redis_client is None:
             return {"hourly": 0.0, "daily": 0.0}
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         hourly_key = f"llm_cost:user:{user_id}:hourly:{now.strftime('%Y-%m-%d-%H')}"
         daily_key = f"llm_cost:user:{user_id}:daily:{now.date()}"
@@ -465,12 +465,12 @@ async def log_request(
     Returns:
         Response with logging
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(UTC)
     correlation_id = get_correlation_id()
 
     try:
         response = await call_next(request)
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
 
         # Extract path safely
         path: str | None = None
@@ -493,7 +493,7 @@ async def log_request(
         return response
 
     except Exception as e:
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
 
         # Extract path safely
         path_err: str | None = None

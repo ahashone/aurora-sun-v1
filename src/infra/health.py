@@ -23,7 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from urllib.parse import urlparse
@@ -180,7 +180,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNKNOWN,
                 message="Database URL not configured",
                 response_time_ms=0.0,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         try:
@@ -203,7 +203,7 @@ class HealthCheckService:
                     status=ServiceStatus.HEALTHY,
                     message="Database connection successful",
                     response_time_ms=response_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                     details={"query": "SELECT 1"},
                 )
 
@@ -217,7 +217,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Connection timeout after {self.timeout}s",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except Exception:
@@ -228,7 +228,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message="Health check failed",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     async def check_redis(self) -> HealthCheckResult:
@@ -251,7 +251,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNKNOWN,
                 message="Redis URL not configured",
                 response_time_ms=0.0,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         try:
@@ -274,7 +274,7 @@ class HealthCheckService:
                     status=ServiceStatus.HEALTHY,
                     message="Redis connection successful",
                     response_time_ms=response_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                     details={"command": "PING"},
                 )
 
@@ -288,7 +288,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Connection timeout after {self.timeout}s",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except Exception:
@@ -299,7 +299,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message="Health check failed",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     async def check_neo4j(self) -> HealthCheckResult:
@@ -322,7 +322,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNKNOWN,
                 message="Neo4j URL not configured",
                 response_time_ms=0.0,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         try:
@@ -347,7 +347,7 @@ class HealthCheckService:
                     status=ServiceStatus.HEALTHY,
                     message="Neo4j connection successful",
                     response_time_ms=response_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                     details={"query": "RETURN 1 AS num"},
                 )
 
@@ -361,7 +361,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Connection timeout after {self.timeout}s",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except Exception:
@@ -372,7 +372,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message="Health check failed",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     async def check_qdrant(self) -> HealthCheckResult:
@@ -395,7 +395,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNKNOWN,
                 message="Qdrant URL not configured",
                 response_time_ms=0.0,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         try:
@@ -419,7 +419,7 @@ class HealthCheckService:
                     status=ServiceStatus.HEALTHY,
                     message="Qdrant connection successful",
                     response_time_ms=response_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                     details={"endpoint": "/health"},
                 )
 
@@ -430,7 +430,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Connection timeout after {self.timeout}s",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except Exception:
@@ -441,7 +441,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message="Health check failed",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     async def check_letta(self) -> HealthCheckResult:
@@ -464,7 +464,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNKNOWN,
                 message="Letta URL not configured",
                 response_time_ms=0.0,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         try:
@@ -488,7 +488,7 @@ class HealthCheckService:
                     status=ServiceStatus.HEALTHY,
                     message="Letta connection successful",
                     response_time_ms=response_time,
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(UTC),
                     details={"endpoint": "/health"},
                 )
 
@@ -499,7 +499,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message=f"Connection timeout after {self.timeout}s",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
         except Exception:
@@ -510,7 +510,7 @@ class HealthCheckService:
                 status=ServiceStatus.UNHEALTHY,
                 message="Health check failed",
                 response_time_ms=response_time,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
     async def check_all(self) -> SystemHealthReport:
@@ -556,7 +556,7 @@ class HealthCheckService:
         return SystemHealthReport(
             status=overall_status,
             services=health_results,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
 
 

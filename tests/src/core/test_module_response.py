@@ -9,7 +9,6 @@ Covers:
 - Response modifiers
 """
 
-import pytest
 
 from src.core.buttons import Button
 from src.core.module_response import ModuleResponse

@@ -10,7 +10,7 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, TypeAlias
 
 from .segment_context import SegmentContext
@@ -49,8 +49,8 @@ class ModuleContext:
     module_name: str
 
     # Timing
-    started_at: datetime = field(default_factory=lambda: datetime.utcnow())
-    last_interaction_at: datetime = field(default_factory=lambda: datetime.utcnow())
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_interaction_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     # Continuity
     previous_response: str | None = None
@@ -68,7 +68,7 @@ class ModuleContext:
 
     def update_interaction(self) -> None:
         """Update the last interaction timestamp."""
-        self.last_interaction_at = datetime.utcnow()
+        self.last_interaction_at = datetime.now(UTC)
 
     def add_to_history(self, role: str, content: str) -> None:
         """Add a message to the conversation history.
@@ -80,7 +80,7 @@ class ModuleContext:
         self.message_history.append({
             "role": role,
             "content": content,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
 
     def get_recent_history(self, count: int = 5) -> list[dict[str, Any]]:

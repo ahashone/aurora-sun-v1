@@ -20,7 +20,7 @@ import pytest
 from src.core.module_context import ModuleContext
 from src.core.segment_context import SegmentContext
 from src.core.side_effects import SideEffectType
-from src.modules.capture import CaptureModule, CapturedItem
+from src.modules.capture import CapturedItem, CaptureModule
 
 # =============================================================================
 # Fixtures

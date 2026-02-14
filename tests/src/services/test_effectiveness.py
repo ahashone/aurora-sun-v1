@@ -25,7 +25,7 @@ Reference: ARCHITECTURE.md Section 2.6 (SW-6: Effectiveness Measurement Loop)
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -38,8 +38,6 @@ from src.services.effectiveness import (
     InterventionOutcomeData,
     InterventionType,
     SegmentCode,
-    VariantComparisonResult,
-    VariantExperiment,
     get_effectiveness_service,
 )
 

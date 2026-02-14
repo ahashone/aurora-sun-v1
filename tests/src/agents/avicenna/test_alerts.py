@@ -9,11 +9,11 @@ Tests cover:
 - Alert queue management
 """
 
-import pytest
 from datetime import UTC, datetime, timedelta
 
-from src.agents.avicenna.alerts import AlertSeverity, AlertSystem, PendingAlert
+import pytest
 
+from src.agents.avicenna.alerts import AlertSeverity, AlertSystem, PendingAlert
 
 # =============================================================================
 # Fixtures
@@ -128,7 +128,7 @@ class TestCooldownTracking:
     def test_should_not_alert_during_cooldown(self, alert_system):
         """Alerts of same severity/module blocked during cooldown."""
         # Send first alert
-        alert1 = alert_system.create_alert(
+        alert_system.create_alert(
             severity=AlertSeverity.CRITICAL,
             title="Alert 1",
             message="Message 1",
@@ -313,7 +313,7 @@ class TestGetPendingAlerts:
             message="Message 1",
             module="test",
         )
-        alert2 = alert_system.create_alert(
+        alert_system.create_alert(
             severity=AlertSeverity.WARNING,
             title="Alert 2",
             message="Message 2",

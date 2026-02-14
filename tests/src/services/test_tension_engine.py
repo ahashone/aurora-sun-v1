@@ -31,8 +31,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.services.tension_engine import (
-    FulfillmentType,
-    OverrideLevel,
     Quadrant,
     TensionEngine,
     TensionState,

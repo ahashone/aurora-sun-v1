@@ -19,8 +19,6 @@ Covers:
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
 from src.models.neurostate import (
     BurnoutAssessment,
     BurnoutType,
@@ -35,7 +33,6 @@ from src.models.neurostate import (
 )
 from src.models.session import Session
 from src.models.user import User
-
 
 # =============================================================================
 # Enum Tests

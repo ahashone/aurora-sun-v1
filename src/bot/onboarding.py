@@ -235,8 +235,11 @@ class OnboardingFlow:
             value = await self._redis.get(f"{_ONBOARDING_STATE_PREFIX}{user_hash}")
             if value is not None:
                 return OnboardingStates(value.strip('"'))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Redis get failed for onboarding state, using memory fallback",
+                extra={"user_hash": user_hash[:8], "error": type(e).__name__},
+            )
         return self._states_fallback.get(user_hash)
 
     async def _set_state(self, user_hash: str, state: OnboardingStates) -> None:
@@ -248,8 +251,11 @@ class OnboardingFlow:
                 state.value,
                 ttl=_ONBOARDING_TTL,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Redis set failed for onboarding state, using memory fallback only",
+                extra={"user_hash": user_hash[:8], "state": state.value, "error": type(e).__name__},
+            )
 
     async def _get_data(self, user_hash: str) -> dict[str, Any]:
         """Get onboarding user data from Redis, falling back to memory."""
@@ -258,8 +264,11 @@ class OnboardingFlow:
             if raw is not None:
                 data: dict[str, Any] = json.loads(raw)
                 return data
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Redis get failed for onboarding data, using memory fallback",
+                extra={"user_hash": user_hash[:8], "error": type(e).__name__},
+            )
         return self._user_data_fallback.get(user_hash, {})
 
     async def _set_data(self, user_hash: str, data: dict[str, Any]) -> None:
@@ -271,8 +280,11 @@ class OnboardingFlow:
                 data,
                 ttl=_ONBOARDING_TTL,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Redis set failed for onboarding data, using memory fallback only",
+                extra={"user_hash": user_hash[:8], "error": type(e).__name__},
+            )
 
     def _language_keyboard(self, language: str = "en") -> list[list[InlineKeyboardButton]]:
         """Generate language selection keyboard."""

@@ -9,7 +9,7 @@ Covers:
 - Cascading deletes
 """
 
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 
@@ -18,7 +18,6 @@ from src.models.goal import Goal
 from src.models.task import Task
 from src.models.user import User
 from src.models.vision import Vision
-
 
 # =============================================================================
 # User Model Tests

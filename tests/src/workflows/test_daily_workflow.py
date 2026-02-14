@@ -21,7 +21,7 @@ Data Classification: SENSITIVE (daily patterns, energy levels)
 from __future__ import annotations
 
 from datetime import date, time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -37,7 +37,6 @@ from src.workflows.daily_workflow import (
     WorkflowTrigger,
     get_daily_workflow,
 )
-
 
 # =============================================================================
 # Fixtures

@@ -484,7 +484,7 @@ class TestOnExit:
         """on_exit removes the user's session."""
         ctx = _make_ctx("NT", user_id=99)
         await future_letter_module.on_enter(ctx)
-        session_key = f"future_letter:session:99"
+        session_key = "future_letter:session:99"
         state_store = await future_letter_module._state_store
         session = await state_store.get(session_key)
         assert session is not None

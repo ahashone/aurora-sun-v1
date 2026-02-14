@@ -17,7 +17,6 @@ Tests cover:
 All DB dependencies use the shared db_session fixture with in-memory SQLite.
 """
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -355,7 +354,7 @@ class TestReduceLoad:
             user_id=1, context="work", masking_behavior="social_camouflaging"
         )
 
-        load_before = await service.get_current_load(user_id=1)
+        await service.get_current_load(user_id=1)
         result = await service.reduce_load(user_id=1, context="work", reduction=10.0)
 
         # After reduction, total should be lower (or at least a negative event logged)

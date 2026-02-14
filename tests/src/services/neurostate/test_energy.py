@@ -17,8 +17,7 @@ Tests cover:
 All DB dependencies are mocked to avoid real database access.
 """
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 

@@ -34,7 +34,6 @@ from src.bot.webhook import (
 )
 from src.models.consent import ConsentStatus, ConsentValidationResult
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================

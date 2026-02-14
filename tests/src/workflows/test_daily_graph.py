@@ -18,7 +18,6 @@ Data Classification: SENSITIVE (daily patterns, neurostate)
 
 from __future__ import annotations
 
-from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -41,7 +40,6 @@ from src.workflows.daily_graph import (
     run_daily_graph,
     vision_display_node,
 )
-
 
 # =============================================================================
 # Test: GraphNode Enum
@@ -285,7 +283,7 @@ async def test_neurostate_preflight_node_tier_detection():
         "redirect_triggered": False,
         "redirect_reason": None,
     }
-    result = await neurostate_preflight_node(state_yellow)
+    await neurostate_preflight_node(state_yellow)
     # Tier logic is internal to the node, just verify it runs
 
 

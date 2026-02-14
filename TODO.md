@@ -1,48 +1,52 @@
 # TODO -- Aurora Sun V1
 
 > Max ~30 items. Completed items visible 1 session, then remove.
-> **All Phases Complete (1-5).** Stabilization sprint in progress.
+> **All Phases Complete (1-5).** Full QA Audit complete. See QA-REPORT.md.
 
 ---
 
 ## Completed This Session
 
-- [x] Paranoid Security Audit: Fix all 47 findings | 69 files, 2367 tests
-- [x] Codex Security Audit: All overlapping findings covered
-- [x] Create Dockerfile (multi-stage build) | Dockerfile, pyproject.toml
-- [x] Replace placeholder APIRouter with FastAPI + /api/v1 versioning | src/api/routes.py, src/api/__init__.py, main.py
-- [x] Review module graceful degradation (db session None checks) | src/modules/review.py
-- [x] DPA status updated to "Required - Pending Signature" with deadlines | docs/SUB-PROCESSOR-REGISTRY.md
-- [x] Financial keyword conflict: removed "paid" from INCOME_KEYWORDS | src/services/revenue_tracker.py
-- [x] In-memory stores bounded (MAX_ENTRIES_PER_USER) | src/services/revenue_tracker.py, src/services/crisis_service.py
-- [x] Circuit breaker pattern implemented | src/lib/circuit_breaker.py, src/lib/__init__.py
-- [x] MD5 replaced with SHA-256 for channel dominance hashing | src/services/coaching_engine.py
-- [x] CORS middleware added (AURORA_CORS_ORIGINS env var) | src/api/__init__.py, .env.example
-- [x] God functions refactored (CC>=15): 6 functions split into helpers | effectiveness.py, pattern_detection.py, gdpr.py, energy_system.py, money.py
-- [x] Neurostate test coverage: 216 new tests (energy, channel, sensory, masking) | tests/src/services/neurostate/
-- [x] README.md fixed (docker-compose ref, run command) | README.md
-- [x] PR template created | .github/pull_request_template.md
-- [x] DPIA updated to v1.1 (Phase 5 review entry) | docs/DPIA.md
-- [x] Monitoring configs created | monitoring/prometheus.yml, monitoring/alertmanager.yml, monitoring/alert_rules.yml
-- [x] TODO density reviewed: 68 TODOs in src/, all genuine future work | No changes needed
+- [x] Full 8-Phase QA Audit (7 agents, 8 phases) | QA-REPORT.md
+- [x] 115 new tests written (schemas, circuit_breaker, session, security) | 4 test files
+- [x] Ruff auto-fix: 62→0 issues in tests/ | tests/
+- [x] .env.example updated: 3 missing env vars added | .env.example
+- [x] Silent exception handlers: logging added (6 blocks) | onboarding.py, encryption.py
+- [x] datetime.utcnow() deprecation fixed (3 files) | health.py, middleware.py, module_context.py
+- [x] asyncio.iscoroutinefunction() → inspect (1 file) | rbac.py
 
 ---
 
 ## Open Items
 
-### CRITICAL (Deployment Blockers)
+### CRITICAL (Deployment Blockers — REST API)
 
+- [ ] SEC-001: Implement auth middleware on all API endpoints | (before API launch)
+- [ ] SEC-007: Add API rate limiting middleware | (before API launch)
+- [ ] SEC-008: Add HTTPS redirect middleware for production | (before API launch)
 - [ ] BLOCKED: Module GDPR delete stubs need database session injection | (waiting for Ahash)
 
-### HIGH (Next Sprint)
+### HIGH (Before Scaling)
 
-- [ ] In-memory stores need Redis persistence in prod: revenue_tracker._entries, crisis_service._crisis_log | (Codex A-03)
+- [ ] PERF-001: Add eager loading (selectinload) to hot-path relationships | (N+1 queries)
+- [ ] PERF-009: Implement lazy caching for decrypted field properties | (O(n) decryptions)
+- [ ] PERF-002: Add Redis caching for user lookups | (every webhook hits PG)
+- [ ] Increase test coverage: encryption.py (74%), gdpr.py (72%), security.py (64%) → 90%+
+- [ ] In-memory stores need Redis persistence in prod | (Codex A-03)
+
+### MEDIUM (Next Sprint)
+
+- [ ] REFACTOR-001: Extract GDPR methods to mixin (36 duplicated methods across 9 modules)
+- [ ] REFACTOR-002: Extract encryption property to descriptor (7 duplicated patterns)
+- [ ] REFACTOR-005: Implement API response envelope pattern
+- [ ] Standardize on structured logging (structlog) — only 2/58 files use it
+- [ ] Refactor top 5 god functions (>100 lines each)
 
 ### LOW (When Convenient)
 
-- [ ] Add HSTS preload registration (header already set, but no preload list submission) | (Claude FINDING-045)
+- [ ] Add HSTS preload registration | (Claude FINDING-045)
 - [ ] Implement formal threat model + regular red-team schedule | (Claude Tier 3)
-- [ ] Security regression test suite (authz, erasure, webhook spoofing, abuse-cost) in CI | (Claude Tier 3)
+- [ ] Security regression test suite in CI | (Claude Tier 3)
 
 ---
 
@@ -58,3 +62,4 @@
 | 2026-02-14 | Phase 3-5 Complete | 850+ new tests (1539 total), all audits pass |
 | 2026-02-14 | Paranoid Audit Fix | 47 findings fixed, 2367 tests, 0 ruff/mypy errors |
 | 2026-02-14 | Stabilization Sprint | 18 audit items fixed, 2583 tests, 0 ruff/mypy errors |
+| 2026-02-14 | Full QA Audit | 8 phases, 115 new tests, 11 fixes, 2698 tests, 83% coverage |

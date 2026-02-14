@@ -16,8 +16,7 @@ Tests cover:
 All DB dependencies are mocked to avoid real database access.
 """
 
-from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -25,7 +24,6 @@ from src.models.neurostate import ChannelType
 from src.services.neurostate.channel import (
     ChannelDetectionResult,
     ChannelDominanceDetector,
-    ChannelStateData,
 )
 
 # =============================================================================
@@ -429,13 +427,6 @@ class TestADHDVsAutismScoring:
     async def test_adhd_dominant_requires_15_point_lead(self, detector):
         """ADHD dominance requires ADHD avg > Autism avg + 15."""
         # Manually set scores where ADHD channels are much higher
-        scores = {
-            ChannelType.FOCUS: 30.0,
-            ChannelType.CREATIVE: 80.0,
-            ChannelType.SOCIAL: 50.0,
-            ChannelType.PHYSICAL: 80.0,
-            ChannelType.LEARNING: 30.0,
-        }
         adhd_avg = (80.0 + 80.0) / 2  # 80
         autism_avg = (30.0 + 30.0) / 2  # 30
         # 80 > 30 + 15 = True
@@ -444,13 +435,6 @@ class TestADHDVsAutismScoring:
     @pytest.mark.asyncio
     async def test_autism_dominant_requires_15_point_lead(self, detector):
         """Autism dominance requires Autism avg > ADHD avg + 15."""
-        scores = {
-            ChannelType.FOCUS: 80.0,
-            ChannelType.CREATIVE: 30.0,
-            ChannelType.SOCIAL: 50.0,
-            ChannelType.PHYSICAL: 30.0,
-            ChannelType.LEARNING: 80.0,
-        }
         adhd_avg = (30.0 + 30.0) / 2  # 30
         autism_avg = (80.0 + 80.0) / 2  # 80
         # 80 > 30 + 15 = True
@@ -459,13 +443,6 @@ class TestADHDVsAutismScoring:
     @pytest.mark.asyncio
     async def test_neither_dominant_within_15(self, detector):
         """Neither dominant when difference is within 15 points."""
-        scores = {
-            ChannelType.FOCUS: 50.0,
-            ChannelType.CREATIVE: 55.0,
-            ChannelType.SOCIAL: 50.0,
-            ChannelType.PHYSICAL: 55.0,
-            ChannelType.LEARNING: 50.0,
-        }
         adhd_avg = (55.0 + 55.0) / 2  # 55
         autism_avg = (50.0 + 50.0) / 2  # 50
         # 55 > 50 + 15 = False, 50 > 55 + 15 = False

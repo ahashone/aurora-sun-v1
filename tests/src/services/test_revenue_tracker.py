@@ -28,7 +28,7 @@ Reference: ARCHITECTURE.md Section 7 (Money Pillar)
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -36,7 +36,6 @@ import pytest
 from src.lib.encryption import EncryptionService, EncryptionServiceError
 from src.services.revenue_tracker import (
     EntryType,
-    RevenueBalance,
     RevenueCategory,
     RevenueEntry,
     RevenueTracker,

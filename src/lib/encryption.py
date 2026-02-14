@@ -269,8 +269,11 @@ class EncryptionService:
                 return decoded
             except ValueError:
                 raise  # Re-raise ValueError (including our length check)
-            except Exception:
-                pass  # Invalid encoding, try next method
+            except Exception as e:
+                _logger.debug(
+                    "Failed to decode AURORA_MASTER_KEY, trying next method",
+                    extra={"error": type(e).__name__},
+                )
 
         # Try keyring
         if KEYRING_AVAILABLE:
@@ -278,8 +281,11 @@ class EncryptionService:
                 key = keyring.get_password(self.SERVICE_NAME, "master_key")
                 if key:
                     return base64.b64decode(key)
-            except Exception:
-                pass  # Keyring unavailable
+            except Exception as e:
+                _logger.debug(
+                    "Keyring unavailable for master key, trying next method",
+                    extra={"error": type(e).__name__},
+                )
 
         # Generate new key for development (should not happen in production)
         # This will require key rotation after deployment

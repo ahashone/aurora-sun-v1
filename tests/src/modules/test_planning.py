@@ -26,7 +26,6 @@ from src.modules.planning import (
     PlanningModule,
     PlanningSession,
     PlanningState,
-    PriorityItem,
 )
 from src.services.state_store import BoundedStateStore
 
@@ -497,7 +496,7 @@ class TestOnExit:
         """on_exit removes the user's session."""
         ctx = _make_ctx("NT", user_id=99)
         await planning_module.on_enter(ctx)
-        session_key = f"planning:session:99"
+        session_key = "planning:session:99"
         state_store = await planning_module._state_store
         session = await state_store.get(session_key)
         assert session is not None

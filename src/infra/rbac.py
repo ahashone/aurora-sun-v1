@@ -19,6 +19,7 @@ References:
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Callable
 from enum import Enum
@@ -284,9 +285,8 @@ def require_permission(permission: Permission) -> Callable[[F], F]:
             return func(*args, **kwargs)
 
         # Return appropriate wrapper based on function type
-        import asyncio
 
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper  # type: ignore[return-value]
         else:
             return sync_wrapper  # type: ignore[return-value]
@@ -338,9 +338,8 @@ def require_any_permission(*permissions: Permission) -> Callable[[F], F]:
 
             return func(*args, **kwargs)
 
-        import asyncio
 
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper  # type: ignore[return-value]
         else:
             return sync_wrapper  # type: ignore[return-value]
@@ -389,9 +388,8 @@ def require_role(required_role: Role) -> Callable[[F], F]:
 
             return func(*args, **kwargs)
 
-        import asyncio
 
-        if asyncio.iscoroutinefunction(func):
+        if inspect.iscoroutinefunction(func):
             return async_wrapper  # type: ignore[return-value]
         else:
             return sync_wrapper  # type: ignore[return-value]

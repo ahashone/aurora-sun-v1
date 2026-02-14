@@ -15,7 +15,6 @@ import pytest
 
 from src.services.redis_service import RedisService, get_redis_service
 
-
 # =============================================================================
 # Mock Redis Client
 # =============================================================================

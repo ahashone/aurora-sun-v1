@@ -12,9 +12,7 @@ Covers:
 import pytest
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
-from src.core.module_protocol import Module
 from src.core.module_registry import ModuleRegistry
-
 
 # =============================================================================
 # Mock Module for Testing

@@ -35,13 +35,11 @@ from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.core.segment_context import SegmentContext
 from src.services.coaching_engine import (
-    ChannelDominance,
     CoachingEngine,
     CoachingResponse,
     get_coaching_engine,
 )
-from src.services.tension_engine import Quadrant, TensionState
-
+from src.services.tension_engine import TensionState
 
 # =============================================================================
 # Fixtures
@@ -262,11 +260,11 @@ async def test_pinch_activation_deterministic_selection(coaching_engine: Coachin
 @pytest.mark.asyncio
 async def test_pinch_activation_varies_by_history_length(coaching_engine: CoachingEngine, module_context_adhd: ModuleContext):
     """Test that PINCH activation varies with message history length."""
-    response1 = await coaching_engine.pinch_activation(module_context_adhd)
+    await coaching_engine.pinch_activation(module_context_adhd)
 
     # Add a message to history
     module_context_adhd.message_history.append("test")
-    response2 = await coaching_engine.pinch_activation(module_context_adhd)
+    await coaching_engine.pinch_activation(module_context_adhd)
 
     # Responses should be different (unless by chance same index)
     # This is probabilistic but with 4 responses, different is likely
@@ -333,7 +331,7 @@ async def test_check_channel_dominance_deterministic_per_day(coaching_engine: Co
 @pytest.mark.asyncio
 async def test_check_channel_dominance_uses_redis_cache(coaching_engine: CoachingEngine):
     """Test that channel dominance uses Redis cache."""
-    cache_key = f"channel_dominance:1:{date.today().isoformat()}"
+    f"channel_dominance:1:{date.today().isoformat()}"
 
     # Mock Redis to return cached value
     coaching_engine.redis_service.get = AsyncMock(return_value='"ADHD"')

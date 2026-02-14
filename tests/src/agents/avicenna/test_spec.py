@@ -12,8 +12,8 @@ Tests cover:
 - Fallback loading when PyYAML unavailable
 """
 
+
 import pytest
-from pathlib import Path
 
 from src.agents.avicenna.spec import (
     ExpectedWrite,
@@ -22,7 +22,6 @@ from src.agents.avicenna.spec import (
     SpecManager,
     ValidTransition,
 )
-
 
 # =============================================================================
 # Fixtures

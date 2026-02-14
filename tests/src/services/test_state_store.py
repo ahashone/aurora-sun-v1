@@ -10,13 +10,11 @@ Covers:
 """
 
 import asyncio
-import time
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from src.services.state_store import BoundedStateStore
-
 
 # =============================================================================
 # Helper Fixtures
