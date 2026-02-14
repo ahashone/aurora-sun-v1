@@ -15,10 +15,10 @@ Usage:
 
     # Check if user has valid consent
     service = ConsentService(session)
-    is_valid = await service.verify_consent(user_id)
+    is_valid = service.verify_consent(user_id)
 
     # Create consent record
-    record = await service.create_consent_record(
+    record = service.create_consent_record(
         user_id=1,
         version="1.0",
         language="en",
@@ -27,7 +27,7 @@ Usage:
     )
 
     # Withdraw consent
-    await service.withdraw_consent(user_id=1)
+    service.withdraw_consent(user_id=1)
 """
 
 import hashlib
@@ -44,18 +44,10 @@ from sqlalchemy import (
     Integer,
     String,
 )
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.sql import func
 
-# ============================================
-# SQLAlchemy Base
-# ============================================
-
-class Base(DeclarativeBase):
-    """SQLAlchemy declarative base for Aurora Sun V1 models."""
-    pass
-
+from src.models.base import Base
 
 # ============================================
 # Enums and Value Objects
@@ -206,7 +198,7 @@ class ConsentService:
 
     Usage:
         service = ConsentService(db_session)
-        is_valid = await service.verify_consent(user_id=1)
+        is_valid = service.verify_consent(user_id=1)
 
     Attributes:
         _session: SQLAlchemy database session.
@@ -268,7 +260,7 @@ class ConsentService:
         """
         return hashlib.sha256(consent_text.encode("utf-8")).hexdigest()
 
-    async def create_consent_record(
+    def create_consent_record(
         self,
         user_id: int,
         version: str,
@@ -308,7 +300,7 @@ class ConsentService:
             raise ValueError("consent_language cannot be empty")
 
         # Check if user already has active consent
-        existing = await self._get_active_consent(user_id)
+        existing = self._get_active_consent(user_id)
         if existing:
             # Update existing record instead of creating new one
             existing.consent_given_at = datetime.now(UTC)
@@ -337,7 +329,7 @@ class ConsentService:
 
         return record
 
-    async def verify_consent(self, user_id: int) -> bool:
+    def verify_consent(self, user_id: int) -> bool:
         """
         Verify if a user has valid, active consent.
 
@@ -354,7 +346,7 @@ class ConsentService:
         if user_id <= 0:
             return False
 
-        record = await self._get_active_consent(user_id)
+        record = self._get_active_consent(user_id)
         if record is None:
             return False
 
@@ -364,7 +356,7 @@ class ConsentService:
             and record.consent_withdrawn_at is None
         )
 
-    async def validate_consent(self, user_id: int) -> ConsentValidationResult:
+    def validate_consent(self, user_id: int) -> ConsentValidationResult:
         """
         Validate consent and return detailed status information.
 
@@ -429,7 +421,7 @@ class ConsentService:
             message="Consent is valid and active",
         )
 
-    async def withdraw_consent(self, user_id: int) -> None:
+    def withdraw_consent(self, user_id: int) -> None:
         """
         Withdraw consent for a user.
 
@@ -452,7 +444,7 @@ class ConsentService:
         if user_id <= 0:
             raise ValueError("user_id must be a positive integer")
 
-        record = await self._get_active_consent(user_id)
+        record = self._get_active_consent(user_id)
         if record is None:
             raise RuntimeError(
                 f"No active consent record found for user {user_id}. "
@@ -462,7 +454,7 @@ class ConsentService:
         record.consent_withdrawn_at = datetime.now(UTC)
         self._session.commit()
 
-    async def get_consent_version(self, user_id: int) -> str | None:
+    def get_consent_version(self, user_id: int) -> str | None:
         """
         Get the current consent version for a user.
 
@@ -476,13 +468,13 @@ class ConsentService:
         if user_id <= 0:
             return None
 
-        record = await self._get_active_consent(user_id)
+        record = self._get_active_consent(user_id)
         if record is None:
             return None
 
         return record.consent_version
 
-    async def get_consent_record(self, user_id: int) -> ConsentRecord | None:
+    def get_consent_record(self, user_id: int) -> ConsentRecord | None:
         """
         Get the most recent consent record for a user.
 
@@ -496,7 +488,7 @@ class ConsentService:
             ConsentRecord.user_id == user_id
         ).order_by(ConsentRecord.consent_given_at.desc()).first()
 
-    async def _get_active_consent(self, user_id: int) -> ConsentRecord | None:
+    def _get_active_consent(self, user_id: int) -> ConsentRecord | None:
         """
         Get the active (non-withdrawn) consent record for a user.
 
@@ -511,7 +503,7 @@ class ConsentService:
             ConsentRecord.consent_withdrawn_at.is_(None),
         ).order_by(ConsentRecord.consent_given_at.desc()).first()
 
-    async def get_consent_history(self, user_id: int) -> list[ConsentRecord]:
+    def get_consent_history(self, user_id: int) -> list[ConsentRecord]:
         """
         Get the complete consent history for a user.
 
@@ -531,7 +523,7 @@ class ConsentService:
             .all()
         )
 
-    async def reconsent(
+    def reconsent(
         self,
         user_id: int,
         version: str,
@@ -554,7 +546,7 @@ class ConsentService:
         Returns:
             The new ConsentRecord instance.
         """
-        return await self.create_consent_record(
+        return self.create_consent_record(
             user_id=user_id,
             version=version,
             language=language,
@@ -568,7 +560,7 @@ class ConsentService:
 # =========================================
 
 
-async def check_consent_gate(
+def check_consent_gate(
     session: DbSession,
     user_id: int,
 ) -> ConsentValidationResult:
@@ -586,7 +578,7 @@ async def check_consent_gate(
         ConsentValidationResult with detailed status.
     """
     service = ConsentService(session)
-    return await service.validate_consent(user_id)
+    return service.validate_consent(user_id)
 
 
 # ============================================
@@ -594,7 +586,6 @@ async def check_consent_gate(
 # ============================================
 
 __all__ = [
-    "Base",
     "ConsentRecord",
     "ConsentService",
     "ConsentStatus",

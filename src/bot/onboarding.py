@@ -16,6 +16,7 @@ References:
     - ARCHITECTURE.md Section 3 (Neurotype Segmentation)
 """
 
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,8 +26,14 @@ from typing import Any
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 
 from src.lib.encryption import hash_telegram_id
+from src.services.redis_service import get_redis_service
 
 logger = logging.getLogger(__name__)
+
+# Redis key prefixes and TTL for onboarding state
+_ONBOARDING_STATE_PREFIX = "aurora:onboarding:state:"
+_ONBOARDING_DATA_PREFIX = "aurora:onboarding:data:"
+_ONBOARDING_TTL = 3600  # 1 hour TTL for onboarding state
 
 
 # =============================================================================
@@ -166,8 +173,10 @@ class OnboardingFlow:
 
     def __init__(self):
         """Initialize the onboarding flow."""
-        self._states: dict[str, OnboardingStates] = {}  # user_hash -> state
-        self._user_data: dict[str, dict[str, Any]] = {}  # user_hash -> data
+        # In-memory fallback when Redis is unavailable
+        self._states_fallback: dict[str, OnboardingStates] = {}
+        self._user_data_fallback: dict[str, dict[str, Any]] = {}
+        self._redis = get_redis_service()
 
         # Define onboarding steps
         self._steps: list[OnboardingStep] = [
@@ -197,6 +206,54 @@ class OnboardingFlow:
                 prompt_key="confirmation",
             ),
         ]
+
+    # =========================================================================
+    # State persistence (Redis with in-memory fallback)
+    # =========================================================================
+
+    async def _get_state(self, user_hash: str) -> OnboardingStates | None:
+        """Get onboarding state from Redis, falling back to memory."""
+        try:
+            value = await self._redis.get(f"{_ONBOARDING_STATE_PREFIX}{user_hash}")
+            if value is not None:
+                return OnboardingStates(value.strip('"'))
+        except Exception:
+            pass
+        return self._states_fallback.get(user_hash)
+
+    async def _set_state(self, user_hash: str, state: OnboardingStates) -> None:
+        """Persist onboarding state to Redis with in-memory fallback."""
+        self._states_fallback[user_hash] = state
+        try:
+            await self._redis.set(
+                f"{_ONBOARDING_STATE_PREFIX}{user_hash}",
+                state.value,
+                ttl=_ONBOARDING_TTL,
+            )
+        except Exception:
+            pass
+
+    async def _get_data(self, user_hash: str) -> dict[str, Any]:
+        """Get onboarding user data from Redis, falling back to memory."""
+        try:
+            raw = await self._redis.get(f"{_ONBOARDING_DATA_PREFIX}{user_hash}")
+            if raw is not None:
+                return json.loads(raw)
+        except Exception:
+            pass
+        return self._user_data_fallback.get(user_hash, {})
+
+    async def _set_data(self, user_hash: str, data: dict[str, Any]) -> None:
+        """Persist onboarding user data to Redis with in-memory fallback."""
+        self._user_data_fallback[user_hash] = data
+        try:
+            await self._redis.set(
+                f"{_ONBOARDING_DATA_PREFIX}{user_hash}",
+                data,
+                ttl=_ONBOARDING_TTL,
+            )
+        except Exception:
+            pass
 
     def _language_keyboard(self, language: str = "en") -> list[list[InlineKeyboardButton]]:
         """Generate language selection keyboard."""
@@ -254,15 +311,15 @@ class OnboardingFlow:
             language: Auto-detected language from Telegram
         """
         user_hash = self._get_user_hash(update)
-        self._states[user_hash] = OnboardingStates.LANGUAGE
+        await self._set_state(user_hash, OnboardingStates.LANGUAGE)
 
         # Store language (auto-detected or user-selected)
-        self._user_data[user_hash] = {
+        await self._set_data(user_hash, {
             "language": language if language in CONSENT_TEXTS else DEFAULT_LANGUAGE,
             "name": None,
             "segment": None,
             "consented": False,
-        }
+        })
 
         await self._send_prompt(update, user_hash)
 
@@ -276,7 +333,7 @@ class OnboardingFlow:
         Returns:
             Current onboarding state, or None if not in onboarding
         """
-        return self._states.get(user_hash)
+        return await self._get_state(user_hash)
 
     async def process_step(self, update: Update) -> None:
         """
@@ -286,7 +343,7 @@ class OnboardingFlow:
             update: Telegram Update with user response
         """
         user_hash = self._get_user_hash(update)
-        current_state = self._states.get(user_hash)
+        current_state = await self._get_state(user_hash)
 
         if current_state is None:
             # Not in onboarding, ignore
@@ -322,7 +379,7 @@ class OnboardingFlow:
     ) -> None:
         """Handle callback query from inline keyboard."""
         callback_data = update.callback_query.data
-        user_data = self._user_data.get(user_hash, {})
+        user_data = await self._get_data(user_hash)
 
         # F-009: Strict allowlists for callback validation
         VALID_LANGUAGES = {"en", "de", "sr", "el"}
@@ -334,7 +391,7 @@ class OnboardingFlow:
                 language = callback_data.replace("lang_", "")
                 if language in VALID_LANGUAGES:
                     user_data["language"] = language
-                    self._user_data[user_hash] = user_data
+                    await self._set_data(user_hash, user_data)
                     await self._advance_state(update, user_hash)
 
         elif step.state == OnboardingStates.WORKING_STYLE:
@@ -343,21 +400,21 @@ class OnboardingFlow:
                 segment = callback_data.replace("segment_", "")
                 if segment in VALID_SEGMENTS:
                     user_data["segment"] = segment
-                    self._user_data[user_hash] = user_data
+                    await self._set_data(user_hash, user_data)
                     await self._advance_state(update, user_hash)
 
         elif step.state == OnboardingStates.CONSENT:
             # Consent response - exact match only
             if callback_data == "consent_accept":
                 user_data["consented"] = True
-                self._user_data[user_hash] = user_data
+                await self._set_data(user_hash, user_data)
                 await self._advance_state(update, user_hash)
             elif callback_data == "consent_reject":
                 await update.callback_query.message.edit_text(
                     "Consent is required to use Aurora Sun. "
                     "You can restart anytime with /start"
                 )
-                self._states[user_hash] = OnboardingStates.COMPLETED
+                await self._set_state(user_hash, OnboardingStates.COMPLETED)
 
         # Answer callback to remove loading state
         await update.callback_query.answer()
@@ -370,7 +427,7 @@ class OnboardingFlow:
     ) -> None:
         """Handle text input from user."""
         text = update.message.text
-        user_data = self._user_data.get(user_hash, {})
+        user_data = await self._get_data(user_hash)
 
         if step.state == OnboardingStates.NAME:
             # Name input
@@ -384,12 +441,12 @@ class OnboardingFlow:
                 text = step.transformer(text)
 
             user_data["name"] = text
-            self._user_data[user_hash] = user_data
+            await self._set_data(user_hash, user_data)
             await self._advance_state(update, user_hash)
 
     async def _advance_state(self, update: Update, user_hash: str) -> None:
         """Advance to the next onboarding state."""
-        current_state = self._states.get(user_hash)
+        current_state = await self._get_state(user_hash)
 
         # Find next step
         next_state = None
@@ -402,13 +459,13 @@ class OnboardingFlow:
                 break
 
         if next_state:
-            self._states[user_hash] = next_state
+            await self._set_state(user_hash, next_state)
             await self._send_prompt(update, user_hash)
 
     async def _send_prompt(self, update: Update, user_hash: str) -> None:
         """Send the prompt for the current state."""
-        current_state = self._states.get(user_hash)
-        user_data = self._user_data.get(user_hash, {})
+        current_state = await self._get_state(user_hash)
+        user_data = await self._get_data(user_hash)
         language = user_data.get("language", DEFAULT_LANGUAGE)
 
         # Find current step
@@ -466,7 +523,7 @@ You can change these settings anytime with /settings.
 
 Type anything to start your first daily planning session!
 """
-            self._states[user_hash] = OnboardingStates.COMPLETED
+            await self._set_state(user_hash, OnboardingStates.COMPLETED)
 
         else:
             text = "Processing..."
@@ -490,7 +547,7 @@ Type anything to start your first daily planning session!
             elif update.callback_query:
                 await update.callback_query.message.edit_text(text)
 
-    def get_user_data(self, user_hash: str) -> dict[str, Any] | None:
+    async def get_user_data(self, user_hash: str) -> dict[str, Any] | None:
         """
         Get collected user data after onboarding.
 
@@ -500,7 +557,8 @@ Type anything to start your first daily planning session!
         Returns:
             Dictionary with collected data (language, name, segment, consented)
         """
-        return self._user_data.get(user_hash)
+        data = await self._get_data(user_hash)
+        return data if data else None
 
 
 # =============================================================================

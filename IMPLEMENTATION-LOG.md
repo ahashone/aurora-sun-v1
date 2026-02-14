@@ -23,3 +23,10 @@
 | 2026-02-13 | Phase 2: Energy System (IBNS, ICNU, Spoon-Drawer, Sensory+Cognitive) | src/services/energy_system.py |
 | 2026-02-13 | Phase 2: Revenue Tracker + Crisis Safety Net | src/services/revenue_tracker.py, src/services/crisis_service.py |
 | 2026-02-13 | Phase 2: EffectivenessService (intervention tracking, A/B testing, weekly reports) | src/services/effectiveness.py |
+| 2026-02-14 | Deep audit: 14 critical/high bugs fixed, 514 lint errors resolved to 0 | Multiple (see docs/archive/AUDIT_REPORT.md) |
+| 2026-02-14 | Fix audit issues: ConsentService async/sync mismatch (sync SQLAlchemy calls in async methods) | src/models/consent.py |
+| 2026-02-14 | Fix audit issues: Unify Base class (moved definition to base.py, removed duplicate from consent.py) | src/models/base.py, src/models/consent.py, migrations/env.py |
+| 2026-02-14 | Fix audit issues: Onboarding state persisted to Redis (was in-memory, lost on restart) | src/bot/onboarding.py |
+| 2026-02-14 | Fix audit issues: Wire structlog (logging config module, stdlib+structlog integration) | src/lib/logging.py, src/__init__.py |
+| 2026-02-14 | Fix audit issues: Error handling in webhook NLI routing + rate limit null-safety | src/bot/webhook.py |
+| 2026-02-14 | Add .env.example and README.md (project documentation) | .env.example, README.md |

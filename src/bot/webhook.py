@@ -97,11 +97,12 @@ class TelegramWebhookHandler:
         if user:
             rate_limiter = RateLimiter()
             # Check message rate limit (30/min, 100/hour)
-            if not rate_limiter.check_rate_limit(user.id, "message"):
+            if not await rate_limiter.check_rate_limit(user.id, "message"):
                 logger.warning(f"Rate limit exceeded for user {user.id}")
-                await update.message.reply_text(
-                    "You're sending messages too quickly. Please wait a moment."
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        "You're sending messages too quickly. Please wait a moment."
+                    )
                 return
 
         # Extract user info
@@ -136,8 +137,18 @@ class TelegramWebhookHandler:
         # For extra security in production, verify X-Telegram-Bot-Api-Secret-Token header
         # =============================================================================
 
-        # Route through NLI
-        await self._route_through_nli(update, user)
+        # Route through NLI with error handling
+        try:
+            await self._route_through_nli(update, user)
+        except Exception:
+            logger.exception("Error routing message through NLI")
+            try:
+                if update.message:
+                    await update.message.reply_text(
+                        "Something went wrong. Please try again."
+                    )
+            except Exception:
+                logger.exception("Failed to send error message to user")
 
     # =============================================================================
     # Helper Methods for Consent and User Management

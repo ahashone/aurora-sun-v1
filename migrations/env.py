@@ -23,8 +23,8 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-# Import Base from consent.py (the authoritative source)
-from src.models.consent import Base
+# Import Base from base.py (the authoritative source)
+from src.models.base import Base
 
 # Import all models to register them with Base.metadata
 from src.models.user import User
