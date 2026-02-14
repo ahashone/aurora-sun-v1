@@ -41,7 +41,7 @@ from src.lib.encryption import hash_telegram_id
 
 # Security imports
 from src.lib.security import RateLimiter
-from src.models.consent import ConsentStatus
+from src.models.consent import ConsentStatus, ConsentValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ class TelegramWebhookHandler:
         # return self._db_session.query(User).filter_by(telegram_id_hash=telegram_id_hash).first()
         return None
 
-    async def _check_consent(self, user_id: int) -> ConsentStatus:
+    async def _check_consent(self, user_id: int) -> ConsentValidationResult:
         """
         Check user's consent status.
 
@@ -177,13 +177,21 @@ class TelegramWebhookHandler:
             user_id: User ID
 
         Returns:
-            ConsentStatus enum value
+            ConsentValidationResult with detailed status information
         """
         # TODO: Implement actual consent check
         # consent_service = ConsentService(self._db_session)
-        # result = await consent_service.validate_consent(user_id)
-        # return result.status
-        return ConsentStatus.VALID
+        # return await consent_service.validate_consent(user_id)
+
+        # Placeholder: return VALID status for now (until ConsentService is async)
+        from datetime import UTC, datetime
+        return ConsentValidationResult(
+            status=ConsentStatus.VALID,
+            consent_given_at=datetime.now(UTC),
+            consent_withdrawn_at=None,
+            consent_version="1.0",
+            message="Placeholder: consent validation not yet implemented"
+        )
 
     async def _request_consent(self, update: Any, user: Any) -> None:
         """

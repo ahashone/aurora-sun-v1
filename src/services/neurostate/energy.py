@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from src.core.segment_context import SegmentContext, WorkingStyleCode
 from src.models.neurostate import EnergyLevel, EnergyLevelRecord
 
 # =============================================================================
@@ -99,14 +100,16 @@ class EnergyPredictor:
     LENGTH_BASELINE = 100    # Normal
     LENGTH_LONG = 300        # Long/engaged
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, segment_context: SegmentContext | None = None):
         """
         Initialize the energy predictor.
 
         Args:
             db: SQLAlchemy database session
+            segment_context: Optional segment context (for segment-aware assessment)
         """
         self.db = db
+        self.segment_context = segment_context
 
     async def predict(
         self,

@@ -196,9 +196,6 @@ class PlanningModule:
         # Load user's vision and 90d goals
         await self._load_vision_and_goals(ctx, session)
 
-        # Load user's vision and 90d goals
-        await self._load_vision_and_goals(ctx, session)
-
         # Get segment-specific configuration
         segment = ctx.segment_context
         max_priorities = segment.core.max_priorities

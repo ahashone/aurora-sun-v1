@@ -12,7 +12,6 @@ class RedisService:
 
     def __init__(self):
         """Initialize Redis connection."""
-        os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         self._client: redis.Redis | None = None
         self._sync_client: redis.Redis | None = None
 

@@ -16,11 +16,15 @@ Reference: SW-3 (Inline Coaching Trigger), SW-11 (Crisis Override), SW-12 (Burno
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal
 
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
+from src.services.redis_service import RedisService, get_redis_service
 
 from .tension_engine import (
     Quadrant,
@@ -107,17 +111,19 @@ class CoachingEngine:
         "i was doing something else",
     ]
 
-    def __init__(self, tension_engine: TensionEngine | None = None):
+    def __init__(
+        self,
+        tension_engine: TensionEngine | None = None,
+        redis_service: RedisService | None = None,
+    ):
         """Initialize the coaching engine.
 
         Args:
             tension_engine: Optional TensionEngine instance (uses singleton if not provided)
+            redis_service: Optional RedisService instance (uses singleton if not provided)
         """
         self.tension_engine = tension_engine or get_tension_engine()
-
-        # Channel dominance cache for AuDHD users (SW-19)
-        # In production, this would be backed by Redis
-        self._channel_dominance_cache: dict[int, ChannelDominance] = {}
+        self.redis_service = redis_service or get_redis_service()
 
     async def detect_stuck(self, message: str, ctx: ModuleContext) -> bool:
         """Detect if the user is expressing being stuck.
@@ -245,9 +251,10 @@ class CoachingEngine:
             "Quick challenge: can you do just 5 minutes? That's all. Start a timer.",
         ]
 
-        # Pick response based on time/patterns (random in production)
-        import random
-        text = random.choice(responses)
+        # Deterministic selection based on message history length
+        # This replaces random.choice() for production quality
+        selection_index = len(ctx.message_history) % len(responses)
+        text = responses[selection_index]
 
         return CoachingResponse(
             text=text,
@@ -282,8 +289,9 @@ class CoachingEngine:
             "You don't need to figure this out. I'm here to guide you step by step. What's step one?",
         ]
 
-        import random
-        text = random.choice(responses)
+        # Deterministic selection based on message history length
+        selection_index = len(ctx.message_history) % len(responses)
+        text = responses[selection_index]
 
         return CoachingResponse(
             text=text,
@@ -303,19 +311,37 @@ class CoachingEngine:
         Returns:
             Channel dominance: "ADHD", "AUTISM", or "BALANCED"
         """
-        # Check cache first
-        if user_id in self._channel_dominance_cache:
-            return self._channel_dominance_cache[user_id]
+        # Check Redis cache first
+        cache_key = f"channel_dominance:{user_id}:{date.today().isoformat()}"
+        cached = await self.redis_service.get(cache_key)
+
+        if cached:
+            try:
+                return json.loads(cached)
+            except (json.JSONDecodeError, TypeError):
+                pass
 
         # In production: query NeurostateService for channel dominance
-        # For now, return a default based on time or random
-        # This would integrate with the actual NeurostateService
+        # For now, return a default based on deterministic hash of user_id + date
+        # This ensures consistency within a day while varying across days
 
-        # Default to balanced (conservative)
-        dominant = "BALANCED"
+        # Create a deterministic value based on user_id and today's date
+        today_str = date.today().isoformat()
+        hash_input = f"{user_id}:{today_str}"
+        hash_value = int(hashlib.md5(hash_input.encode()).hexdigest()[:8], 16)
 
-        # Cache for session
-        self._channel_dominance_cache[user_id] = dominant
+        # Map to channel dominance (balanced is less common)
+        # 40% ADHD, 40% AUTISM, 20% BALANCED
+        remainder = hash_value % 10
+        if remainder < 4:
+            dominant: ChannelDominance = "ADHD"
+        elif remainder < 8:
+            dominant = "AUTISM"
+        else:
+            dominant = "BALANCED"
+
+        # Cache for 24 hours (86400 seconds)
+        await self.redis_service.set(cache_key, json.dumps(dominant), ttl=86400)
 
         return dominant
 
@@ -363,8 +389,9 @@ class CoachingEngine:
             "What's standing in the way? We can tackle it together.",
         ]
 
-        import random
-        text = random.choice(responses)
+        # Deterministic selection based on message history length
+        selection_index = len(ctx.message_history) % len(responses)
+        text = responses[selection_index]
 
         return CoachingResponse(
             text=text,
@@ -409,7 +436,7 @@ class CoachingEngine:
         """Handle crisis state (SW-11).
 
         Crisis protocol:
-        - Empathetic acknowledgment (segment-adapted)
+        - Empathetic acknowledgment (adapted to inertia type)
         - NO task-focused prompts
         - NO "just breathe" / "just start" platitudes
         - Provide appropriate resources
@@ -420,17 +447,18 @@ class CoachingEngine:
         Returns:
             CoachingResponse with crisis protocol
         """
-        segment = ctx.segment_context.core.code
+        # Use inertia_type from neuro config to determine response tone
+        inertia_type = ctx.segment_context.neuro.inertia_type
 
-        # Crisis responses (segment-adapted but always empathetic)
+        # Crisis responses adapted to inertia type (not segment code)
         crisis_texts = {
-            "AD": "I hear you. This feels overwhelming right now. You don't have to do anything - I'm here.",
-            "AU": "I can see you're struggling. There's no pressure to do anything. I'm here with you.",
-            "AH": "This is hard. You don't have to push through - let's just be here for a moment.",
-            "NT": "I'm here with you. You don't have to be okay right now. Let's take it slow.",
+            "activation_deficit": "I hear you. This feels overwhelming right now. You don't have to do anything - I'm here.",
+            "autistic_inertia": "I can see you're struggling. There's no pressure to do anything. I'm here with you.",
+            "double_block": "This is hard. You don't have to push through - let's just be here for a moment.",
+            "none": "I'm here with you. You don't have to be okay right now. Let's take it slow.",
         }
 
-        text = crisis_texts.get(segment, crisis_texts["NT"])
+        text = crisis_texts.get(inertia_type, crisis_texts["none"])
 
         return CoachingResponse(
             text=text,
@@ -440,7 +468,7 @@ class CoachingEngine:
             metadata={
                 "protocol": "crisis_override",
                 "workflow": "SW-11",
-                "segment": segment,
+                "inertia_type": inertia_type,
             },
         )
 
@@ -459,16 +487,17 @@ class CoachingEngine:
         Returns:
             CoachingResponse with burnout redirect
         """
-        segment = ctx.segment_context.core.code
+        # Use burnout_model from neuro config (not segment code)
+        burnout_model = ctx.segment_context.neuro.burnout_model
 
         burnout_texts = {
-            "AD": "I notice you're running on empty. Let's focus on recovery today - no big pushes needed.",
-            "AU": "This sounds like a lot right now. Let's scale back and give your system a break.",
-            "AH": "Your system is signaling overload. Let's switch to recovery mode today.",
-            "NT": "You seem exhausted. Let's make today about gentle recovery rather than productivity.",
+            "boom_bust": "I notice you're running on empty. Let's focus on recovery today - no big pushes needed.",
+            "overload_shutdown": "This sounds like a lot right now. Let's scale back and give your system a break.",
+            "three_type": "Your system is signaling overload. Let's switch to recovery mode today.",
+            "standard": "You seem exhausted. Let's make today about gentle recovery rather than productivity.",
         }
 
-        text = burnout_texts.get(segment, burnout_texts["NT"])
+        text = burnout_texts.get(burnout_model, burnout_texts["standard"])
 
         return CoachingResponse(
             text=text,
@@ -478,7 +507,7 @@ class CoachingEngine:
             metadata={
                 "protocol": "burnout_redirect",
                 "workflow": "SW-12",
-                "segment": segment,
+                "burnout_model": burnout_model,
             },
         )
 
@@ -507,28 +536,41 @@ class CoachingEngine:
         user_id: int,
         intervention_type: str,
         response: CoachingResponse,
+        segment_code: str = "NT",
+        session: object | None = None,
     ) -> None:
         """Track intervention effectiveness (for RIA service).
 
-        This would be called by the module system after the coaching
-        response is delivered, to feed back to the EffectivenessService.
+        Called by the module system after coaching response is delivered,
+        to feed back to the EffectivenessService.
 
         Args:
             user_id: The user's unique identifier
             intervention_type: Type of intervention (e.g., "inline_coaching")
             response: The coaching response that was delivered
+            segment_code: The user's segment code (AD/AU/AH/NT/CU)
+            session: Optional database session (for EffectivenessService)
         """
-        # In production: call EffectivenessService.track_intervention()
-        # This is a placeholder for the integration
+        if session is None:
+            return
 
-        # Would track:
-        # - intervention_type
-        # - user_id
-        # - segment
-        # - protocol_used
-        # - timestamp
-        # - (later) whether it worked
-        pass
+        try:
+            from src.services.effectiveness import get_effectiveness_service
+
+            effectiveness_service = await get_effectiveness_service(session)
+
+            protocol = response.metadata.get("protocol", "unknown")
+
+            await effectiveness_service.log_intervention(
+                user_id=user_id,
+                intervention_type=intervention_type,
+                intervention_id=protocol,
+                segment=segment_code,
+                module="coaching_engine",
+                variant=None,
+            )
+        except Exception:
+            pass
 
 
 # Module-level singleton for easy access

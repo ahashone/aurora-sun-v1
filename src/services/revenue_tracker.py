@@ -523,6 +523,73 @@ class RevenueTracker:
 
         return False
 
+    # =========================================================================
+    # GDPR Methods
+    # =========================================================================
+
+    async def export_user_data(self, user_id: int) -> dict:
+        """
+        GDPR export for revenue tracking data.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Dict containing all revenue-related data for the user
+        """
+        if user_id not in self._entries:
+            return {
+                "entries": [],
+                "balance": {
+                    "income": 0.0,
+                    "expenses": 0.0,
+                    "committed": 0.0,
+                    "safe_to_spend": 0.0,
+                },
+            }
+
+        balance = await self.get_balance(user_id)
+        entries = [e.to_dict() for e in self._entries[user_id]]
+
+        return {
+            "entries": entries,
+            "balance": balance,
+        }
+
+    async def delete_user_data(self, user_id: int) -> None:
+        """
+        GDPR delete for revenue tracking data.
+
+        Permanently removes all revenue entries for the user.
+
+        Args:
+            user_id: User identifier
+        """
+        if user_id in self._entries:
+            del self._entries[user_id]
+
+        # TODO: In production, delete from PostgreSQL:
+        # await self._db.execute(
+        #     "DELETE FROM revenue_entries WHERE user_id = $1",
+        #     user_id
+        # )
+
+    async def freeze_user_data(self, user_id: int) -> None:
+        """
+        GDPR Art. 18: Restrict processing for revenue tracking data.
+
+        Marks user's revenue data as frozen (read-only).
+
+        Args:
+            user_id: User identifier
+        """
+        # TODO: In production, set frozen flag in database:
+        # await self._db.execute(
+        #     "UPDATE revenue_entries SET frozen = TRUE WHERE user_id = $1",
+        #     user_id
+        # )
+        pass
+
 
 # =============================================================================
 # Module Singleton and Convenience Functions

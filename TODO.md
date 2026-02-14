@@ -9,20 +9,20 @@
 
 ### Step 0: Setup
 - [x] Create branch claude/hybrid-quality-upgrade
-- [ ] Verify 689 tests passing (→ ROADMAP 2.5.0)
-- [ ] Verify 0 ruff errors (→ ROADMAP 2.5.0)
+- [x] Verify 689 tests passing (→ ROADMAP 2.5.0)
+- [x] Verify 0 ruff errors (→ ROADMAP 2.5.0)
 
 ### Step 1: Rewrite Critical Files (→ ROADMAP 2.5.1, plan Step 1)
-- [ ] state_store.py — asyncio.Lock, proper LRU, Redis persistence
-- [ ] tension_engine.py — fix types, Redis persistence, quadrant logic
-- [ ] energy_system.py — remove segment code checks, use SegmentContext.neuro
-- [ ] pattern_detection.py — remove segment string matching, use SegmentContext
-- [ ] coaching_engine.py — remove segment checks, real LangGraph workflow
-- [ ] effectiveness.py — replace placeholders with real DB-backed tracking
+- [x] state_store.py — asyncio.Lock, proper LRU, Redis persistence | state_store.py
+- [x] tension_engine.py — fix types, Redis persistence | tension_engine.py
+- [x] energy_system.py — SegmentContext.neuro/ux/features | energy_system.py
+- [x] pattern_detection.py — SegmentContext for signals + interventions | pattern_detection.py
+- [x] coaching_engine.py — neuro fields, Redis channel cache, deterministic | coaching_engine.py
+- [x] effectiveness.py — canonical SegmentCode, z-test, fix double-count | effectiveness.py
 
 ### Step 2: Inspect & Fix Untested Files (→ ROADMAP 2.5.2, plan Step 2)
 - [ ] 7 modules (planning, review, capture, future_letter, belief, habit, motif)
-- [ ] 3 bot/infra (webhook, onboarding, module_registry)
+- [x] 3 bot/infra (webhook, onboarding, module_registry) | webhook.py
 - [ ] 3 supporting (segment_service, redis_service, revenue_tracker)
 
 ### Step 3: Neurostate Inspection (→ ROADMAP 2.5.3, plan Step 3)

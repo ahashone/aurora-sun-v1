@@ -262,16 +262,16 @@ Now that users generate daily data, the intelligence has something to work with.
 
 ### 2.5.0: Branch Setup
 - [x] Create branch from audit branch
-- [ ] Verify 689 tests passing
-- [ ] Verify 0 ruff errors
+- [x] Verify 689 tests passing
+- [x] Verify 0 ruff errors
 
 ### 2.5.1: Rewrite Critical Files (6 files with systemic issues)
-- [ ] state_store.py — asyncio.Lock, proper LRU, Redis persistence
-- [ ] tension_engine.py — fix type bugs, Redis persistence, correct quadrant logic
-- [ ] energy_system.py — remove `if segment ==` checks, use SegmentContext.neuro fields
-- [ ] pattern_detection.py — remove segment string matching, use SegmentContext fields
-- [ ] coaching_engine.py — remove segment code checks, real LangGraph workflow
-- [ ] effectiveness.py — replace placeholder methods with real DB-backed tracking
+- [x] state_store.py — asyncio.Lock, proper LRU, Redis persistence
+- [x] tension_engine.py — fix type bugs, Redis persistence, correct quadrant logic
+- [x] energy_system.py — remove `if segment ==` checks, use SegmentContext.neuro fields
+- [x] pattern_detection.py — remove segment string matching, use SegmentContext fields
+- [x] coaching_engine.py — remove segment code checks, neuro-field routing
+- [x] effectiveness.py — canonical SegmentCode, z-test, fix metric double-counting
 
 ### 2.5.2: Deep Inspect & Fix Untested Files (~16 files)
 - [ ] Modules: planning.py, review.py, capture.py, future_letter.py, belief.py, habit.py, motif.py

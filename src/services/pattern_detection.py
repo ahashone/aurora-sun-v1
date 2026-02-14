@@ -29,6 +29,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+from src.core.segment_context import SegmentContext
+
 # ============================================================================
 # Core Cycles (5 Destructive Patterns)
 # ============================================================================
@@ -102,6 +104,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     # AD Signals
     SignalName.MASKING_ESCALATION: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AH"],  # AuDHD also experiences ADHD masking
         "category": "compensation_load",
         "description": "Increasing effort to hide ADHD traits over time",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -109,6 +112,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.SENSORY_OVERLOAD_TRAJECTORY: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AH"],  # Sensory issues in both
         "category": "sensory",
         "description": "Sensory burden accumulating through the day",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -116,6 +120,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.INERTIA_FREQUENCY: {
         "segment": "AU",
+        "applicable_segments": ["AU", "AH"],  # AuDHD has autistic inertia
         "category": "inertia",
         "description": "Frequency of state-change paralysis",
         "research_source": "meta-synthesis-daily-burden-au.json",
@@ -123,6 +128,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.BURNOUT_EARLY_WARNING: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AH"],  # ADHD burnout model applies to AuDHD
         "category": "burnout",
         "description": "Early indicators of ADHD burnout (distinct from NT burnout)",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -130,6 +136,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.TIME_BLINDNESS_SEVERITY: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AH"],  # Time blindness is ADHD trait
         "category": "time_experience",
         "description": "Now vs Not Now binary affecting daily decisions",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -137,6 +144,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.WAITING_MODE_FREQUENCY: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AU", "AH"],  # All ND segments experience waiting mode
         "category": "time_experience",
         "description": "Anticipatory paralysis before upcoming events",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -144,6 +152,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.DEADLINE_DEPENDENCY: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AH"],  # Procrastination-sprint is ADHD pattern
         "category": "time_experience",
         "description": "Procrastination-sprint-crash cycles",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -151,6 +160,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.EMOTIONAL_DYSREGULATION_INTENSITY: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AH"],  # Core ADHD feature
         "category": "emotional_regulation",
         "description": "Intensity of emotional reactions (core ADHD feature)",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -158,6 +168,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.RSD_ESCALATION: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AH"],  # RSD is ADHD-specific
         "category": "emotional_regulation",
         "description": "Rejection Sensitive Dysphoria patterns",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -165,6 +176,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.SHAME_ACCUMULATION: {
         "segment": "AD",
+        "applicable_segments": ["AD", "AU", "AH"],  # All ND segments experience shame
         "category": "shame_accumulation",
         "description": "Chronic shame building from accumulated failures",
         "research_source": "meta-synthesis-daily-burden-ad.json",
@@ -174,6 +186,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     # AU Signals
     SignalName.ENERGY_DEPLETION_RATE: {
         "segment": "AU",
+        "applicable_segments": ["AU", "AH"],  # Energy management is autism-centric
         "category": "energy_management",
         "description": "Rate of energy resource depletion through day",
         "research_source": "meta-synthesis-daily-burden-au.json",
@@ -181,6 +194,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.SPOON_BUDGET_OVERSPEND: {
         "segment": "AU",
+        "applicable_segments": ["AU", "AH"],  # Spoon theory for autism + AuDHD
         "category": "energy_management",
         "description": "Exceeding available spoon/energy budget",
         "research_source": "meta-synthesis-daily-burden-au.json",
@@ -188,6 +202,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.CAPACITY_DECLINE_TREND: {
         "segment": "AU",
+        "applicable_segments": ["AU", "AH"],  # Autism burnout pattern
         "category": "burnout",
         "description": "Long-term decline in available capacity",
         "research_source": "meta-synthesis-daily-burden-au.json",
@@ -195,6 +210,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.SOCIAL_BATTERY_DRAIN: {
         "segment": "AU",
+        "applicable_segments": ["AU", "AH"],  # Social costs are autism trait
         "category": "social",
         "description": "Social interaction costs and post-interaction processing",
         "research_source": "meta-synthesis-daily-burden-au.json",
@@ -202,6 +218,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.ISOLATION_TREND: {
         "segment": "AU",
+        "applicable_segments": ["AU", "AH"],  # Autistic withdrawal pattern
         "category": "social",
         "description": "Withdrawing from support connections",
         "research_source": "meta-synthesis-daily-burden-au.json",
@@ -209,15 +226,17 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.TRANSITION_TAX: {
         "segment": "AU",
+        "applicable_segments": ["AU", "AH"],  # Task switching cost is autism trait
         "category": "transitions",
         "description": "Excessive energy cost at each activity switch",
         "research_source": "meta-synthesis-daily-burden-au.json",
         "finding_id": "MCF-009",
     },
 
-    # AH Signals
+    # AH Signals (AuDHD-specific, not overlapping)
     SignalName.DOUBLE_MASKING_COST: {
         "segment": "AH",
+        "applicable_segments": ["AH"],  # AuDHD-specific
         "category": "masking",
         "description": "Exponential masking cost from hiding both ADHD and autism traits",
         "research_source": "meta-synthesis-daily-burden-ah.json",
@@ -225,6 +244,7 @@ SIGNAL_METADATA: dict[SignalName, dict] = {
     },
     SignalName.CHANNEL_DOMINANCE_SHIFTS: {
         "segment": "AH",
+        "applicable_segments": ["AH"],  # AuDHD-specific
         "category": "channel_dominance",
         "description": "Shifts between ADHD-dominant and autism-dominant modes",
         "research_source": "meta-synthesis-daily-burden-ah.json",
@@ -675,17 +695,17 @@ class PatternDetectionService:
     async def get_intervention(
         self,
         cycle: DetectedCycle,
-        segment: str,
+        segment_context: SegmentContext,
     ) -> Intervention | None:
         """
         Return a segment-specific intervention for a detected cycle.
 
-        Different segments (AD/AU/AH) require different approaches
-        to the same cycle. This method returns the appropriate intervention.
+        Different segments require different approaches to the same cycle.
+        Uses SegmentContext features to determine which intervention approach.
 
         Args:
             cycle: The detected cycle to get intervention for
-            segment: The user's segment code (AD, AU, AH, NT, CU)
+            segment_context: The user's SegmentContext
 
         Returns:
             Intervention object tailored to the segment, or None if cycle is not active
@@ -694,17 +714,23 @@ class PatternDetectionService:
         if cycle.severity == CycleSeverity.NONE:
             return None
 
-        # Normalize segment code
-        segment = segment.upper()
-        if segment == "NT" or segment == "CU":
-            # Default to AD-style for NT, custom for CU - use AD as fallback
-            segment = "AD"
+        # Derive intervention key from SegmentContext features
+        features = segment_context.features
+        if features.channel_dominance_enabled:
+            intervention_key = "AH"
+        elif features.routine_anchoring:
+            intervention_key = "AU"
+        elif features.icnu_enabled:
+            intervention_key = "AD"
+        else:
+            # NT/CU fallback to AD-style interventions
+            intervention_key = "AD"
 
         # Get intervention for cycle type and segment
         if cycle.cycle_type in INTERVENTIONS:
             segment_interventions = INTERVENTIONS[cycle.cycle_type]
-            if segment in segment_interventions:
-                return segment_interventions[segment]
+            if intervention_key in segment_interventions:
+                return segment_interventions[intervention_key]
 
         # Fallback: return AD intervention if segment-specific not found
         if cycle.cycle_type in INTERVENTIONS:
@@ -783,22 +809,37 @@ class PatternDetectionService:
 
     async def get_signals_for_segment(
         self,
-        segment: str,
+        segment_context: SegmentContext,
     ) -> list[SignalName]:
         """
-        Get all relevant signals for a segment.
+        Get all relevant signals for a segment based on SegmentContext.
+
+        Uses SegmentContext.features to determine which signals are relevant:
+        - For CU (Custom): returns all signals (user decides)
+        - For NT (Neurotypical): returns empty list (minimal tracking)
+        - For AD/AU/AH: returns signals based on applicable_segments metadata
 
         Args:
-            segment: The user's segment code
+            segment_context: The user's SegmentContext
 
         Returns:
             List of SignalName values relevant to this segment
         """
-        segment = segment.upper()
-        relevant_signals = []
+        segment_code = segment_context.core.code
 
+        # CU (Custom) gets all signals - user decides
+        if segment_code == "CU":
+            return list(SIGNAL_METADATA.keys())
+
+        # NT (Neurotypical) gets minimal/no signals
+        if segment_code == "NT":
+            return []
+
+        # For AD/AU/AH: filter by applicable_segments
+        relevant_signals = []
         for signal, metadata in SIGNAL_METADATA.items():
-            if metadata.get("segment") == segment or metadata.get("segment") == "AH":
+            applicable_segments = metadata.get("applicable_segments", [])
+            if segment_code in applicable_segments:
                 relevant_signals.append(signal)
 
         return relevant_signals

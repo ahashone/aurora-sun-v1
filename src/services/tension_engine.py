@@ -10,11 +10,14 @@ Reference: SW-3, SW-11, SW-12
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, TypeAlias
+
+from src.services.redis_service import RedisService
 
 # Quadrant levels (0-1 scale)
-TensionLevel: Literal[0, 1] = Literal[0, 1]
+TensionLevel: TypeAlias = Literal[0, 1]
 
 
 class Quadrant(StrEnum):
@@ -133,8 +136,9 @@ class TensionEngine:
     def __init__(self):
         """Initialize the Tension Engine."""
         # In-memory cache of user tension states
-        # In production, this would be backed by Redis/PostgreSQL
         self._states: dict[int, TensionState] = {}
+        # Redis service for persistence
+        self._redis = RedisService()
 
     async def get_state(self, user_id: int) -> TensionState:
         """Get the current tension state for a user.
@@ -145,11 +149,33 @@ class TensionEngine:
         Returns:
             TensionState with current Sonne/Erde levels and quadrant
         """
-        if user_id not in self._states:
-            # Default to neutral state (0.5, 0.5)
-            # In production, load from database
-            self._states[user_id] = TensionState(sonne=0.5, erde=0.5, user_id=user_id)
-        return self._states[user_id]
+        # Check in-memory cache first
+        if user_id in self._states:
+            return self._states[user_id]
+
+        # Try loading from Redis
+        redis_key = f"tension:{user_id}"
+        redis_data = await self._redis.get(redis_key)
+
+        if redis_data:
+            try:
+                data = json.loads(redis_data)
+                state = TensionState(
+                    sonne=data["sonne"],
+                    erde=data["erde"],
+                    user_id=user_id,
+                )
+                # Cache in memory
+                self._states[user_id] = state
+                return state
+            except (json.JSONDecodeError, KeyError):
+                # Fall through to default
+                pass
+
+        # Default to neutral state (0.5, 0.5)
+        state = TensionState(sonne=0.5, erde=0.5, user_id=user_id)
+        self._states[user_id] = state
+        return state
 
     async def update_state(
         self,
@@ -172,14 +198,21 @@ class TensionEngine:
         new_sonne = sonne if sonne is not None else current.sonne
         new_erde = erde if erde is not None else current.erde
 
-        self._states[user_id] = TensionState(
+        new_state = TensionState(
             sonne=new_sonne,
             erde=new_erde,
             user_id=user_id,
         )
 
-        # In production: persist to database here
-        return self._states[user_id]
+        # Update in-memory cache
+        self._states[user_id] = new_state
+
+        # Persist to Redis with 24-hour TTL
+        redis_key = f"tension:{user_id}"
+        redis_data = {"sonne": new_sonne, "erde": new_erde}
+        await self._redis.set(redis_key, redis_data, ttl=86400)
+
+        return new_state
 
     async def determine_override_level(
         self,

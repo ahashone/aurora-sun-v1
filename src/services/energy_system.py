@@ -20,10 +20,7 @@ from datetime import UTC
 from enum import StrEnum
 from typing import Literal
 
-from src.core.segment_context import (
-    WorkingStyleCode,
-)
-from src.core.segment_service import SegmentService
+from src.core.segment_context import SegmentContext
 from src.models.task import Task
 
 # Energy state levels for simple RED/YELLOW/GREEN model
@@ -238,25 +235,6 @@ class EnergySystem:
         self._spoon_drawers: dict[int, SpoonDrawer] = {}
         self._sensory_cognitive: dict[int, SensoryCognitiveLoad] = {}
 
-        # Segment service for context lookup
-        self._segment_service = SegmentService()
-
-    async def _get_user_segment(self, user_id: int) -> WorkingStyleCode:
-        """
-        Get the user's segment code.
-
-        In production, this would load from the database.
-        For now, defaults to NT.
-
-        Args:
-            user_id: The user's unique identifier
-
-        Returns:
-            The user's segment code (AD, AU, AH, NT, or CU)
-        """
-        # TODO: Load from database
-        # For now, default to NT
-        return "NT"
 
     async def get_energy_state(self, user_id: int) -> EnergyState:
         """
@@ -732,7 +710,12 @@ class EnergySystem:
         # In production: persist to database/Redis here
         return self._sensory_cognitive[user_id]
 
-    async def can_attempt_task(self, user_id: int, task: Task) -> bool:
+    async def can_attempt_task(
+        self,
+        user_id: int,
+        task: Task,
+        segment_context: SegmentContext,
+    ) -> bool:
         """
         Determine if user has enough energy to attempt a task.
 
@@ -750,14 +733,11 @@ class EnergySystem:
         Args:
             user_id: The user's unique identifier
             task: The task to evaluate
+            segment_context: The user's segment context
 
         Returns:
             True if user can attempt the task, False if blocked
         """
-        # Get user segment
-        segment = await self._get_user_segment(user_id)
-        segment_context = self._segment_service.get_segment_context(segment)
-
         # Check simple energy state first
         energy_state = await self.get_energy_state(user_id)
 
@@ -767,8 +747,8 @@ class EnergySystem:
             # Check if task is essential (high priority or high integrity)
             is_essential = task.priority is not None and task.priority <= 2
 
-            # For AuDHD, also check integrity trigger
-            if segment == "AH":
+            # For segments with integrity trigger enabled, also check integrity
+            if segment_context.features.integrity_trigger_enabled:
                 task_title = (task.title or "").lower()
                 integrity_keywords = ["values", "purpose", "meaning", "identity", "core"]
                 has_integrity = any(kw in task_title for kw in integrity_keywords)
@@ -779,7 +759,7 @@ class EnergySystem:
 
         # Segment-specific checks
 
-        # AuDHD: Check Spoon-Drawer availability
+        # Check Spoon-Drawer availability (AuDHD)
         if segment_context.features.spoon_drawer_enabled:
             spoons = await self.calculate_spoon_drawer(user_id)
             if spoons.is_depleted:
@@ -795,7 +775,7 @@ class EnergySystem:
                 if any(w in task_title for w in ["emotional", "stress"]) and spoons.emotional <= 2:
                     return False
 
-        # Autism: Check Sensory/Cognitive load
+        # Check Sensory/Cognitive load (Autism/AuDHD)
         if segment_context.features.sensory_check_required:
             load = await self.get_sensory_cognitive_load(user_id)
             if load.is_overloaded:
@@ -807,6 +787,7 @@ class EnergySystem:
     async def get_energy_recommendation(
         self,
         user_id: int,
+        segment_context: SegmentContext,
         task: Task | None = None,
     ) -> dict:
         """
@@ -820,17 +801,15 @@ class EnergySystem:
 
         Args:
             user_id: The user's unique identifier
+            segment_context: The user's segment context
             task: Optional task for IBNS/ICNU calculation
 
         Returns:
             Dictionary with segment-appropriate energy data
         """
-        segment = await self._get_user_segment(user_id)
-        self._segment_service.get_segment_context(segment)
-
         # Base response
         response = {
-            "segment": segment,
+            "segment": segment_context.core.working_style_code,
             "user_id": user_id,
         }
 
@@ -838,8 +817,10 @@ class EnergySystem:
         energy_state = await self.get_energy_state(user_id)
         response["energy_state"] = energy_state.to_dict()
 
-        # Segment-specific additions
-        if segment == "AD" and task:
+        # Segment-specific additions based on energy_check_type and features
+
+        # ADHD path: energy_check_type == "simple" + ICNU enabled
+        if segment_context.ux.energy_check_type == "simple" and segment_context.features.icnu_enabled and task:
             # ADHD: Add IBNS
             ibns = await self.calculate_ibns(user_id, task)
             response["ibns"] = {
@@ -851,7 +832,8 @@ class EnergySystem:
                 "recommendation": ibns.recommendation,
             }
 
-        elif segment == "AH":
+        # AuDHD path: energy_check_type == "spoon_drawer"
+        elif segment_context.ux.energy_check_type == "spoon_drawer":
             # AuDHD: Add ICNU and Spoon-Drawer
             response["icnu_enabled"] = True
             response["spoon_drawer"] = (await self.calculate_spoon_drawer(user_id)).to_dict()
@@ -868,14 +850,15 @@ class EnergySystem:
                     "recommendation": icnu.recommendation,
                 }
 
-        elif segment == "AU":
+        # Autism path: energy_check_type == "sensory_cognitive"
+        elif segment_context.ux.energy_check_type == "sensory_cognitive":
             # Autism: Add Sensory-Cognitive load
             load = await self.get_sensory_cognitive_load(user_id)
             response["sensory_cognitive"] = load.to_dict()
 
         # Add gating decision if task provided
         if task:
-            response["can_attempt"] = await self.can_attempt_task(user_id, task)
+            response["can_attempt"] = await self.can_attempt_task(user_id, task, segment_context)
 
         return response
 
@@ -911,16 +894,17 @@ async def get_user_energy_state(user_id: int) -> EnergyState:
     return await system.get_energy_state(user_id)
 
 
-async def can_user_attempt_task(user_id: int, task: Task) -> bool:
+async def can_user_attempt_task(user_id: int, task: Task, segment_context: SegmentContext) -> bool:
     """
     Convenience function to check if user can attempt a task.
 
     Args:
         user_id: The user's unique identifier
         task: The task to evaluate
+        segment_context: The user's segment context
 
     Returns:
         True if user can attempt the task
     """
     system = get_energy_system()
-    return await system.can_attempt_task(user_id, task)
+    return await system.can_attempt_task(user_id, task, segment_context)

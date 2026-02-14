@@ -14,6 +14,7 @@ Author: Aurora Sun V1 Team
 
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -32,6 +33,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.segment_context import WorkingStyleCode
 from src.models.base import Base
 
 # ============================================================================
@@ -87,13 +89,19 @@ class InterventionOutcome(StrEnum):
 
 
 class SegmentCode(StrEnum):
-    """Internal segment codes."""
+    """
+    DEPRECATED: Use WorkingStyleCode from src.core.segment_context instead.
 
-    AD = "ad"  # ADHD (Momentum)
-    AU = "au"  # Autism (Structure)
-    AH = "ah"  # AuDHD (Hybrid)
-    NT = "nt"  # Neurotypical (Adaptive)
-    CU = "cu"  # Custom
+    Kept for backwards compatibility only. Maps to canonical segment codes.
+    """
+
+    AD = "AD"  # ADHD (Momentum)
+    AU = "AU"  # Autism (Structure)
+    AH = "AH"  # AuDHD (Hybrid)
+    NT = "NT"  # Neurotypical (Adaptive)
+    CU = "CU"  # Custom
+
+
 
 
 # ============================================================================
@@ -357,9 +365,40 @@ class EffectivenessService:
         )
 
         self.session.add(instance)
+
+        # Increment delivery_count in metrics
+        await self._increment_delivery_count(intervention_type, segment)
+
         await self.session.commit()
 
         return instance.instance_id
+
+    async def _increment_delivery_count(
+        self,
+        intervention_type: str,
+        segment: str,
+    ) -> None:
+        """Increment delivery_count when an intervention is logged."""
+
+        # Find or create metrics record
+        stmt = select(EffectivenessMetrics).where(
+            and_(
+                EffectivenessMetrics.intervention_type == intervention_type,
+                EffectivenessMetrics.segment == segment,
+            )
+        )
+        result = await self.session.execute(stmt)
+        metrics = result.scalar_one_or_none()
+
+        if not metrics:
+            metrics = EffectivenessMetrics(
+                intervention_type=intervention_type,
+                segment=segment,
+            )
+            self.session.add(metrics)
+
+        metrics.delivery_count += 1
+        metrics.last_updated = datetime.now(UTC)
 
     async def log_outcome(
         self,
@@ -433,8 +472,7 @@ class EffectivenessService:
             )
             self.session.add(metrics)
 
-        # Update counts
-        metrics.delivery_count += 1
+        # Update last_updated
         metrics.last_updated = datetime.now(UTC)
 
         # Categorize outcome
@@ -594,23 +632,42 @@ class EffectivenessService:
         rate_a = success_a / total_a if total_a > 0 else 0.0
         rate_b = success_b / total_b if total_b > 0 else 0.0
 
-        # Determine winner and confidence (simplified - would need proper stats in production)
+        # Determine winner and confidence using two-proportion z-test
         winner = None
         confidence = None
         is_significant = False
 
         if total_a >= min_samples and total_b >= min_samples:
-            rate_diff = abs(rate_a - rate_b)
-            # Simple heuristic: significant if difference > 10%
-            is_significant = rate_diff > 0.10
+            # Two-proportion z-test for statistical significance
+            # H0: p_a = p_b (no difference in success rates)
+            # H1: p_a ≠ p_b (significant difference)
 
-            if rate_b > rate_a:
-                winner = variant_b
-            elif rate_a > rate_b:
-                winner = variant_a
+            # Calculate pooled proportion
+            p_pooled = (success_a + success_b) / (total_a + total_b)
 
-            # Rough confidence estimate (would use proper statistical test in production)
-            confidence = min(0.95, rate_diff * 2) if rate_diff > 0 else 0.0
+            # Calculate standard error
+            se = math.sqrt(p_pooled * (1 - p_pooled) * (1/total_a + 1/total_b))
+
+            # Calculate z-score (avoid division by zero)
+            if se > 0:
+                z_score = abs(rate_a - rate_b) / se
+
+                # Check significance at 95% confidence level (z > 1.96)
+                is_significant = z_score > 1.96
+
+                # Calculate approximate confidence using standard normal CDF
+                # For z-score: confidence ≈ erf(z/√2) for two-tailed test
+                # Simplified: use z_score to estimate confidence
+                confidence = min(0.99, 1 - 2 * math.exp(-0.717 * z_score - 0.416 * z_score**2))
+
+                if is_significant:
+                    if rate_b > rate_a:
+                        winner = variant_b
+                    elif rate_a > rate_b:
+                        winner = variant_a
+            else:
+                # If SE is 0, rates are identical or sample size issue
+                confidence = 0.0
 
         # Get or create experiment record
         experiment_id = str(uuid.uuid4())
@@ -676,7 +733,9 @@ class EffectivenessService:
 
         # Per-segment breakdown
         segment_stats: dict[str, dict] = {}
-        for segment in [s.value for s in SegmentCode]:
+        # Use canonical segment codes from segment_context
+        all_segments: list[WorkingStyleCode] = ["AD", "AU", "AH", "NT", "CU"]
+        for segment in all_segments:
             seg_interventions = [i for i in interventions if i.segment == segment]
             seg_with_outcomes = [i for i in seg_interventions if i.outcome is not None]
             seg_success = [

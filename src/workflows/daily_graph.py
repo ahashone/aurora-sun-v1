@@ -91,7 +91,7 @@ class GraphNode(StrEnum):
     """Names of nodes in the Daily Workflow graph."""
 
     MORNING_ACTIVATE = "morning_activate"
-    NEUROSTATE_PREFILIGHT = "neurostate_preflight"
+    NEUROSTATE_PREFLIGHT = "neurostate_preflight"
     GENTLE_REDIRECT = "gentle_redirect"
     VISION_DISPLAY = "vision_display"
     PLANNING = "planning"

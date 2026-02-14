@@ -188,7 +188,10 @@ class FutureLetterModule:
             db_session: Database session for letter persistence (optional, lazy loaded)
         """
         self._db_session = db_session
-        self._session_data: dict[int, FutureLetterSession] = {}
+        # F-008: Use bounded state store instead of unbounded dict
+        from src.services.state_store import get_state_store
+        self._state_store = get_state_store()
+        self._session_key_prefix = "future_letter:session:"
 
     # =========================================================================
     # Module Protocol Implementation
@@ -207,12 +210,15 @@ class FutureLetterModule:
         Returns:
             ModuleResponse with welcome message and initial prompt
         """
-        # Initialize session data
+        # F-008: Use bounded state store with TTL
         user_id = ctx.user_id
-        if user_id not in self._session_data:
-            self._session_data[user_id] = FutureLetterSession()
+        session_key = f"{self._session_key_prefix}{user_id}"
+        session = self._state_store.get(session_key)
 
-        session = self._session_data[user_id]
+        if session is None:
+            session = FutureLetterSession()
+            # Store with 24 hour TTL (future letter can be multi-day)
+            self._state_store.set(session_key, session, ttl=86400)
 
         # Get segment-specific prompt
         prompt = self._get_segment_prompt(ctx.segment_context, "setting")
@@ -250,7 +256,9 @@ class FutureLetterModule:
         Returns:
             ModuleResponse with text, buttons, and state transitions
         """
-        session = self._session_data.get(ctx.user_id)
+        # F-008: Use bounded state store with TTL
+        session_key = f"{self._session_key_prefix}{ctx.user_id}"
+        session = self._state_store.get(session_key)
         if session is None:
             # Restart session if not found
             return await self.on_enter(ctx)
@@ -280,15 +288,17 @@ class FutureLetterModule:
         Args:
             ctx: Module context
         """
+        # F-008: Use bounded state store with TTL
         user_id = ctx.user_id
-        if user_id in self._session_data:
+        session_key = f"{self._session_key_prefix}{user_id}"
+        session = self._state_store.get(session_key)
+        if session:
             # Persist letter if complete
-            session = self._session_data[user_id]
             if session.compiled_letter:
                 await self._persist_letter(ctx, session)
 
             # Clean up session
-            del self._session_data[user_id]
+            self._state_store.delete(session_key)
 
     def get_daily_workflow_hooks(self) -> DailyWorkflowHooks:
         """
@@ -331,6 +341,26 @@ class FutureLetterModule:
             user_id: The user's ID
         """
         # TODO: Implement actual deletion from database
+        pass
+
+    async def freeze_user_data(self, user_id: int) -> None:
+        """
+        GDPR Art. 18: Restriction of processing.
+
+        Args:
+            user_id: The user's ID
+        """
+        # TODO: Mark user data as restricted
+        pass
+
+    async def unfreeze_user_data(self, user_id: int) -> None:
+        """
+        GDPR Art. 18: Lift restriction.
+
+        Args:
+            user_id: The user's ID
+        """
+        # TODO: Remove restriction flag
         pass
 
     # =========================================================================

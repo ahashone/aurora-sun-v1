@@ -32,3 +32,6 @@
 | 2026-02-14 | Add .env.example and README.md (project documentation) | .env.example, README.md |
 | 2026-02-14 | Fix Session model metadata column conflict with SQLAlchemy reserved attribute | src/models/session.py |
 | 2026-02-14 | Test suite: 689 tests (crisis, security, GDPR, consent, neurostate, segment) | tests/ (7 new test files + conftest.py) |
+| 2026-02-14 | Hybrid Quality Upgrade Plan: 6-step Phase 2.5 (rewrites, inspections, mypy strict) | docs/HYBRID-QUALITY-UPGRADE-PLAN.md |
+| 2026-02-14 | Phase 2.5 Step 1: Rewrite 6 critical files (state_store, tension_engine, energy_system, pattern_detection, coaching_engine, effectiveness) | src/services/ |
+| 2026-02-14 | Phase 2.5 Step 2: Inspect bot/infra (webhook ConsentValidationResult type fix, onboarding Redis persistence verified, module_registry clean) | src/bot/webhook.py |
