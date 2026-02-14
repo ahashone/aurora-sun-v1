@@ -1,7 +1,7 @@
 # Sub-Processor Registry
 
 > **Document Type:** Reference (Active)
-> **Last Updated:** 2026-02-13
+> **Last Updated:** 2026-02-14
 > **Owner:** Aurora Sun V1 Architecture
 > **Reference:** ARCHITECTURE.md Section 10
 
@@ -36,7 +36,7 @@ This document tracks all third-party processors that handle user data in the Aur
 - **Purpose:** Primary LLM for all coaching interactions, intent classification, and prompt generation
 - **Data Classification:** SENSITIVE + ART. 9 (health-related conversations)
 - **Data Flow:** User messages sent via API → processed → response returned → **not stored** by Anthropic
-- **DPA Status:** DPA required. Review Anthropic's DPA terms at [anthropic.com/legal](https://www.anthropic.com/legal)
+- **DPA Status:** Required - Pending Signature. Must be signed before processing real user Art. 9 data. Review Anthropic's DPA terms at [anthropic.com/legal](https://www.anthropic.com/legal)
 - **Anonymization:** Messages may contain pseudonymized user identifiers. No PII should be sent.
 - **Retention:** Transient only. No persistent storage by provider.
 
@@ -46,7 +46,7 @@ This document tracks all third-party processors that handle user data in the Aur
 - **Purpose:** Fallback LLM when Anthropic is unavailable or rate-limited
 - **Data Classification:** SENSITIVE + ART. 9 (health-related conversations)
 - **Data Flow:** Same as Anthropic - transient API calls
-- **DPA Status:** DPA required. Uses OpenAI's DPA for Enterprise.
+- **DPA Status:** Required - Pending Signature. Must be signed before processing real user Art. 9 data. Uses OpenAI's DPA for Enterprise.
 - **Anonymization:** Same rules as Anthropic - no PII in prompts.
 - **Retention:** Transient only.
 
@@ -56,7 +56,7 @@ This document tracks all third-party processors that handle user data in the Aur
 - **Purpose:** Fast voice transcription for audio messages from users
 - **Data Classification:** SENSITIVE (voice biometric data)
 - **Data Flow:** Audio file → Whisper API → transcript returned
-- **DPA Status:** DPA required. Verify Groq's DPA terms.
+- **DPA Status:** Required - Pending Signature. Must be signed before processing real user Art. 9 data. Verify Groq's DPA terms.
 - **Retention:** Transient only. Audio not stored after transcription.
 
 ### Telegram
@@ -87,7 +87,7 @@ This document tracks all third-party processors that handle user data in the Aur
 - **Purpose:** LLM tracing, prompt management, observability dashboard
 - **Data Classification:** SENSITIVE (must be anonymized before sending)
 - **Data Flow:** Prompt/response pairs sent to Langfuse for debugging and optimization
-- **DPA Status:** DPA required. Langfuse is EU-based (Germany).
+- **DPA Status:** Required - Pending Signature. Must be signed before processing real user Art. 9 data. Langfuse is EU-based (Germany).
 - **CRITICAL:** All data must be anonymized before export:
   - Remove user IDs, names, email addresses
   - Remove specific dates/times
@@ -124,14 +124,14 @@ This document tracks all third-party processors that handle user data in the Aur
 
 ## Current DPA Status
 
-| Sub-Processor | DPA Status | Agreement Date | Expiry | Notes |
-|--------------|------------|----------------|--------|-------|
-| Anthropic | Pending | - | - | Verify enterprise DPA terms |
-| OpenAI | Pending | - | - | Enterprise DPA required |
-| Groq | Pending | - | - | Verify DPA availability |
-| Telegram | Platform ToS | N/A | N/A | Not GDPR-compliant - data minimization critical |
-| Hetzner | Active | 2026-02-09 | Auto-renew | Privacy Policy serves as DPA |
-| Langfuse | Pending | - | - | Verify EU DPA terms |
+| Sub-Processor | DPA Status | Agreement Date | Expiry | Deadline | Notes |
+|--------------|------------|----------------|--------|----------|-------|
+| Anthropic | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Verify enterprise DPA terms |
+| OpenAI | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Enterprise DPA required |
+| Groq | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Verify DPA availability |
+| Telegram | Platform ToS | N/A | N/A | N/A | Not GDPR-compliant - data minimization critical |
+| Hetzner | Active | 2026-02-09 | Auto-renew | N/A | Privacy Policy serves as DPA |
+| Langfuse | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Verify EU DPA terms |
 
 ---
 
@@ -179,4 +179,4 @@ Database (Hetzner) --> Encrypted at rest + field-level encryption
 
 ---
 
-*This document is part of Aurora Sun V1's privacy compliance framework. Last reviewed: 2026-02-13*
+*This document is part of Aurora Sun V1's privacy compliance framework. Last reviewed: 2026-02-14*

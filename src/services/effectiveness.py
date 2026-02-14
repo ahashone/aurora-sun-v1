@@ -607,126 +607,32 @@ class EffectivenessService:
         Returns:
             VariantComparisonResult with comparison data
         """
-        # Build query for variant A
-        stmt_a = select(func.count(InterventionInstance.instance_id)).where(
-            and_(
-                InterventionInstance.intervention_type == intervention_type,
-                InterventionInstance.variant == variant_a,
-                InterventionInstance.outcome.in_([o.value for o in self.SUCCESS_OUTCOMES]),
-            )
+        # Collect counts for both variants
+        success_a, total_a = await self._query_variant_counts(
+            intervention_type, variant_a, segment,
         )
-        if segment:
-            stmt_a = stmt_a.where(InterventionInstance.segment == segment)
-
-        result_a = await self.session.execute(stmt_a)
-        success_a = result_a.scalar() or 0
-
-        # Total for variant A
-        stmt_a_total = select(func.count(InterventionInstance.instance_id)).where(
-            and_(
-                InterventionInstance.intervention_type == intervention_type,
-                InterventionInstance.variant == variant_a,
-            )
+        success_b, total_b = await self._query_variant_counts(
+            intervention_type, variant_b, segment,
         )
-        if segment:
-            stmt_a_total = stmt_a_total.where(InterventionInstance.segment == segment)
-
-        result_a_total = await self.session.execute(stmt_a_total)
-        total_a = result_a_total.scalar() or 0
-
-        # Build query for variant B
-        stmt_b = select(func.count(InterventionInstance.instance_id)).where(
-            and_(
-                InterventionInstance.intervention_type == intervention_type,
-                InterventionInstance.variant == variant_b,
-                InterventionInstance.outcome.in_([o.value for o in self.SUCCESS_OUTCOMES]),
-            )
-        )
-        if segment:
-            stmt_b = stmt_b.where(InterventionInstance.segment == segment)
-
-        result_b = await self.session.execute(stmt_b)
-        success_b = result_b.scalar() or 0
-
-        # Total for variant B
-        stmt_b_total = select(func.count(InterventionInstance.instance_id)).where(
-            and_(
-                InterventionInstance.intervention_type == intervention_type,
-                InterventionInstance.variant == variant_b,
-            )
-        )
-        if segment:
-            stmt_b_total = stmt_b_total.where(InterventionInstance.segment == segment)
-
-        result_b_total = await self.session.execute(stmt_b_total)
-        total_b = result_b_total.scalar() or 0
 
         # Calculate success rates
         rate_a = success_a / total_a if total_a > 0 else 0.0
         rate_b = success_b / total_b if total_b > 0 else 0.0
 
-        # Determine winner and confidence using two-proportion z-test
-        winner = None
-        confidence = None
-        is_significant = False
+        # Statistical significance test
+        winner, confidence, is_significant = self._two_proportion_z_test(
+            success_a, total_a, rate_a,
+            success_b, total_b, rate_b,
+            variant_a, variant_b,
+            min_samples,
+        )
 
-        if total_a >= min_samples and total_b >= min_samples:
-            # Two-proportion z-test for statistical significance
-            # H0: p_a = p_b (no difference in success rates)
-            # H1: p_a ≠ p_b (significant difference)
-
-            # Calculate pooled proportion
-            p_pooled = (success_a + success_b) / (total_a + total_b)
-
-            # Calculate standard error
-            se = math.sqrt(p_pooled * (1 - p_pooled) * (1/total_a + 1/total_b))
-
-            # Calculate z-score (avoid division by zero)
-            if se > 0:
-                z_score = abs(rate_a - rate_b) / se
-
-                # Check significance at 95% confidence level (z > 1.96)
-                is_significant = z_score > 1.96
-
-                # Calculate approximate confidence using standard normal CDF
-                # For z-score: confidence ≈ erf(z/√2) for two-tailed test
-                # Simplified: use z_score to estimate confidence
-                confidence = min(0.99, 1 - 2 * math.exp(-0.717 * z_score - 0.416 * z_score**2))
-
-                if is_significant:
-                    if rate_b > rate_a:
-                        winner = variant_b
-                    elif rate_a > rate_b:
-                        winner = variant_a
-            else:
-                # If SE is 0, rates are identical or sample size issue
-                confidence = 0.0
-
-        # Get or create experiment record
-        experiment_id = str(uuid.uuid4())
-        if segment:
-            stmt_exp = select(VariantExperiment).where(
-                and_(
-                    VariantExperiment.intervention_type == intervention_type,
-                    VariantExperiment.segment == segment,
-                    VariantExperiment.status == "active",
-                )
-            )
-            result_exp = await self.session.execute(stmt_exp)
-            experiment = result_exp.scalar_one_or_none()
-
-            if experiment:
-                experiment_id = experiment.experiment_id  # type: ignore[assignment]
-                experiment.variant_a_success_rate = rate_a  # type: ignore[assignment]
-                experiment.variant_b_success_rate = rate_b  # type: ignore[assignment]
-                experiment.winner = winner  # type: ignore[assignment]
-                experiment.confidence = confidence  # type: ignore[assignment]
-
-                if total_a >= min_samples and total_b >= min_samples:
-                    experiment.status = "completed"  # type: ignore[assignment]
-                    experiment.completed_at = datetime.now(UTC)  # type: ignore[assignment]
-
-                await self.session.commit()
+        # Update experiment record
+        experiment_id = await self._update_experiment_record(
+            intervention_type, segment,
+            rate_a, rate_b, winner, confidence,
+            total_a, total_b, min_samples,
+        )
 
         return VariantComparisonResult(
             experiment_id=experiment_id,
@@ -743,6 +649,175 @@ class EffectivenessService:
             is_significant=is_significant,
         )
 
+    async def _query_variant_counts(
+        self,
+        intervention_type: str,
+        variant: str,
+        segment: str | None,
+    ) -> tuple[int, int]:
+        """Query success count and total count for a single variant.
+
+        Args:
+            intervention_type: The intervention type to filter by.
+            variant: The variant name (e.g. "control").
+            segment: Optional segment filter.
+
+        Returns:
+            Tuple of (success_count, total_count).
+        """
+        # Success count
+        stmt_success = select(func.count(InterventionInstance.instance_id)).where(
+            and_(
+                InterventionInstance.intervention_type == intervention_type,
+                InterventionInstance.variant == variant,
+                InterventionInstance.outcome.in_([o.value for o in self.SUCCESS_OUTCOMES]),
+            )
+        )
+        if segment:
+            stmt_success = stmt_success.where(InterventionInstance.segment == segment)
+        result_success = await self.session.execute(stmt_success)
+        success = result_success.scalar() or 0
+
+        # Total count
+        stmt_total = select(func.count(InterventionInstance.instance_id)).where(
+            and_(
+                InterventionInstance.intervention_type == intervention_type,
+                InterventionInstance.variant == variant,
+            )
+        )
+        if segment:
+            stmt_total = stmt_total.where(InterventionInstance.segment == segment)
+        result_total = await self.session.execute(stmt_total)
+        total = result_total.scalar() or 0
+
+        return success, total
+
+    @staticmethod
+    def _two_proportion_z_test(
+        success_a: int,
+        total_a: int,
+        rate_a: float,
+        success_b: int,
+        total_b: int,
+        rate_b: float,
+        variant_a: str,
+        variant_b: str,
+        min_samples: int,
+    ) -> tuple[str | None, float | None, bool]:
+        """Run a two-proportion z-test to determine statistical significance.
+
+        H0: p_a = p_b (no difference in success rates)
+        H1: p_a != p_b (significant difference)
+
+        Args:
+            success_a: Successes in variant A.
+            total_a: Total in variant A.
+            rate_a: Success rate for variant A.
+            success_b: Successes in variant B.
+            total_b: Total in variant B.
+            rate_b: Success rate for variant B.
+            variant_a: Name of variant A.
+            variant_b: Name of variant B.
+            min_samples: Minimum samples per variant.
+
+        Returns:
+            Tuple of (winner, confidence, is_significant).
+        """
+        winner: str | None = None
+        confidence: float | None = None
+        is_significant = False
+
+        if total_a < min_samples or total_b < min_samples:
+            return winner, confidence, is_significant
+
+        # Calculate pooled proportion
+        p_pooled = (success_a + success_b) / (total_a + total_b)
+
+        # Calculate standard error
+        se = math.sqrt(p_pooled * (1 - p_pooled) * (1 / total_a + 1 / total_b))
+
+        if se <= 0:
+            # If SE is 0, rates are identical or sample size issue
+            return winner, 0.0, False
+
+        z_score = abs(rate_a - rate_b) / se
+
+        # Check significance at 95% confidence level (z > 1.96)
+        is_significant = z_score > 1.96
+
+        # Calculate approximate confidence using standard normal CDF
+        confidence = min(
+            0.99, 1 - 2 * math.exp(-0.717 * z_score - 0.416 * z_score**2)
+        )
+
+        if is_significant:
+            if rate_b > rate_a:
+                winner = variant_b
+            elif rate_a > rate_b:
+                winner = variant_a
+
+        return winner, confidence, is_significant
+
+    async def _update_experiment_record(
+        self,
+        intervention_type: str,
+        segment: str | None,
+        rate_a: float,
+        rate_b: float,
+        winner: str | None,
+        confidence: float | None,
+        total_a: int,
+        total_b: int,
+        min_samples: int,
+    ) -> str:
+        """Find and update the active experiment record, or generate a new ID.
+
+        Args:
+            intervention_type: The intervention type.
+            segment: Segment filter (may be None).
+            rate_a: Success rate for variant A.
+            rate_b: Success rate for variant B.
+            winner: Winner variant name, or None.
+            confidence: Statistical confidence, or None.
+            total_a: Total count for variant A.
+            total_b: Total count for variant B.
+            min_samples: Minimum sample threshold.
+
+        Returns:
+            The experiment ID (existing or newly generated).
+        """
+        experiment_id = str(uuid.uuid4())
+
+        if not segment:
+            return experiment_id
+
+        stmt_exp = select(VariantExperiment).where(
+            and_(
+                VariantExperiment.intervention_type == intervention_type,
+                VariantExperiment.segment == segment,
+                VariantExperiment.status == "active",
+            )
+        )
+        result_exp = await self.session.execute(stmt_exp)
+        experiment = result_exp.scalar_one_or_none()
+
+        if not experiment:
+            return experiment_id
+
+        experiment_id = experiment.experiment_id  # type: ignore[assignment]
+        experiment.variant_a_success_rate = rate_a  # type: ignore[assignment]
+        experiment.variant_b_success_rate = rate_b  # type: ignore[assignment]
+        experiment.winner = winner  # type: ignore[assignment]
+        experiment.confidence = confidence  # type: ignore[assignment]
+
+        if total_a >= min_samples and total_b >= min_samples:
+            experiment.status = "completed"  # type: ignore[assignment]
+            experiment.completed_at = datetime.now(UTC)  # type: ignore[assignment]
+
+        await self.session.commit()
+
+        return experiment_id
+
     async def generate_weekly_report(self) -> EffectivenessReport:
         """
         Generate weekly effectiveness report for admin.
@@ -753,97 +828,174 @@ class EffectivenessService:
         now = datetime.now(UTC)
         week_ago = now - timedelta(days=7)
 
-        # Get all interventions from the past week
+        # Phase 1: Data collection
+        interventions = await self._collect_weekly_interventions(week_ago)
+
+        # Phase 2: Calculate breakdowns
+        segment_stats = self._calculate_segment_stats(interventions)
+        type_stats = self._calculate_type_stats(interventions)
+
+        # Phase 3: Rank performers
+        top_performers = self._rank_performers(type_stats, ascending=False)
+        underperformers = self._rank_performers(type_stats, ascending=True)
+
+        # Phase 4: Collect active experiments
+        active_experiments = await self._collect_active_experiments()
+
+        # Phase 5: Generate recommendations
+        recommendations = self._generate_recommendations(
+            segment_stats, type_stats, top_performers,
+        )
+
+        return EffectivenessReport(
+            generated_at=now,
+            total_interventions=len(interventions),
+            total_with_outcomes=sum(1 for i in interventions if i.outcome is not None),
+            segment_stats=segment_stats,
+            type_stats=type_stats,
+            top_performers=top_performers,
+            underperformers=underperformers,
+            active_experiments=active_experiments,
+            recommendations=recommendations,
+        )
+
+    async def _collect_weekly_interventions(
+        self,
+        since: datetime,
+    ) -> list[InterventionInstance]:
+        """Fetch all intervention instances delivered since the given timestamp.
+
+        Args:
+            since: Start of the reporting window.
+
+        Returns:
+            List of InterventionInstance rows.
+        """
         stmt = select(InterventionInstance).where(
-            InterventionInstance.delivered_at >= week_ago
+            InterventionInstance.delivered_at >= since
         )
         result = await self.session.execute(stmt)
-        interventions = result.scalars().all()
+        return list(result.scalars().all())
 
-        # Calculate summary stats
-        total_interventions = len(interventions)
-        total_with_outcomes = sum(1 for i in interventions if i.outcome is not None)
+    def _calculate_segment_stats(
+        self,
+        interventions: list[InterventionInstance],
+    ) -> dict[str, dict[str, Any]]:
+        """Calculate per-segment delivery/outcome/success stats.
 
-        # Per-segment breakdown
+        Args:
+            interventions: All interventions for the reporting period.
+
+        Returns:
+            Dict keyed by segment code with count and rate dicts.
+        """
+        success_values = [o.value for o in self.SUCCESS_OUTCOMES]
         segment_stats: dict[str, dict[str, Any]] = {}
-        # Use canonical segment codes from segment_context
         all_segments: list[WorkingStyleCode] = ["AD", "AU", "AH", "NT", "CU"]
+
         for segment in all_segments:
             seg_interventions = [i for i in interventions if i.segment == segment]
+            if not seg_interventions:
+                continue
             seg_with_outcomes = [i for i in seg_interventions if i.outcome is not None]
             seg_success = [
-                i for i in seg_with_outcomes
-                if i.outcome in [o.value for o in self.SUCCESS_OUTCOMES]
+                i for i in seg_with_outcomes if i.outcome in success_values
             ]
+            segment_stats[segment] = {
+                "delivery_count": len(seg_interventions),
+                "outcome_count": len(seg_with_outcomes),
+                "success_count": len(seg_success),
+                "success_rate": (
+                    len(seg_success) / len(seg_interventions)
+                    if seg_interventions
+                    else 0.0
+                ),
+            }
+        return segment_stats
 
-            if seg_interventions:
-                segment_stats[segment] = {
-                    "delivery_count": len(seg_interventions),
-                    "outcome_count": len(seg_with_outcomes),
-                    "success_count": len(seg_success),
-                    "success_rate": len(seg_success) / len(seg_interventions)
-                    if len(seg_interventions) > 0
-                    else 0.0,
-                }
+    def _calculate_type_stats(
+        self,
+        interventions: list[InterventionInstance],
+    ) -> dict[str, dict[str, Any]]:
+        """Calculate per-intervention-type delivery/outcome/success stats.
 
-        # Per-intervention-type breakdown
+        Args:
+            interventions: All interventions for the reporting period.
+
+        Returns:
+            Dict keyed by intervention type string with count and rate dicts.
+        """
+        success_values = [o.value for o in self.SUCCESS_OUTCOMES]
         type_stats: dict[str, dict[str, Any]] = {}
+
         for i_type in [t.value for t in InterventionType]:
-            type_interventions = [i for i in interventions if i.intervention_type == i_type]
-            type_with_outcomes = [i for i in type_interventions if i.outcome is not None]
-            type_success = [
-                i for i in type_with_outcomes
-                if i.outcome in [o.value for o in self.SUCCESS_OUTCOMES]
+            type_interventions = [
+                i for i in interventions if i.intervention_type == i_type
             ]
+            if not type_interventions:
+                continue
+            type_with_outcomes = [
+                i for i in type_interventions if i.outcome is not None
+            ]
+            type_success = [
+                i for i in type_with_outcomes if i.outcome in success_values
+            ]
+            type_stats[i_type] = {
+                "delivery_count": len(type_interventions),
+                "outcome_count": len(type_with_outcomes),
+                "success_count": len(type_success),
+                "success_rate": (
+                    len(type_success) / len(type_interventions)
+                    if type_interventions
+                    else 0.0
+                ),
+            }
+        return type_stats
 
-            if type_interventions:
-                type_stats[i_type] = {
-                    "delivery_count": len(type_interventions),
-                    "outcome_count": len(type_with_outcomes),
-                    "success_count": len(type_success),
-                    "success_rate": len(type_success) / len(type_interventions)
-                    if len(type_interventions) > 0
-                    else 0.0,
-                }
+    @staticmethod
+    def _rank_performers(
+        type_stats: dict[str, dict[str, Any]],
+        *,
+        ascending: bool,
+        min_deliveries: int = 5,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Rank intervention types by success rate.
 
-        # Top performers (sorted by success rate, min 5 deliveries)
-        top_performers = []
-        for i_type, stats in type_stats.items():
-            if stats["delivery_count"] >= 5:
-                top_performers.append(
-                    {
-                        "intervention_type": i_type,
-                        "success_rate": stats["success_rate"],
-                        "delivery_count": stats["delivery_count"],
-                    }
-                )
+        Args:
+            type_stats: Per-type stats dict.
+            ascending: If True, return worst performers first; else best first.
+            min_deliveries: Minimum deliveries required to be included.
+            limit: Maximum number of results to return.
 
-        top_performers.sort(key=lambda x: x["success_rate"], reverse=True)
-        top_performers = top_performers[:5]
+        Returns:
+            Sorted list of performer dicts.
+        """
+        candidates = [
+            {
+                "intervention_type": i_type,
+                "success_rate": stats["success_rate"],
+                "delivery_count": stats["delivery_count"],
+            }
+            for i_type, stats in type_stats.items()
+            if stats["delivery_count"] >= min_deliveries
+        ]
+        candidates.sort(key=lambda x: x["success_rate"], reverse=not ascending)
+        return candidates[:limit]
 
-        # Underperformers (sorted by success rate, min 5 deliveries)
-        underperformers = []
-        for i_type, stats in type_stats.items():
-            if stats["delivery_count"] >= 5:
-                underperformers.append(
-                    {
-                        "intervention_type": i_type,
-                        "success_rate": stats["success_rate"],
-                        "delivery_count": stats["delivery_count"],
-                    }
-                )
+    async def _collect_active_experiments(self) -> list[dict[str, Any]]:
+        """Fetch all active variant experiments.
 
-        underperformers.sort(key=lambda x: x["success_rate"])
-        underperformers = underperformers[:5]
-
-        # Active experiments
+        Returns:
+            List of experiment summary dicts.
+        """
         stmt_exp = select(VariantExperiment).where(
             VariantExperiment.status == "active"
         )
         result_exp = await self.session.execute(stmt_exp)
         experiments = result_exp.scalars().all()
 
-        active_experiments = [
+        return [
             {
                 "experiment_id": e.experiment_id,
                 "intervention_type": e.intervention_type,
@@ -855,14 +1007,30 @@ class EffectivenessService:
             for e in experiments
         ]
 
-        # Generate recommendations
-        recommendations = []
+    @staticmethod
+    def _generate_recommendations(
+        segment_stats: dict[str, dict[str, Any]],
+        type_stats: dict[str, dict[str, Any]],
+        top_performers: list[dict[str, Any]],
+    ) -> list[str]:
+        """Generate actionable recommendations from the report data.
+
+        Args:
+            segment_stats: Per-segment stats.
+            type_stats: Per-intervention-type stats.
+            top_performers: Top-performing interventions.
+
+        Returns:
+            List of human-readable recommendation strings.
+        """
+        recommendations: list[str] = []
 
         # Check for low-performing segments
         for segment_key, stats in segment_stats.items():
             if stats["success_rate"] < 0.4 and stats["delivery_count"] >= 10:
                 recommendations.append(
-                    f"Segment {segment_key.upper()} has low success rate ({stats['success_rate']:.1%}). "
+                    f"Segment {segment_key.upper()} has low success rate "
+                    f"({stats['success_rate']:.1%}). "
                     f"Consider reviewing intervention approach."
                 )
 
@@ -870,7 +1038,8 @@ class EffectivenessService:
         for i_type, stats in type_stats.items():
             if stats["success_rate"] < 0.3 and stats["delivery_count"] >= 10:
                 recommendations.append(
-                    f"Intervention type '{i_type}' has low success rate ({stats['success_rate']:.1%}). "
+                    f"Intervention type '{i_type}' has low success rate "
+                    f"({stats['success_rate']:.1%}). "
                     f"RIA should analyze and propose improvements."
                 )
 
@@ -878,20 +1047,11 @@ class EffectivenessService:
         for performer in top_performers[:3]:
             recommendations.append(
                 f"Intervention '{performer['intervention_type']}' performing well "
-                f"({performer['success_rate']:.1%} success rate). Consider expanding usage."
+                f"({performer['success_rate']:.1%} success rate). "
+                f"Consider expanding usage."
             )
 
-        return EffectivenessReport(
-            generated_at=now,
-            total_interventions=total_interventions,
-            total_with_outcomes=total_with_outcomes,
-            segment_stats=segment_stats,
-            type_stats=type_stats,
-            top_performers=top_performers,
-            underperformers=underperformers,
-            active_experiments=active_experiments,
-            recommendations=recommendations,
-        )
+        return recommendations
 
     async def get_pending_outcomes(
         self,

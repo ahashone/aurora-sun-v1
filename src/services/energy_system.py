@@ -743,50 +743,109 @@ class EnergySystem:
         # Check simple energy state first
         energy_state = await self.get_energy_state(user_id)
 
-        # Get basic energy check
+        # RED blocks non-essential tasks
         if energy_state.level == EnergyStateEnum.RED:
-            # RED blocks non-essential tasks
-            # Check if task is essential (high priority or high integrity)
-            # Cast Column type to int for comparison
-            task_priority_val = int(task.priority) if task.priority is not None else 3
-            is_essential = task_priority_val <= 2
-
-            # For segments with integrity trigger enabled, also check integrity
-            if segment_context.features.integrity_trigger_enabled:
-                task_title = (task.title or "").lower()
-                integrity_keywords = ["values", "purpose", "meaning", "identity", "core"]
-                has_integrity = any(kw in task_title for kw in integrity_keywords)
-                is_essential = is_essential or has_integrity
-
-            if not is_essential:
+            if not self._is_essential_task(task, segment_context):
                 return False
 
         # Segment-specific checks
+        if not await self._check_spoon_drawer(user_id, task, segment_context):
+            return False
 
-        # Check Spoon-Drawer availability (AuDHD)
-        if segment_context.features.spoon_drawer_enabled:
-            spoons = await self.calculate_spoon_drawer(user_id)
-            if spoons.is_depleted:
-                # Check if task requires depleted pool
-                task_title = (task.title or "").lower()
-
-                if any(w in task_title for w in ["social", "talk", "meet"]) and spoons.social <= 2:
-                    return False
-                if any(w in task_title for w in ["noise", "sensory"]) and spoons.sensory <= 2:
-                    return False
-                if any(w in task_title for w in ["plan", "focus", "complex"]) and spoons.ef <= 2:
-                    return False
-                if any(w in task_title for w in ["emotional", "stress"]) and spoons.emotional <= 2:
-                    return False
-
-        # Check Sensory/Cognitive load (Autism/AuDHD)
-        if segment_context.features.sensory_check_required:
-            load = await self.get_sensory_cognitive_load(user_id)
-            if load.is_overloaded:
-                return False
+        if not await self._check_sensory_cognitive(user_id, segment_context):
+            return False
 
         # Default: allow
         return True
+
+    @staticmethod
+    def _is_essential_task(task: Task, segment_context: SegmentContext) -> bool:
+        """Check whether a task is essential (allowed even during RED energy).
+
+        A task is essential if it has high priority (1-2) or, for segments
+        with integrity trigger enabled, if the task title contains integrity
+        keywords.
+
+        Args:
+            task: The task to evaluate.
+            segment_context: The user's segment context.
+
+        Returns:
+            True if the task is essential.
+        """
+        task_priority_val = int(task.priority) if task.priority is not None else 3
+        is_essential = task_priority_val <= 2
+
+        # For segments with integrity trigger enabled, also check integrity
+        if segment_context.features.integrity_trigger_enabled:
+            task_title = (task.title or "").lower()
+            integrity_keywords = ["values", "purpose", "meaning", "identity", "core"]
+            has_integrity = any(kw in task_title for kw in integrity_keywords)
+            is_essential = is_essential or has_integrity
+
+        return is_essential
+
+    async def _check_spoon_drawer(
+        self,
+        user_id: int,
+        task: Task,
+        segment_context: SegmentContext,
+    ) -> bool:
+        """Check Spoon-Drawer pool availability for AuDHD users.
+
+        Returns False if the task requires a depleted spoon pool.
+
+        Args:
+            user_id: The user's unique identifier.
+            task: The task to evaluate.
+            segment_context: The user's segment context.
+
+        Returns:
+            True if the task is allowed, False if a required pool is depleted.
+        """
+        if not segment_context.features.spoon_drawer_enabled:
+            return True
+
+        spoons = await self.calculate_spoon_drawer(user_id)
+        if not spoons.is_depleted:
+            return True
+
+        task_title = (task.title or "").lower()
+
+        pool_checks: list[tuple[list[str], int]] = [
+            (["social", "talk", "meet"], spoons.social),
+            (["noise", "sensory"], spoons.sensory),
+            (["plan", "focus", "complex"], spoons.ef),
+            (["emotional", "stress"], spoons.emotional),
+        ]
+
+        for keywords, pool_value in pool_checks:
+            if any(w in task_title for w in keywords) and pool_value <= 2:
+                return False
+
+        return True
+
+    async def _check_sensory_cognitive(
+        self,
+        user_id: int,
+        segment_context: SegmentContext,
+    ) -> bool:
+        """Check Sensory/Cognitive load for Autism/AuDHD users.
+
+        Returns False if the user is currently in sensory or cognitive overload.
+
+        Args:
+            user_id: The user's unique identifier.
+            segment_context: The user's segment context.
+
+        Returns:
+            True if the task is allowed, False if overloaded.
+        """
+        if not segment_context.features.sensory_check_required:
+            return True
+
+        load = await self.get_sensory_cognitive_load(user_id)
+        return not load.is_overloaded
 
     async def get_energy_recommendation(
         self,

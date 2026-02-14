@@ -246,6 +246,36 @@ class GDPRService:
         errors: list[str] = []
 
         # Export from each registered module
+        await self._export_from_modules(user_id, exports, errors)
+
+        # Export from direct database connections
+        await self._export_from_databases(user_id, exports, errors)
+
+        # Build export package (FINDING-041: track completeness)
+        export_package = self._build_export_package(user_id, exports, errors)
+
+        logger.info(
+            "GDPR export completed for user_hash=%s: %d modules, %d errors, complete=%s",
+            hash_uid(user_id), len(exports), len(errors), len(errors) == 0,
+        )
+        return export_package
+
+    async def _export_from_modules(
+        self,
+        user_id: int,
+        exports: list[GDPRExportRecord],
+        errors: list[str],
+    ) -> None:
+        """Export data from all registered GDPR modules.
+
+        Calls export_user_data() on each registered module and collects results.
+        Failures are logged and appended to the errors list.
+
+        Args:
+            user_id: User identifier.
+            exports: Accumulator for successful exports (mutated in place).
+            errors: Accumulator for failure descriptions (mutated in place).
+        """
         for module_name, module in self._modules.items():
             try:
                 data = await module.export_user_data(user_id)
@@ -255,78 +285,72 @@ class GDPRService:
                     data=data,
                 ))
             except Exception as e:
-                logger.error("Module '%s' export failed for user_hash=%s: %s", module_name, hash_uid(user_id), e)
+                logger.error(
+                    "Module '%s' export failed for user_hash=%s: %s",
+                    module_name, hash_uid(user_id), e,
+                )
                 errors.append(f"{module_name}: export failed")
 
-        # Export from direct database connections
-        try:
-            if self.db:
-                pg_data = await self._export_postgres(user_id)
-                if pg_data:
-                    exports.append(GDPRExportRecord(
-                        module_name="postgres",
-                        exported_at=datetime.now(UTC),
-                        data=pg_data,
-                    ))
-        except Exception as e:
-            logger.error("PostgreSQL export failed for user_hash=%s: %s", hash_uid(user_id), e)
-            errors.append("postgres: export failed")
+    async def _export_from_databases(
+        self,
+        user_id: int,
+        exports: list[GDPRExportRecord],
+        errors: list[str],
+    ) -> None:
+        """Export data from all direct database connections.
 
-        try:
-            if self.redis:
-                redis_data = await self._export_redis(user_id)
-                if redis_data:
-                    exports.append(GDPRExportRecord(
-                        module_name="redis",
-                        exported_at=datetime.now(UTC),
-                        data=redis_data,
-                    ))
-        except Exception as e:
-            logger.error("Redis export failed for user_hash=%s: %s", hash_uid(user_id), e)
-            errors.append("redis: export failed")
+        Iterates over the configured database backends (PostgreSQL, Redis,
+        Neo4j, Qdrant, Letta) and exports user data from each.
 
-        try:
-            if self.neo4j:
-                neo4j_data = await self._export_neo4j(user_id)
-                if neo4j_data:
-                    exports.append(GDPRExportRecord(
-                        module_name="neo4j",
-                        exported_at=datetime.now(UTC),
-                        data=neo4j_data,
-                    ))
-        except Exception as e:
-            logger.error("Neo4j export failed for user_hash=%s: %s", hash_uid(user_id), e)
-            errors.append("neo4j: export failed")
+        Args:
+            user_id: User identifier.
+            exports: Accumulator for successful exports (mutated in place).
+            errors: Accumulator for failure descriptions (mutated in place).
+        """
+        db_sources: list[tuple[str, Any, Any]] = [
+            ("postgres", self.db, self._export_postgres),
+            ("redis", self.redis, self._export_redis),
+            ("neo4j", self.neo4j, self._export_neo4j),
+            ("qdrant", self.qdrant, self._export_qdrant),
+            ("letta", self.letta, self._export_letta),
+        ]
 
-        try:
-            if self.qdrant:
-                qdrant_data = await self._export_qdrant(user_id)
-                if qdrant_data:
+        for source_name, client, export_fn in db_sources:
+            if not client:
+                continue
+            try:
+                data = await export_fn(user_id)
+                if data:
                     exports.append(GDPRExportRecord(
-                        module_name="qdrant",
+                        module_name=source_name,
                         exported_at=datetime.now(UTC),
-                        data=qdrant_data,
+                        data=data,
                     ))
-        except Exception as e:
-            logger.error("Qdrant export failed for user_hash=%s: %s", hash_uid(user_id), e)
-            errors.append("qdrant: export failed")
+            except Exception as e:
+                logger.error(
+                    "%s export failed for user_hash=%s: %s",
+                    source_name.capitalize(), hash_uid(user_id), e,
+                )
+                errors.append(f"{source_name}: export failed")
 
-        try:
-            if self.letta:
-                letta_data = await self._export_letta(user_id)
-                if letta_data:
-                    exports.append(GDPRExportRecord(
-                        module_name="letta",
-                        exported_at=datetime.now(UTC),
-                        data=letta_data,
-                    ))
-        except Exception as e:
-            logger.error("Letta export failed for user_hash=%s: %s", hash_uid(user_id), e)
-            errors.append("letta: export failed")
+    @staticmethod
+    def _build_export_package(
+        user_id: int,
+        exports: list[GDPRExportRecord],
+        errors: list[str],
+    ) -> dict[str, Any]:
+        """Assemble the final export package with metadata.
 
-        # Build export package (FINDING-041: track completeness)
+        Args:
+            user_id: User identifier.
+            exports: Successful export records.
+            errors: Failure descriptions.
+
+        Returns:
+            Complete export dict with metadata and per-module data.
+        """
         is_complete = len(errors) == 0
-        export_package = {
+        return {
             "export_metadata": {
                 "user_id": user_id,
                 "exported_at": datetime.now(UTC).isoformat(),
@@ -347,12 +371,6 @@ class GDPRService:
                 for record in exports
             },
         }
-
-        logger.info(
-            "GDPR export completed for user_hash=%s: %d modules, %d errors, complete=%s",
-            hash_uid(user_id), len(exports), len(errors), is_complete,
-        )
-        return export_package
 
     async def delete_user_data(self, user_id: int) -> dict[str, Any]:
         """

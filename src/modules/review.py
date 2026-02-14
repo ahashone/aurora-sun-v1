@@ -135,7 +135,7 @@ class ReviewModule:
         lang_code: LanguageCode = cast(LanguageCode, lang) if lang in valid_langs else "en"
         return translate(lang_code, module, key, **kwargs)
 
-    async def _get_db_session(self, ctx: ModuleContext) -> AsyncSession:
+    async def _get_db_session(self, ctx: ModuleContext) -> AsyncSession | None:
         """
         Get the database session from context or use the stored one.
 
@@ -143,7 +143,7 @@ class ReviewModule:
             ctx: Module context
 
         Returns:
-            AsyncSession for database operations
+            AsyncSession for database operations, or None if unavailable
         """
         if self._db_session:
             return self._db_session
@@ -154,7 +154,7 @@ class ReviewModule:
             # mypy: metadata is dict[str, Any], we assert the type here
             assert isinstance(db_session, AsyncSession)
             return db_session
-        raise RuntimeError("No database session available")
+        return None
 
     async def _get_today_daily_plan(
         self, ctx: ModuleContext
@@ -169,6 +169,8 @@ class ReviewModule:
             Today's DailyPlan if exists, None otherwise
         """
         db = await self._get_db_session(ctx)
+        if db is None:
+            return None
         today = date.today()
 
         result = await db.execute(
@@ -190,9 +192,11 @@ class ReviewModule:
             target_date: Optional specific date, defaults to today
 
         Returns:
-            List of completed tasks
+            List of completed tasks (empty list if no database session)
         """
         db = await self._get_db_session(ctx)
+        if db is None:
+            return []
         target = target_date or date.today()
 
         result = await db.execute(
@@ -216,9 +220,11 @@ class ReviewModule:
             ctx: Module context
 
         Returns:
-            List of pending tasks
+            List of pending tasks (empty list if no database session)
         """
         db = await self._get_db_session(ctx)
+        if db is None:
+            return []
         today = date.today()
 
         result = await db.execute(
@@ -244,6 +250,8 @@ class ReviewModule:
             energy_value: Energy level (1-5)
         """
         db = await self._get_db_session(ctx)
+        if db is None:
+            return
         today = date.today()
 
         result = await db.execute(
@@ -521,20 +529,21 @@ class ReviewModule:
 
         # Mark the daily plan as having done evening review
         db = await self._get_db_session(ctx)
-        today = date.today()
+        if db is not None:
+            today = date.today()
 
-        result = await db.execute(
-            select(DailyPlan).where(
-                DailyPlan.user_id == ctx.user_id,
-                DailyPlan.date == today,
+            result = await db.execute(
+                select(DailyPlan).where(
+                    DailyPlan.user_id == ctx.user_id,
+                    DailyPlan.date == today,
+                )
             )
-        )
-        daily_plan = result.scalar_one_or_none()
+            daily_plan = result.scalar_one_or_none()
 
-        if daily_plan:
-            # SQLAlchemy ORM: use setattr for Column assignments
-            setattr(daily_plan, 'auto_review_triggered', True)
-            await db.commit()
+            if daily_plan:
+                # SQLAlchemy ORM: use setattr for Column assignments
+                setattr(daily_plan, 'auto_review_triggered', True)
+                await db.commit()
 
         return ModuleResponse.end_flow(
             self._t(lang, "review", "complete").format(
@@ -576,6 +585,8 @@ class ReviewModule:
             """
             # Get today's daily plan
             db = await self._get_db_session(ctx)
+            if db is None:
+                return None
             today = date.today()
 
             result = await db.execute(

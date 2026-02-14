@@ -938,8 +938,7 @@ class MoneyModule:
         Returns:
             ModuleResponse with result of pipeline execution
         """
-        parsed_data = ctx.metadata.get("parsed_transaction", {})
-        segment_ctx = ctx.segment_context
+        parsed_data: dict[str, Any] = ctx.metadata.get("parsed_transaction", {})
         user_id = ctx.user_id
         responses: list[str] = []
 
@@ -952,95 +951,31 @@ class MoneyModule:
                 continue
 
             if state == MoneyState.CAPTURE:
-                if not parsed_data:
-                    return ModuleResponse(
-                        text=enforce_shame_free(
-                            "Tell me about a transaction. "
-                            "For example: '12 euros for sushi' or 'earned 500'."
-                        ),
-                        next_state=MoneyState.CAPTURE,
-                    )
-                amount = parsed_data.get("amount", 0.0)
-                currency = parsed_data.get("currency", "EUR")
-                is_income = parsed_data.get("is_income", False)
-                direction = "received" if is_income else "spent"
-                responses.append(
-                    f"Got it -- {amount} {currency} {direction}."
-                )
+                result = self._stage_capture(parsed_data)
+                if isinstance(result, ModuleResponse):
+                    return result
+                responses.append(result)
 
             elif state == MoneyState.CLASSIFY:
-                is_income = parsed_data.get("is_income", False)
-                category = parsed_data.get("category", "other")
-                if is_income:
-                    responses.append("Classified as income.")
-                else:
-                    responses.append(f"Classified as: {category}.")
+                responses.append(self._stage_classify(parsed_data))
 
             elif state == MoneyState.CATEGORIZE:
-                category = parsed_data.get("category", "other")
-                responses.append(f"Category confirmed: {category}.")
+                responses.append(self._stage_categorize(parsed_data))
 
             elif state == MoneyState.VERIFY:
-                # Autism-specific: extra verification step
-                amount = parsed_data.get("amount", 0.0)
-                currency = parsed_data.get("currency", "EUR")
-                category = parsed_data.get("category", "other")
-                is_income = parsed_data.get("is_income", False)
-                direction = "income" if is_income else "expense"
-                responses.append(
-                    f"Verification: {amount} {currency}, {category}, {direction}. Confirmed."
-                )
+                responses.append(self._stage_verify(parsed_data))
 
             elif state == MoneyState.BUDGET_CHECK:
-                category = parsed_data.get("category", "other")
-                amount = parsed_data.get("amount", 0.0)
-                is_income = parsed_data.get("is_income", False)
-                if not is_income:
-                    # Energy gating check
-                    energy_state = ctx.metadata.get("energy_state", "green")
-                    essential = is_essential_category(category)
-                    if not check_energy_gate(energy_state, essential):
-                        return ModuleResponse(
-                            text=enforce_shame_free(
-                                "Your energy is currently low. "
-                                "For non-essential spending, it might help to revisit "
-                                "this when you're feeling more resourced. "
-                                "The transaction has been noted but flagged for review."
-                            ),
-                            next_state=MoneyState.DONE,
-                            is_end_of_flow=True,
-                            metadata={"energy_gated": True},
-                        )
-                    responses.append("Budget check: looking good.")
-                else:
-                    responses.append("Income noted in your balance.")
+                result = self._stage_budget_check(parsed_data, ctx)
+                if isinstance(result, ModuleResponse):
+                    return result
+                responses.append(result)
 
             elif state == MoneyState.PATTERN_CHECK:
-                # Build transaction list for pattern detection
-                recent = self._get_recent_transactions(user_id)
-                # Add current transaction
-                amount = parsed_data.get("amount", 0.0)
-                currency = parsed_data.get("currency", "EUR")
-                category = parsed_data.get("category", "other")
-                is_income = parsed_data.get("is_income", False)
-                tx_date_str = parsed_data.get("transaction_date", date.today().isoformat())
-                current_tx = ParsedTransaction(
-                    amount=amount,
-                    currency=currency,
-                    category=category,
-                    description=parsed_data.get("description", ""),
-                    is_income=is_income,
-                    transaction_date=date.fromisoformat(tx_date_str),
+                pattern_messages = self._stage_pattern_check(
+                    user_id, parsed_data, ctx.segment_context,
                 )
-                all_tx = recent + [current_tx]
-                patterns = detect_patterns(all_tx, segment_ctx)
-                if patterns:
-                    for p in patterns:
-                        responses.append(p.description)
-                        # Store detected pattern
-                        self._store_pattern(user_id, p)
-                else:
-                    responses.append("No unusual patterns detected.")
+                responses.extend(pattern_messages)
 
             state = next_state(state, money_steps)
 
@@ -1058,6 +993,152 @@ class MoneyModule:
                 "parsed": parsed_data,
             },
         )
+
+    @staticmethod
+    def _stage_capture(parsed_data: dict[str, Any]) -> str | ModuleResponse:
+        """Execute the CAPTURE pipeline stage.
+
+        Args:
+            parsed_data: Parsed transaction data from ctx.metadata.
+
+        Returns:
+            A response string on success, or a ModuleResponse prompting for input.
+        """
+        if not parsed_data:
+            return ModuleResponse(
+                text=enforce_shame_free(
+                    "Tell me about a transaction. "
+                    "For example: '12 euros for sushi' or 'earned 500'."
+                ),
+                next_state=MoneyState.CAPTURE,
+            )
+        amount = parsed_data.get("amount", 0.0)
+        currency = parsed_data.get("currency", "EUR")
+        is_income = parsed_data.get("is_income", False)
+        direction = "received" if is_income else "spent"
+        return f"Got it -- {amount} {currency} {direction}."
+
+    @staticmethod
+    def _stage_classify(parsed_data: dict[str, Any]) -> str:
+        """Execute the CLASSIFY pipeline stage.
+
+        Args:
+            parsed_data: Parsed transaction data.
+
+        Returns:
+            Classification response string.
+        """
+        is_income = parsed_data.get("is_income", False)
+        if is_income:
+            return "Classified as income."
+        category = parsed_data.get("category", "other")
+        return f"Classified as: {category}."
+
+    @staticmethod
+    def _stage_categorize(parsed_data: dict[str, Any]) -> str:
+        """Execute the CATEGORIZE pipeline stage.
+
+        Args:
+            parsed_data: Parsed transaction data.
+
+        Returns:
+            Categorization confirmation string.
+        """
+        category = parsed_data.get("category", "other")
+        return f"Category confirmed: {category}."
+
+    @staticmethod
+    def _stage_verify(parsed_data: dict[str, Any]) -> str:
+        """Execute the VERIFY pipeline stage (Autism-specific extra verification).
+
+        Args:
+            parsed_data: Parsed transaction data.
+
+        Returns:
+            Verification confirmation string.
+        """
+        amount = parsed_data.get("amount", 0.0)
+        currency = parsed_data.get("currency", "EUR")
+        category = parsed_data.get("category", "other")
+        is_income = parsed_data.get("is_income", False)
+        direction = "income" if is_income else "expense"
+        return f"Verification: {amount} {currency}, {category}, {direction}. Confirmed."
+
+    @staticmethod
+    def _stage_budget_check(
+        parsed_data: dict[str, Any],
+        ctx: ModuleContext,
+    ) -> str | ModuleResponse:
+        """Execute the BUDGET_CHECK pipeline stage with energy gating.
+
+        Args:
+            parsed_data: Parsed transaction data.
+            ctx: Module context (for energy state metadata).
+
+        Returns:
+            A response string on success, or a ModuleResponse if energy-gated.
+        """
+        is_income = parsed_data.get("is_income", False)
+        if is_income:
+            return "Income noted in your balance."
+
+        category = parsed_data.get("category", "other")
+        energy_state = ctx.metadata.get("energy_state", "green")
+        essential = is_essential_category(category)
+        if not check_energy_gate(energy_state, essential):
+            return ModuleResponse(
+                text=enforce_shame_free(
+                    "Your energy is currently low. "
+                    "For non-essential spending, it might help to revisit "
+                    "this when you're feeling more resourced. "
+                    "The transaction has been noted but flagged for review."
+                ),
+                next_state=MoneyState.DONE,
+                is_end_of_flow=True,
+                metadata={"energy_gated": True},
+            )
+        return "Budget check: looking good."
+
+    def _stage_pattern_check(
+        self,
+        user_id: int,
+        parsed_data: dict[str, Any],
+        segment_ctx: SegmentContext,
+    ) -> list[str]:
+        """Execute the PATTERN_CHECK pipeline stage.
+
+        Builds a transaction list from recent history plus the current transaction,
+        runs pattern detection, and stores any detected patterns.
+
+        Args:
+            user_id: User ID.
+            parsed_data: Parsed transaction data.
+            segment_ctx: The user's segment context.
+
+        Returns:
+            List of response strings (pattern descriptions or "no patterns").
+        """
+        recent = self._get_recent_transactions(user_id)
+        tx_date_str = parsed_data.get("transaction_date", date.today().isoformat())
+        current_tx = ParsedTransaction(
+            amount=parsed_data.get("amount", 0.0),
+            currency=parsed_data.get("currency", "EUR"),
+            category=parsed_data.get("category", "other"),
+            description=parsed_data.get("description", ""),
+            is_income=parsed_data.get("is_income", False),
+            transaction_date=date.fromisoformat(tx_date_str),
+        )
+        all_tx = recent + [current_tx]
+        patterns = detect_patterns(all_tx, segment_ctx)
+
+        if not patterns:
+            return ["No unusual patterns detected."]
+
+        messages: list[str] = []
+        for p in patterns:
+            messages.append(p.description)
+            self._store_pattern(user_id, p)
+        return messages
 
     # -----------------------------------------------------------------
     # Storage helpers

@@ -1,45 +1,48 @@
 # TODO -- Aurora Sun V1
 
 > Max ~30 items. Completed items visible 1 session, then remove.
-> **All Phases Complete (1-5).** Next: deployment review with Ahash.
+> **All Phases Complete (1-5).** Stabilization sprint in progress.
 
 ---
 
 ## Completed This Session
 
-- [x] Phase 3.1: Knowledge Layer (Neo4j, Qdrant, Letta) | src/services/knowledge_layer.py
-- [x] Phase 3.2-3.3: Aurora Agent + Coaching Engine (Full) | src/agents/aurora.py, src/services/coaching_engine_full.py
-- [x] Phase 3.4: Habit Module (Atomic Habits) | src/modules/habit.py
-- [x] Phase 3.5: Limiting Beliefs Module | src/modules/belief.py
-- [x] Phase 3.6: Landscape of Motifs | src/modules/motif.py
-- [x] Phase 3.7: Second Brain Upgrade | src/modules/second_brain.py
-- [x] Phase 3.8: FeedbackService | src/services/feedback_service.py
-- [x] Phase 3.9: RIA Service | src/services/ria_service.py
-- [x] Phase 4.1-4.2: Avicenna + TRON Agents | src/agents/avicenna.py, src/agents/tron.py
-- [x] Phase 4.3: Money Module | src/modules/money.py
-- [x] Phase 4.4: Self-Learning Loops | src/services/self_learning.py
-- [x] Phase 4.5: GDPR Full-Stack (5-DB) | src/lib/gdpr.py (updated)
-- [x] Phase 4.6: Production Hardening | src/infra/, docker-compose.prod.yml, .github/workflows/ci.yml
-- [x] Phase 5.1: i18n + Deep Onboarding | src/lib/i18n.py, src/modules/onboarding_deep.py
-- [x] Phase 5.2: DSPy Optimizer | src/services/dspy_optimizer.py
-- [x] Phase 5.3: CCPA Compliance | src/lib/ccpa.py
-- [x] Phase 5.4: Mobile API Layer | src/api/
-- [x] Security audit: Fix 6 segment comparison violations in onboarding_deep.py
-- [x] Full audit: ruff, mypy --strict, 1539 tests passing
-
-## Known Limitations (for Ahash's review)
-
-- [ ] BLOCKED: Module GDPR delete stubs (habit, belief, motif, etc.) need database session injection to implement actual deletion. Centralized GDPRService handles 5-DB cascade correctly. (waiting for Ahash)
-- [ ] BLOCKED: Some in-memory dicts without TTL cleanup (tron/threat_monitor.py, api/auth.py rate limit stores). Production should use Redis. (waiting for Ahash)
+- [x] Paranoid Security Audit: Fix all 47 findings | 69 files, 2367 tests
+- [x] Codex Security Audit: All overlapping findings covered
+- [x] Create Dockerfile (multi-stage build) | Dockerfile, pyproject.toml
+- [x] Replace placeholder APIRouter with FastAPI + /api/v1 versioning | src/api/routes.py, src/api/__init__.py, main.py
+- [x] Review module graceful degradation (db session None checks) | src/modules/review.py
+- [x] DPA status updated to "Required - Pending Signature" with deadlines | docs/SUB-PROCESSOR-REGISTRY.md
+- [x] Financial keyword conflict: removed "paid" from INCOME_KEYWORDS | src/services/revenue_tracker.py
+- [x] In-memory stores bounded (MAX_ENTRIES_PER_USER) | src/services/revenue_tracker.py, src/services/crisis_service.py
+- [x] Circuit breaker pattern implemented | src/lib/circuit_breaker.py, src/lib/__init__.py
+- [x] MD5 replaced with SHA-256 for channel dominance hashing | src/services/coaching_engine.py
+- [x] CORS middleware added (AURORA_CORS_ORIGINS env var) | src/api/__init__.py, .env.example
+- [x] God functions refactored (CC>=15): 6 functions split into helpers | effectiveness.py, pattern_detection.py, gdpr.py, energy_system.py, money.py
+- [x] Neurostate test coverage: 216 new tests (energy, channel, sensory, masking) | tests/src/services/neurostate/
+- [x] README.md fixed (docker-compose ref, run command) | README.md
+- [x] PR template created | .github/pull_request_template.md
+- [x] DPIA updated to v1.1 (Phase 5 review entry) | docs/DPIA.md
+- [x] Monitoring configs created | monitoring/prometheus.yml, monitoring/alertmanager.yml, monitoring/alert_rules.yml
+- [x] TODO density reviewed: 68 TODOs in src/, all genuine future work | No changes needed
 
 ---
 
-## Completed (Previous Sessions)
+## Open Items
 
-- [x] Phase 1: Vertical Slice | all 1.0-1.4 tasks
-- [x] Phase 2: Intelligence Layer | neurostate, patterns, energy, crisis, effectiveness
-- [x] Phase 2.5: Hybrid Quality Upgrade | rewrites, mypy strict, 689 tests
-- [x] Deep audit: 14 bugs fixed, 514 lint errors resolved
+### CRITICAL (Deployment Blockers)
+
+- [ ] BLOCKED: Module GDPR delete stubs need database session injection | (waiting for Ahash)
+
+### HIGH (Next Sprint)
+
+- [ ] In-memory stores need Redis persistence in prod: revenue_tracker._entries, crisis_service._crisis_log | (Codex A-03)
+
+### LOW (When Convenient)
+
+- [ ] Add HSTS preload registration (header already set, but no preload list submission) | (Claude FINDING-045)
+- [ ] Implement formal threat model + regular red-team schedule | (Claude Tier 3)
+- [ ] Security regression test suite (authz, erasure, webhook spoofing, abuse-cost) in CI | (Claude Tier 3)
 
 ---
 
@@ -53,3 +56,5 @@
 | 2026-02-14 | Phase 2.5 Complete | Quality upgrade, mypy strict, 689 tests |
 | 2026-02-14 | Security Fixes Complete | 17 findings fixed across 2 sessions |
 | 2026-02-14 | Phase 3-5 Complete | 850+ new tests (1539 total), all audits pass |
+| 2026-02-14 | Paranoid Audit Fix | 47 findings fixed, 2367 tests, 0 ruff/mypy errors |
+| 2026-02-14 | Stabilization Sprint | 18 audit items fixed, 2583 tests, 0 ruff/mypy errors |

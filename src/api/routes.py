@@ -1,9 +1,9 @@
 """
 REST API Routes for Aurora Sun V1.
 
-Implements all API endpoints for mobile app.
+Implements all API endpoints for mobile app using FastAPI.
 
-Endpoints:
+Endpoints (all under /api/v1 prefix):
 - /health - Health check
 - /auth/token - Get authentication token
 - /visions - Vision management
@@ -24,9 +24,9 @@ Reference: ROADMAP 5.4, ARCHITECTURE.md Section 14 (SW-14: REST API)
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from typing import Any
 
+from fastapi import APIRouter as FastAPIRouter
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -108,52 +108,11 @@ class UpdatePreferencesRequest(BaseModel):
     theme: str | None = Field(default=None, max_length=50)
 
 
-class APIRouter:
-    """
-    REST API router for Aurora Sun V1.
+# =============================================================================
+# FastAPI Router with /api/v1 prefix
+# =============================================================================
 
-    This is a placeholder implementation. In production, this would use FastAPI.
-    """
-
-    def __init__(self) -> None:
-        """Initialize API router."""
-        self.routes: dict[str, dict[str, Any]] = {}
-
-    def get(self, path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Register a GET endpoint."""
-        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.routes[f"GET {path}"] = {"handler": func, "method": "GET"}
-            return func
-        return decorator
-
-    def post(self, path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Register a POST endpoint."""
-        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.routes[f"POST {path}"] = {"handler": func, "method": "POST"}
-            return func
-        return decorator
-
-    def put(self, path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Register a PUT endpoint."""
-        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.routes[f"PUT {path}"] = {"handler": func, "method": "PUT"}
-            return func
-        return decorator
-
-    def delete(self, path: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        """Register a DELETE endpoint."""
-        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            self.routes[f"DELETE {path}"] = {"handler": func, "method": "DELETE"}
-            return func
-        return decorator
-
-    def get_routes(self) -> dict[str, dict[str, Any]]:
-        """Get all registered routes."""
-        return self.routes
-
-
-# Create router instance
-router = APIRouter()
+router = FastAPIRouter(prefix="/api/v1")
 
 
 # =============================================================================
@@ -594,9 +553,51 @@ async def update_user_preferences(user_id: int, data: UpdatePreferencesRequest) 
     return {"user_id": user_id, **data.model_dump(exclude_none=True)}
 
 
+# =============================================================================
+# Backward Compatibility: get_routes() for tests
+# =============================================================================
+
+
+def get_routes() -> dict[str, dict[str, Any]]:
+    """
+    Get all registered routes as a dictionary.
+
+    This provides backward compatibility with the placeholder APIRouter.
+    Tests and other code that relied on router.get_routes() can use this
+    function or call router.get_routes() (which delegates here).
+
+    Returns:
+        Dictionary mapping "METHOD /path" to route info with handler and method.
+    """
+    routes: dict[str, dict[str, Any]] = {}
+    prefix = router.prefix  # "/api/v1"
+    valid_methods = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+    for route in router.routes:
+        # FastAPI APIRoute objects have .methods and .endpoint attributes
+        if hasattr(route, "methods") and hasattr(route, "endpoint"):
+            full_path = getattr(route, "path", "")
+            # Strip the /api/v1 prefix to maintain backward-compatible keys
+            if full_path.startswith(prefix):
+                path = full_path[len(prefix):]
+            else:
+                path = full_path
+            for method in route.methods:
+                if method in valid_methods:
+                    key = f"{method} {path}"
+                    routes[key] = {
+                        "handler": route.endpoint,
+                        "method": method,
+                    }
+    return routes
+
+
+# Attach get_routes as a method on the router instance for backward compatibility
+router.get_routes = get_routes  # type: ignore[attr-defined]
+
+
 __all__ = [
     "router",
-    "APIRouter",
+    "get_routes",
     # FINDING-020: Pydantic request models
     "CreateVisionRequest",
     "CreateGoalRequest",

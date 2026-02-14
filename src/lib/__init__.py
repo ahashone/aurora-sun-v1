@@ -5,8 +5,17 @@ Contains shared utilities:
 - encryption.py: Field-level encryption (AES-256-GCM)
 - security.py: Input sanitization and rate limiting
 - gdpr.py: GDPR compliance utilities
+- circuit_breaker.py: Circuit breaker for external service calls
 """
 
+from src.lib.circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerError,
+    CircuitState,
+    circuit_breaker,
+    get_all_circuit_breakers,
+    get_circuit_breaker,
+)
 from src.lib.encryption import (
     DataClassification,
     EncryptedField,
@@ -28,6 +37,13 @@ from src.lib.security import (
 )
 
 __all__ = [
+    # Circuit Breaker
+    "CircuitBreaker",
+    "CircuitBreakerError",
+    "CircuitState",
+    "circuit_breaker",
+    "get_circuit_breaker",
+    "get_all_circuit_breakers",
     # Encryption
     "EncryptionService",
     "DataClassification",

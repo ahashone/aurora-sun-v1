@@ -39,8 +39,11 @@ cp .env.example .env
 # Run database migrations
 alembic upgrade head
 
-# Run the application
-python -m src
+# Run the application (development)
+uvicorn src.bot.webhook:app --host 0.0.0.0 --port 8000 --reload
+
+# Or via Docker Compose (production)
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## Environment Variables
@@ -84,7 +87,7 @@ mypy src/
 
 ## Deployment
 
-Deployed via Docker Compose on Hetzner VPS (Nuremberg). See `docker-compose.yml` for service configuration.
+Deployed via Docker Compose on Hetzner VPS (Nuremberg). See `docker-compose.prod.yml` for service configuration.
 
 - **Reverse Proxy:** Caddy (HTTPS)
 - **App User:** `moltbot` (non-root)

@@ -174,6 +174,10 @@ class RevenueTracker:
         balance = await tracker.get_balance(user_id=123)
     """
 
+    # Maximum entries per user in the in-memory store.
+    # Production should use PostgreSQL with proper pagination instead.
+    MAX_ENTRIES_PER_USER = 1000
+
     # Currency patterns for parsing
     CURRENCY_PATTERNS = [
         (r"(\d+(?:\.\d{1,2})?)\s*(?:euros?|eur|€)", "EUR"),
@@ -183,14 +187,14 @@ class RevenueTracker:
 
     # Income keywords
     INCOME_KEYWORDS = [
-        "earned", "got", "received", "made", "income", "paid",
-        "revenue", "profit", "sold", "earned", "getting", "received from",
+        "earned", "got", "received", "made", "income",
+        "revenue", "profit", "sold", "getting", "received from",
     ]
 
     # Expense keywords
     EXPENSE_KEYWORDS = [
         "spent", "paid", "bought", "cost", "expense", "for",
-        "bought", "purchased", "subscription", "bill", "rent",
+        "purchased", "subscription", "bill", "rent",
     ]
 
     # Commitment keywords
@@ -405,6 +409,12 @@ class RevenueTracker:
         """
         if user_id not in self._entries:
             self._entries[user_id] = []
+
+        # Trim older entries when exceeding the limit to prevent unbounded growth
+        if len(self._entries[user_id]) >= self.MAX_ENTRIES_PER_USER:
+            self._entries[user_id] = self._entries[user_id][
+                -self.MAX_ENTRIES_PER_USER + 1 :
+            ]
 
         # Encrypt entry before storing (FINANCIAL classification)
         try:

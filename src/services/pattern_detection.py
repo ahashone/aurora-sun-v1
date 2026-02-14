@@ -609,112 +609,166 @@ class PatternDetectionService:
         if not isinstance(user_id, int) or user_id <= 0:
             raise ValueError(f"Invalid user_id: {user_id}. Must be a positive integer.")
 
-        detected_cycles: list[DetectedCycle] = []
-
-        # Extract relevant data points with defaults
-        task_completion_rate = recent_data.get("task_completion_rate", 0.5)
-        new_starts = recent_data.get("new_starts_count", 0)
-        abandoned_tasks = recent_data.get("abandoned_tasks_count", 0)
-        social_interactions = recent_data.get("social_interactions_count", 0)
-        unpaid_work_hours = recent_data.get("unpaid_work_hours", 0.0)
-        overthinking_indicators = recent_data.get("overthinking_indicators", [])
-        perfectionism_evidence = recent_data.get("perfectionism_evidence", [])
-        isolation_evidence = recent_data.get("isolation_evidence", [])
-
-        # 1. Detect META_SPIRALE (overthinking about overthinking)
-        meta_spirale_severity = CycleSeverity.NONE
-        if overthinking_indicators:
-            if len(overthinking_indicators) >= 3:
-                meta_spirale_severity = CycleSeverity.SEVERE
-            elif len(overthinking_indicators) >= 1:
-                meta_spirale_severity = CycleSeverity.EMERGING
-
-        detected_cycles.append(DetectedCycle(
-            cycle_type=CycleType.META_SPIRALE,
-            severity=meta_spirale_severity,
-            confidence=0.8 if meta_spirale_severity != CycleSeverity.NONE else 0.0,
-            evidence=overthinking_indicators[:3],
-            trend="stable",
-        ))
-
-        # 2. Detect SHINY_OBJECT (constantly starting new things)
-        shiny_object_severity = CycleSeverity.NONE
-        if new_starts > 0 and abandoned_tasks > 0:
-            abandonment_ratio = abandoned_tasks / (new_starts + abandoned_tasks)
-            if abandonment_ratio > 0.7:
-                shiny_object_severity = CycleSeverity.SEVERE
-            elif abandonment_ratio > 0.5:
-                shiny_object_severity = CycleSeverity.ACTIVE
-            elif abandonment_ratio > 0.3:
-                shiny_object_severity = CycleSeverity.EMERGING
-
-        detected_cycles.append(DetectedCycle(
-            cycle_type=CycleType.SHINY_OBJECT,
-            severity=shiny_object_severity,
-            confidence=0.85 if shiny_object_severity != CycleSeverity.NONE else 0.0,
-            evidence=[f"Started {new_starts} new, abandoned {abandoned_tasks}"],
-            trend="stable",
-        ))
-
-        # 3. Detect PERFECTIONISM (never finishing due to standards)
-        perfectionism_severity = CycleSeverity.NONE
-        if perfectionism_evidence:
-            if len(perfectionism_evidence) >= 3:
-                perfectionism_severity = CycleSeverity.SEVERE
-            elif len(perfectionism_evidence) >= 1:
-                perfectionism_severity = CycleSeverity.EMERGING
-        elif task_completion_rate < 0.3 and abandoned_tasks > 3:
-            # Infer from behavior if explicit evidence missing
-            perfectionism_severity = CycleSeverity.ACTIVE
-
-        detected_cycles.append(DetectedCycle(
-            cycle_type=CycleType.PERFECTIONISM,
-            severity=perfectionism_severity,
-            confidence=0.75 if perfectionism_severity != CycleSeverity.NONE else 0.0,
-            evidence=perfectionism_evidence[:3],
-            trend="stable",
-        ))
-
-        # 4. Detect ISOLATION (withdrawing from support)
-        isolation_severity = CycleSeverity.NONE
-        if isolation_evidence:
-            if len(isolation_evidence) >= 3:
-                isolation_severity = CycleSeverity.SEVERE
-            elif len(isolation_evidence) >= 1:
-                isolation_severity = CycleSeverity.EMERGING
-        elif social_interactions < 2:  # Low social interaction
-            isolation_severity = CycleSeverity.ACTIVE
-
-        detected_cycles.append(DetectedCycle(
-            cycle_type=CycleType.ISOLATION,
-            severity=isolation_severity,
-            confidence=0.8 if isolation_severity != CycleSeverity.NONE else 0.0,
-            evidence=isolation_evidence[:3] + [f"Social interactions: {social_interactions}"],
-            trend="stable",
-        ))
-
-        # 5. Detect FREE_WORK (unpaid labor consuming energy)
-        free_work_severity = CycleSeverity.NONE
-        if unpaid_work_hours > 0:
-            if unpaid_work_hours > 20:
-                free_work_severity = CycleSeverity.SEVERE
-            elif unpaid_work_hours > 10:
-                free_work_severity = CycleSeverity.ACTIVE
-            elif unpaid_work_hours > 5:
-                free_work_severity = CycleSeverity.EMERGING
-
-        detected_cycles.append(DetectedCycle(
-            cycle_type=CycleType.FREE_WORK,
-            severity=free_work_severity,
-            confidence=0.9 if free_work_severity != CycleSeverity.NONE else 0.0,
-            evidence=[f"Unpaid work: {unpaid_work_hours} hours"],
-            trend="stable",
-        ))
+        detected_cycles: list[DetectedCycle] = [
+            self._detect_meta_spirale(recent_data),
+            self._detect_shiny_object(recent_data),
+            self._detect_perfectionism(recent_data),
+            self._detect_isolation(recent_data),
+            self._detect_free_work(recent_data),
+        ]
 
         # Store history
         self._cycle_history[user_id] = detected_cycles
 
         return detected_cycles
+
+    @staticmethod
+    def _detect_meta_spirale(recent_data: dict[str, Any]) -> DetectedCycle:
+        """Detect META_SPIRALE cycle (overthinking about overthinking).
+
+        Args:
+            recent_data: Recent user data dict.
+
+        Returns:
+            DetectedCycle for the meta-spirale pattern.
+        """
+        overthinking_indicators: list[str] = recent_data.get("overthinking_indicators", [])
+        severity = CycleSeverity.NONE
+        if overthinking_indicators:
+            if len(overthinking_indicators) >= 3:
+                severity = CycleSeverity.SEVERE
+            elif len(overthinking_indicators) >= 1:
+                severity = CycleSeverity.EMERGING
+
+        return DetectedCycle(
+            cycle_type=CycleType.META_SPIRALE,
+            severity=severity,
+            confidence=0.8 if severity != CycleSeverity.NONE else 0.0,
+            evidence=overthinking_indicators[:3],
+            trend="stable",
+        )
+
+    @staticmethod
+    def _detect_shiny_object(recent_data: dict[str, Any]) -> DetectedCycle:
+        """Detect SHINY_OBJECT cycle (constantly starting new things).
+
+        Args:
+            recent_data: Recent user data dict.
+
+        Returns:
+            DetectedCycle for the shiny-object pattern.
+        """
+        new_starts: int = recent_data.get("new_starts_count", 0)
+        abandoned_tasks: int = recent_data.get("abandoned_tasks_count", 0)
+        severity = CycleSeverity.NONE
+
+        if new_starts > 0 and abandoned_tasks > 0:
+            abandonment_ratio = abandoned_tasks / (new_starts + abandoned_tasks)
+            if abandonment_ratio > 0.7:
+                severity = CycleSeverity.SEVERE
+            elif abandonment_ratio > 0.5:
+                severity = CycleSeverity.ACTIVE
+            elif abandonment_ratio > 0.3:
+                severity = CycleSeverity.EMERGING
+
+        return DetectedCycle(
+            cycle_type=CycleType.SHINY_OBJECT,
+            severity=severity,
+            confidence=0.85 if severity != CycleSeverity.NONE else 0.0,
+            evidence=[f"Started {new_starts} new, abandoned {abandoned_tasks}"],
+            trend="stable",
+        )
+
+    @staticmethod
+    def _detect_perfectionism(recent_data: dict[str, Any]) -> DetectedCycle:
+        """Detect PERFECTIONISM cycle (never finishing due to standards).
+
+        Args:
+            recent_data: Recent user data dict.
+
+        Returns:
+            DetectedCycle for the perfectionism pattern.
+        """
+        perfectionism_evidence: list[str] = recent_data.get("perfectionism_evidence", [])
+        task_completion_rate: float = recent_data.get("task_completion_rate", 0.5)
+        abandoned_tasks: int = recent_data.get("abandoned_tasks_count", 0)
+        severity = CycleSeverity.NONE
+
+        if perfectionism_evidence:
+            if len(perfectionism_evidence) >= 3:
+                severity = CycleSeverity.SEVERE
+            elif len(perfectionism_evidence) >= 1:
+                severity = CycleSeverity.EMERGING
+        elif task_completion_rate < 0.3 and abandoned_tasks > 3:
+            # Infer from behavior if explicit evidence missing
+            severity = CycleSeverity.ACTIVE
+
+        return DetectedCycle(
+            cycle_type=CycleType.PERFECTIONISM,
+            severity=severity,
+            confidence=0.75 if severity != CycleSeverity.NONE else 0.0,
+            evidence=perfectionism_evidence[:3],
+            trend="stable",
+        )
+
+    @staticmethod
+    def _detect_isolation(recent_data: dict[str, Any]) -> DetectedCycle:
+        """Detect ISOLATION cycle (withdrawing from support).
+
+        Args:
+            recent_data: Recent user data dict.
+
+        Returns:
+            DetectedCycle for the isolation pattern.
+        """
+        isolation_evidence: list[str] = recent_data.get("isolation_evidence", [])
+        social_interactions: int = recent_data.get("social_interactions_count", 0)
+        severity = CycleSeverity.NONE
+
+        if isolation_evidence:
+            if len(isolation_evidence) >= 3:
+                severity = CycleSeverity.SEVERE
+            elif len(isolation_evidence) >= 1:
+                severity = CycleSeverity.EMERGING
+        elif social_interactions < 2:  # Low social interaction
+            severity = CycleSeverity.ACTIVE
+
+        return DetectedCycle(
+            cycle_type=CycleType.ISOLATION,
+            severity=severity,
+            confidence=0.8 if severity != CycleSeverity.NONE else 0.0,
+            evidence=isolation_evidence[:3] + [f"Social interactions: {social_interactions}"],
+            trend="stable",
+        )
+
+    @staticmethod
+    def _detect_free_work(recent_data: dict[str, Any]) -> DetectedCycle:
+        """Detect FREE_WORK cycle (unpaid labor consuming energy).
+
+        Args:
+            recent_data: Recent user data dict.
+
+        Returns:
+            DetectedCycle for the free-work pattern.
+        """
+        unpaid_work_hours: float = recent_data.get("unpaid_work_hours", 0.0)
+        severity = CycleSeverity.NONE
+
+        if unpaid_work_hours > 0:
+            if unpaid_work_hours > 20:
+                severity = CycleSeverity.SEVERE
+            elif unpaid_work_hours > 10:
+                severity = CycleSeverity.ACTIVE
+            elif unpaid_work_hours > 5:
+                severity = CycleSeverity.EMERGING
+
+        return DetectedCycle(
+            cycle_type=CycleType.FREE_WORK,
+            severity=severity,
+            confidence=0.9 if severity != CycleSeverity.NONE else 0.0,
+            evidence=[f"Unpaid work: {unpaid_work_hours} hours"],
+            trend="stable",
+        )
 
     async def get_intervention(
         self,

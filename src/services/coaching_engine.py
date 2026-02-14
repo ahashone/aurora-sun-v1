@@ -329,7 +329,7 @@ class CoachingEngine:
         # Create a deterministic value based on user_id and today's date
         today_str = date.today().isoformat()
         hash_input = f"{user_id}:{today_str}"
-        hash_value = int(hashlib.md5(hash_input.encode()).hexdigest()[:8], 16)
+        hash_value = int(hashlib.sha256(hash_input.encode()).hexdigest()[:8], 16)
 
         # Map to channel dominance (balanced is less common)
         # 40% ADHD, 40% AUTISM, 20% BALANCED

@@ -313,6 +313,10 @@ class CrisisService:
     CRISIS_ALERT_MAX_PER_HOUR = 5
     CRISIS_ALERT_WINDOW_SECONDS = 3600  # 1 hour
 
+    # Maximum crisis log entries per user in the in-memory store.
+    # Production should use PostgreSQL with proper retention policies.
+    MAX_LOG_ENTRIES_PER_USER = 100
+
     def __init__(self, encryption_service: EncryptionService | None = None):
         """
         Initialize the Crisis Service.
@@ -710,6 +714,12 @@ class CrisisService:
 
         if user_id not in self._crisis_log:
             self._crisis_log[user_id] = []
+
+        # Trim older entries when exceeding the limit to prevent unbounded growth
+        if len(self._crisis_log[user_id]) >= self.MAX_LOG_ENTRIES_PER_USER:
+            self._crisis_log[user_id] = self._crisis_log[user_id][
+                -self.MAX_LOG_ENTRIES_PER_USER + 1 :
+            ]
 
         # Encrypt event before storing (ART_9_SPECIAL)
         try:
