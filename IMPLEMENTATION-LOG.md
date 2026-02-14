@@ -30,3 +30,5 @@
 | 2026-02-14 | Fix audit issues: Wire structlog (logging config module, stdlib+structlog integration) | src/lib/logging.py, src/__init__.py |
 | 2026-02-14 | Fix audit issues: Error handling in webhook NLI routing + rate limit null-safety | src/bot/webhook.py |
 | 2026-02-14 | Add .env.example and README.md (project documentation) | .env.example, README.md |
+| 2026-02-14 | Fix Session model metadata column conflict with SQLAlchemy reserved attribute | src/models/session.py |
+| 2026-02-14 | Test suite: 689 tests (crisis, security, GDPR, consent, neurostate, segment) | tests/ (7 new test files + conftest.py) |

@@ -43,7 +43,7 @@ class Session(Base):
         state: Current session state
         current_module: The active module (if any)
         current_intent: The current intent being processed
-        metadata: Additional session metadata (JSON)
+        session_metadata: Additional session metadata (JSON, DB column: 'metadata')
         started_at: Session start timestamp
         updated_at: Last activity timestamp
 
@@ -71,7 +71,10 @@ class Session(Base):
     current_intent = Column(String(50), nullable=True)
 
     # Metadata (JSON for flexibility)
-    metadata = Column(JSON, nullable=True)
+    # Note: The Python attribute is named 'session_metadata' to avoid conflict
+    # with SQLAlchemy's reserved 'metadata' attribute on DeclarativeBase.
+    # The database column is still named 'metadata'.
+    session_metadata = Column("metadata", JSON, nullable=True)
 
     # Timestamps
     started_at = Column(
