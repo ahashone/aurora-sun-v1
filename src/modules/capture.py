@@ -55,11 +55,43 @@ class CapturedContent(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     content_type = Column(String(50), nullable=False)  # task | idea | note | insight | question | goal
-    content = Column(Text, nullable=False)  # Encrypted in production
+    _content_plaintext = Column("content", Text, nullable=False)  # Encrypted storage
     metadata_json = Column(Text, nullable=True)  # Additional metadata (JSON)
     source = Column(String(50), nullable=True)  # quick_capture | voice | task | idea | note
     is_routed = Column(Integer, default=0)  # 0 = pending, 1 = routed to destination
     captured_at = Column(DateTime, nullable=False)
+
+    @property
+    def content(self) -> str:
+        """Get decrypted content."""
+        if self._content_plaintext is None:
+            return ""
+        try:
+            import json
+            data = json.loads(str(self._content_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "content")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+        return str(self._content_plaintext)
+
+    @content.setter
+    def content(self, value: str | None) -> None:
+        """Set encrypted content."""
+        if value is None:
+            setattr(self, '_content_plaintext', None)
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.user_id), DataClassification.SENSITIVE, "content"
+            )
+            setattr(self, '_content_plaintext', json.dumps(encrypted.to_db_dict()))
+        except Exception:
+            setattr(self, '_content_plaintext', value)
 
 
 class CaptureModule:

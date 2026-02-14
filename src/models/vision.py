@@ -58,7 +58,7 @@ class Vision(Base):
 
     # Vision content
     type = Column(String(10), nullable=False)  # life | 10y | 3y
-    content = Column(Text, nullable=True)  # Encrypted in production
+    _content_plaintext = Column("content", Text, nullable=True)  # Encrypted storage
 
     # Timestamps
     created_at = Column(
@@ -78,6 +78,38 @@ class Vision(Base):
         Index("idx_vision_user_type", "user_id", "type"),
         Index("idx_vision_created_at", "created_at"),
     )
+
+    @property
+    def content(self) -> str | None:
+        """Get decrypted content."""
+        if self._content_plaintext is None:
+            return None
+        try:
+            import json
+            data = json.loads(str(self._content_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "content")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+        return str(self._content_plaintext) if self._content_plaintext else None
+
+    @content.setter
+    def content(self, value: str | None) -> None:
+        """Set encrypted content."""
+        if value is None:
+            setattr(self, '_content_plaintext', None)
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.user_id), DataClassification.ART_9_SPECIAL, "content"
+            )
+            setattr(self, '_content_plaintext', json.dumps(encrypted.to_db_dict()))
+        except Exception:
+            setattr(self, '_content_plaintext', value)
 
     def __repr__(self) -> str:
         return f"<Vision(id={self.id}, user_id={self.user_id}, type={self.type})>"

@@ -20,19 +20,9 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Protocol
 
+from src.lib.encryption import DataClassification
+
 logger = logging.getLogger(__name__)
-
-
-class DataClassification(Enum):
-    """
-    Data classification levels per ARCHITECTURE.md Section 10.3.
-    Determines encryption, retention, and access requirements.
-    """
-    PUBLIC = "public"           # No user data, no business logic (feature flags)
-    INTERNAL = "internal"       # System data, non-user-identifiable
-    SENSITIVE = "sensitive"     # User-identifiable, personal (PII)
-    ART_9_SPECIAL = "art_9"     # Health data, mental state, neurotype
-    FINANCIAL = "financial"     # Money, transactions, budgets
 
 
 class ProcessingRestriction(Enum):
@@ -260,7 +250,7 @@ class GDPRService:
                 ))
             except Exception as e:
                 logger.error(f"Module '{module_name}' export failed: {e}")
-                errors.append(f"{module_name}: {str(e)}")
+                errors.append(f"{module_name}: export failed")
 
         # Export from direct database connections
         try:
@@ -274,7 +264,7 @@ class GDPRService:
                     ))
         except Exception as e:
             logger.error(f"PostgreSQL export failed: {e}")
-            errors.append(f"postgres: {str(e)}")
+            errors.append("postgres: export failed")
 
         try:
             if self.redis:
@@ -287,7 +277,7 @@ class GDPRService:
                     ))
         except Exception as e:
             logger.error(f"Redis export failed: {e}")
-            errors.append(f"redis: {str(e)}")
+            errors.append("redis: export failed")
 
         try:
             if self.neo4j:
@@ -300,7 +290,7 @@ class GDPRService:
                     ))
         except Exception as e:
             logger.error(f"Neo4j export failed: {e}")
-            errors.append(f"neo4j: {str(e)}")
+            errors.append("neo4j: export failed")
 
         try:
             if self.qdrant:
@@ -313,7 +303,7 @@ class GDPRService:
                     ))
         except Exception as e:
             logger.error(f"Qdrant export failed: {e}")
-            errors.append(f"qdrant: {str(e)}")
+            errors.append("qdrant: export failed")
 
         try:
             if self.letta:
@@ -326,7 +316,7 @@ class GDPRService:
                     ))
         except Exception as e:
             logger.error(f"Letta export failed: {e}")
-            errors.append(f"letta: {str(e)}")
+            errors.append("letta: export failed")
 
         # Build export package
         export_package = {
@@ -380,7 +370,7 @@ class GDPRService:
                 logger.info(f"Module '{module_name}' data deleted for user {user_id}")
             except Exception as e:
                 logger.error(f"Module '{module_name}' deletion failed: {e}")
-                deletion_report["components"][module_name] = {"status": "error", "error": str(e)}
+                deletion_report["components"][module_name] = {"status": "error", "error": "deletion failed"}
 
         # Delete from PostgreSQL
         try:
@@ -389,7 +379,7 @@ class GDPRService:
                 deletion_report["components"]["postgres"] = {"status": "deleted"}
         except Exception as e:
             logger.error(f"PostgreSQL deletion failed: {e}")
-            deletion_report["components"]["postgres"] = {"status": "error", "error": str(e)}
+            deletion_report["components"]["postgres"] = {"status": "error", "error": "operation failed"}
 
         # Delete from Redis
         try:
@@ -398,7 +388,7 @@ class GDPRService:
                 deletion_report["components"]["redis"] = {"status": "deleted"}
         except Exception as e:
             logger.error(f"Redis deletion failed: {e}")
-            deletion_report["components"]["redis"] = {"status": "error", "error": str(e)}
+            deletion_report["components"]["redis"] = {"status": "error", "error": "operation failed"}
 
         # Delete from Neo4j
         try:
@@ -407,7 +397,7 @@ class GDPRService:
                 deletion_report["components"]["neo4j"] = {"status": "deleted"}
         except Exception as e:
             logger.error(f"Neo4j deletion failed: {e}")
-            deletion_report["components"]["neo4j"] = {"status": "error", "error": str(e)}
+            deletion_report["components"]["neo4j"] = {"status": "error", "error": "operation failed"}
 
         # Delete from Qdrant
         try:
@@ -416,7 +406,7 @@ class GDPRService:
                 deletion_report["components"]["qdrant"] = {"status": "deleted"}
         except Exception as e:
             logger.error(f"Qdrant deletion failed: {e}")
-            deletion_report["components"]["qdrant"] = {"status": "error", "error": str(e)}
+            deletion_report["components"]["qdrant"] = {"status": "error", "error": "operation failed"}
 
         # Delete from Letta
         try:
@@ -425,7 +415,7 @@ class GDPRService:
                 deletion_report["components"]["letta"] = {"status": "deleted"}
         except Exception as e:
             logger.error(f"Letta deletion failed: {e}")
-            deletion_report["components"]["letta"] = {"status": "error", "error": str(e)}
+            deletion_report["components"]["letta"] = {"status": "error", "error": "operation failed"}
 
         # Note: Encryption key destruction would be handled by EncryptionService
         # This is logged but not executed here (handled separately for security)
@@ -467,7 +457,7 @@ class GDPRService:
                 logger.info(f"Module '{module_name}' restricted for user {user_id}")
             except Exception as e:
                 logger.error(f"Module '{module_name}' freeze failed: {e}")
-                freeze_report["components"][module_name] = {"status": "error", "error": str(e)}
+                freeze_report["components"][module_name] = {"status": "error", "error": "operation failed"}
 
         # Set restriction flag in PostgreSQL
         try:
@@ -476,7 +466,7 @@ class GDPRService:
                 freeze_report["components"]["postgres"] = {"status": "restricted"}
         except Exception as e:
             logger.error(f"PostgreSQL restriction failed: {e}")
-            freeze_report["components"]["postgres"] = {"status": "error", "error": str(e)}
+            freeze_report["components"]["postgres"] = {"status": "error", "error": "operation failed"}
 
         # Note: Active processing should be stopped by individual modules
         # The freeze_report indicates that processing is now restricted
@@ -512,7 +502,7 @@ class GDPRService:
                 logger.info(f"Module '{module_name}' activated for user {user_id}")
             except Exception as e:
                 logger.error(f"Module '{module_name}' unfreeze failed: {e}")
-                unfreeze_report["components"][module_name] = {"status": "error", "error": str(e)}
+                unfreeze_report["components"][module_name] = {"status": "error", "error": "operation failed"}
 
         # Remove restriction flag in PostgreSQL
         try:
@@ -521,7 +511,7 @@ class GDPRService:
                 unfreeze_report["components"]["postgres"] = {"status": "active"}
         except Exception as e:
             logger.error(f"PostgreSQL unrestriction failed: {e}")
-            unfreeze_report["components"]["postgres"] = {"status": "error", "error": str(e)}
+            unfreeze_report["components"]["postgres"] = {"status": "error", "error": "operation failed"}
 
         logger.info(f"GDPR unfreeze completed for user {user_id}")
         return unfreeze_report

@@ -274,9 +274,16 @@ class EncryptionService:
         if key:
             return base64.b64decode(key)
 
-        # Last resort: generate random key (development only)
+        # Last resort: deterministic dev key (development only)
+        # SECURITY: This key is NOT secret. Data encrypted with it is recoverable
+        # across restarts, but offers zero security. Never use in production.
         if os.environ.get("AURORA_DEV_MODE") == "1":
-            return os.urandom(self.KEY_SIZE)
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "AURORA_DEV_MODE: Using deterministic dev key. "
+                "DO NOT USE IN PRODUCTION — data is not securely encrypted."
+            )
+            return hashlib.sha256(b"aurora-sun-dev-key-DO-NOT-USE-IN-PRODUCTION").digest()
 
         raise EncryptionServiceError(
             "No master key found. Set AURORA_MASTER_KEY environment variable "
@@ -758,7 +765,12 @@ class HashService:
             if env_salt:
                 self._salt = base64.b64decode(env_salt)
             elif os.environ.get("AURORA_DEV_MODE") == "1":
-                self._salt = os.urandom(32)
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "AURORA_DEV_MODE: Using deterministic hash salt. "
+                    "DO NOT USE IN PRODUCTION."
+                )
+                self._salt = hashlib.sha256(b"aurora-sun-dev-salt-DO-NOT-USE-IN-PRODUCTION").digest()
             else:
                 raise EncryptionServiceError(
                     "No hash salt found. Set AURORA_HASH_SALT environment variable."

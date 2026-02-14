@@ -465,8 +465,16 @@ def t(lang: LanguageCode, module: str, key: str, **kwargs: Any) -> str:
                 # Found the translation, apply format variables
                 template = module_dict[key]
                 if kwargs:
+                    # Type guard: only allow safe types to prevent
+                    # format string injection via __format__ abuse
+                    safe_kwargs: dict[str, str | int | float] = {}
+                    for k, v in kwargs.items():
+                        if isinstance(v, (str, int, float)):
+                            safe_kwargs[k] = v
+                        else:
+                            safe_kwargs[k] = str(v)
                     try:
-                        return template.format(**kwargs)
+                        return template.format(**safe_kwargs)
                     except KeyError:
                         # If format fails, return template as-is
                         return template

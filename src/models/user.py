@@ -95,18 +95,37 @@ class User(Base):
         """Get decrypted name."""
         if self._name_plaintext is None:
             return None
-        # TODO: Integrate EncryptionService.decrypt_field() when available
-        # For now, return plaintext (will be fixed in next iteration)
-        # mypy: SQLAlchemy Column is accessed as string at runtime
+        try:
+            import json
+            data = json.loads(str(self._name_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.id), "name")
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+            pass
+        # Plaintext fallback for unencrypted/legacy data or id=None
         return str(self._name_plaintext) if self._name_plaintext else None
 
     @name.setter
     def name(self, value: str | None) -> None:
         """Set encrypted name."""
-        # TODO: Integrate EncryptionService.encrypt_field() when available
-        # For now, store plaintext (will be fixed in next iteration)
-        # mypy: SQLAlchemy allows setting Column via setattr
-        setattr(self, '_name_plaintext', value)
+        if value is None:
+            setattr(self, '_name_plaintext', None)
+            return
+        # Cannot encrypt without user ID (new user before INSERT)
+        if self.id is None:
+            setattr(self, '_name_plaintext', value)
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.id), DataClassification.SENSITIVE, "name"
+            )
+            setattr(self, '_name_plaintext', json.dumps(encrypted.to_db_dict()))
+        except Exception:
+            setattr(self, '_name_plaintext', value)
 
     @property
     def segment_display_name(self) -> str:

@@ -23,6 +23,8 @@ Usage:
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -30,9 +32,14 @@ from enum import StrEnum
 from typing import Any
 
 from src.lib.encryption import (
+    DataClassification,
+    EncryptedField,
     EncryptionService,
+    EncryptionServiceError,
     get_encryption_service,
 )
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Enums and Data Classes
@@ -207,8 +214,8 @@ class RevenueTracker:
             encryption_service: Optional encryption service. Uses global if None.
         """
         self._encryption = encryption_service or get_encryption_service()
-        # In-memory storage (in production, backed by PostgreSQL)
-        self._entries: dict[int, list[RevenueEntry]] = {}
+        # In-memory storage (encrypted at rest, backed by PostgreSQL in production)
+        self._entries: dict[int, list[dict[str, str | int | None]]] = {}
 
     async def parse_revenue(self, message: str) -> RevenueEntry | None:
         """
@@ -399,21 +406,51 @@ class RevenueTracker:
         if user_id not in self._entries:
             self._entries[user_id] = []
 
-        self._entries[user_id].append(entry)
-
-        # In production:
-        # encrypted = self._encryption.encrypt_field(
-        #     json.dumps(entry.to_dict()),
-        #     user_id=user_id,
-        #     classification=DataClassification.FINANCIAL,
-        #     field_name=f"revenue_entry_{len(self._entries[user_id])}"
-        # )
-        # await self._db.execute(
-        #     "INSERT INTO revenue_entries (user_id, encrypted_data) VALUES ($1, $2)",
-        #     user_id, encrypted.to_db_dict()
-        # )
+        # Encrypt entry before storing (FINANCIAL classification)
+        try:
+            encrypted = self._encryption.encrypt_field(
+                json.dumps(entry.to_dict()),
+                user_id=user_id,
+                classification=DataClassification.FINANCIAL,
+                field_name=f"revenue_entry_{len(self._entries[user_id]) + 1}",
+            )
+            self._entries[user_id].append(encrypted.to_db_dict())
+        except EncryptionServiceError:
+            logger.warning("revenue_entry_encryption_failed_storing_plaintext")
+            plaintext_record: dict[str, str | int | None] = {
+                "ciphertext": json.dumps(entry.to_dict()),
+                "classification": "plaintext_fallback",
+                "version": 0,
+            }
+            self._entries[user_id].append(plaintext_record)
 
         return f"entry_{len(self._entries[user_id])}"
+
+    def _decrypt_entry(
+        self,
+        stored: dict[str, str | int | None],
+        user_id: int,
+    ) -> dict[str, Any]:
+        """Decrypt a single stored revenue entry."""
+        classification = stored.get("classification")
+        if classification == "plaintext_fallback":
+            ciphertext = stored.get("ciphertext")
+            result: dict[str, Any] = json.loads(str(ciphertext))
+            return result
+        try:
+            encrypted = EncryptedField.from_db_dict({k: v for k, v in stored.items()})
+            plaintext = self._encryption.decrypt_field(encrypted, user_id=user_id)
+            decrypted: dict[str, Any] = json.loads(plaintext)
+            return decrypted
+        except (EncryptionServiceError, json.JSONDecodeError, KeyError):
+            logger.warning("revenue_entry_decryption_failed")
+            return {}
+
+    def _decrypt_all_entries(self, user_id: int) -> list[dict[str, Any]]:
+        """Decrypt all stored entries for a user."""
+        if user_id not in self._entries:
+            return []
+        return [self._decrypt_entry(e, user_id) for e in self._entries[user_id]]
 
     async def get_balance(self, user_id: int) -> dict[str, Any]:
         """
@@ -446,11 +483,23 @@ class RevenueTracker:
                 "calculated_at": datetime.now(UTC).isoformat(),
             }
 
-        entries = self._entries[user_id]
+        entries = self._decrypt_all_entries(user_id)
 
-        income = sum(e.amount for e in entries if e.entry_type == EntryType.INCOME)
-        expenses = sum(e.amount for e in entries if e.entry_type == EntryType.EXPENSE)
-        committed = sum(e.amount for e in entries if e.entry_type == EntryType.COMMITMENT)
+        income = sum(
+            float(e.get("amount", 0))
+            for e in entries
+            if e.get("entry_type") == EntryType.INCOME.value
+        )
+        expenses = sum(
+            float(e.get("amount", 0))
+            for e in entries
+            if e.get("entry_type") == EntryType.EXPENSE.value
+        )
+        committed = sum(
+            float(e.get("amount", 0))
+            for e in entries
+            if e.get("entry_type") == EntryType.COMMITMENT.value
+        )
 
         # Safe to spend: income minus commitments (not expenses - those are past)
         safe_to_spend = income - committed
@@ -483,24 +532,24 @@ class RevenueTracker:
         Returns:
             List of entry dictionaries
         """
-        if user_id not in self._entries:
+        decrypted = self._decrypt_all_entries(user_id)
+        if not decrypted:
             return []
-
-        entries = self._entries[user_id]
 
         # Apply filters
         if entry_type:
-            entries = [e for e in entries if e.entry_type == entry_type]
+            decrypted = [e for e in decrypted if e.get("entry_type") == entry_type.value]
         if category:
-            entries = [e for e in entries if e.category == category]
+            decrypted = [e for e in decrypted if e.get("category") == category.value]
 
         # Sort by date (most recent first)
-        entries.sort(key=lambda e: e.date or date.min, reverse=True)
+        decrypted.sort(
+            key=lambda e: e.get("date") or date.min.isoformat(),
+            reverse=True,
+        )
 
         # Apply limit
-        entries = entries[:limit]
-
-        return [e.to_dict() for e in entries]
+        return decrypted[:limit]
 
     async def delete_entry(self, user_id: int, entry_id: str) -> bool:
         """
@@ -550,7 +599,7 @@ class RevenueTracker:
             }
 
         balance = await self.get_balance(user_id)
-        entries = [e.to_dict() for e in self._entries[user_id]]
+        entries = self._decrypt_all_entries(user_id)
 
         return {
             "entries": entries,

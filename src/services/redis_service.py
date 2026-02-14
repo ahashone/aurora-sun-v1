@@ -15,12 +15,34 @@ class RedisService:
         self._client: redis.Redis | None = None
         self._sync_client: redis.Redis | None = None
 
+    @staticmethod
+    def _tls_kwargs(redis_url: str) -> dict[str, Any]:
+        """Build TLS keyword arguments when using rediss:// URLs."""
+        import ssl
+
+        if not redis_url.startswith("rediss://"):
+            return {}
+
+        cert_path = os.environ.get("REDIS_TLS_CERT_PATH")
+        if cert_path:
+            ssl_ctx = ssl.create_default_context(cafile=cert_path)
+        else:
+            ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = True
+        ssl_ctx.verify_mode = ssl.CERT_REQUIRED
+        return {"ssl": ssl_ctx}
+
     async def _ensure_async_client(self) -> redis.Redis | None:
         """Get or create async Redis client."""
         if self._client is None:
             redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
             try:
-                self._client = redis.from_url(redis_url, decode_responses=True)  # type: ignore[no-untyped-call]
+                tls = self._tls_kwargs(redis_url)
+                self._client = redis.from_url(  # type: ignore[no-untyped-call]
+                    redis_url,
+                    decode_responses=True,
+                    **tls,
+                )
                 # Test connection
                 await self._client.ping()  # type: ignore[misc]
             except redis.ConnectionError:
@@ -34,7 +56,12 @@ class RedisService:
             redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
             try:
                 import redis as sync_redis
-                self._sync_client = sync_redis.from_url(redis_url, decode_responses=True)  # type: ignore[no-untyped-call]
+                tls = self._tls_kwargs(redis_url)
+                self._sync_client = sync_redis.from_url(  # type: ignore[no-untyped-call]
+                    redis_url,
+                    decode_responses=True,
+                    **tls,
+                )
                 self._sync_client.ping()
             except Exception:
                 self._sync_client = None

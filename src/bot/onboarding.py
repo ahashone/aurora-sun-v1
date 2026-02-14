@@ -78,10 +78,10 @@ Data processed:
 - My energy and mood (if shared)
 
 Your data is:
-- Encrypted end-to-end
-- Never shared with third parties
+- Encrypted at rest (AES-256)
+- Processed by AI services (see /privacy for details)
 - Stored in EU/Germany
-- deletable at any time
+- Deletable at any time
 
 You can withdraw consent anytime by typing "/delete".
 """,
@@ -94,12 +94,12 @@ Verarbeitete Daten:
 - Meine Energie und Stimmung (falls geteilt)
 
 Ihre Daten sind:
-- Ende-zu-Ende verschlusselt
-- Niemals an Dritte weitergegeben
+- Verschluesselt gespeichert (AES-256)
+- Verarbeitet durch KI-Dienste (siehe /privacy fuer Details)
 - In der EU/Deutschland gespeichert
-- Jederzeit loschbar
+- Jederzeit loeschbar
 
-Sie konnen die Einwilligung jederzeit widerrufen mit "/delete".
+Sie koennen die Einwilligung jederzeit widerrufen mit "/delete".
 """,
     "sr": """
 Saglasan sam sa obradom mojih licnih podataka u svrhu AI coachiranja.
@@ -110,8 +110,8 @@ Obradjeni podaci:
 - Moja energija i raspolozenje (ako podelim)
 
 Vasi podaci su:
-- Sifrovani od kraja do kraja
-- Nikada ne dele sa trecim licima
+- Sifrovani u mirovanju (AES-256)
+- Obradjivani od strane AI servisa (pogledajte /privacy za detalje)
 - Cuvaju se u EU/Nemackoj
 - Mogu se izbrisati u bilo kom trenutku
 
@@ -126,8 +126,8 @@ Mozete povuci saglasnost u bilo kom trenutku pisanjem "/delete".
 - Η ενέργεια και η διάθεσή μου (αν μοιραστώ)
 
 Τα δεδομένα σας είναι:
-- Κρυπτογραφημένα από άκρο σε άκρο
-- Δεν μοιράζονται ποτέ με τρίτους
+- Κρυπτογραφημένα σε κατάσταση ηρεμίας (AES-256)
+- Επεξεργάζονται από υπηρεσίες AI (δείτε /privacy για λεπτομέρειες)
 - Αποθηκεύονται στην ΕΕ/Γερμανία
 - Διαγράψιμα ανά πάσα στιγμή
 

@@ -119,34 +119,40 @@ class SensoryProfile(Base):
 
     @property
     def modality_loads(self) -> dict[str, Any]:
-        """
-        Get decrypted modality loads.
-
-        Data Classification: ART_9_SPECIAL (encrypted)
-        """
+        """Get decrypted modality loads. Data Classification: ART_9_SPECIAL"""
         if self._modality_loads_plaintext is None:
             return {}
         try:
-            # TODO: Integrate EncryptionService.decrypt_field() when available
-            # For now, return parsed JSON (will be fixed in next iteration)
             import json
             plaintext = str(self._modality_loads_plaintext)
-            result: dict[str, Any] = json.loads(plaintext)
-            return result
+            data = json.loads(plaintext)
+            # Try to decrypt if it's an encrypted envelope
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                decrypted = get_encryption_service().decrypt_field(encrypted, int(self.user_id), "modality_loads")
+                result: dict[str, Any] = json.loads(decrypted)
+                return result
+            # Plaintext JSON fallback (legacy/unencrypted data)
+            if isinstance(data, dict):
+                return data
+            return {}
         except Exception:
             return {}
 
     @modality_loads.setter
     def modality_loads(self, value: dict[str, Any]) -> None:
-        """
-        Set encrypted modality loads.
-
-        Data Classification: ART_9_SPECIAL (encrypted)
-        """
+        """Set encrypted modality loads. Data Classification: ART_9_SPECIAL"""
         import json
-        # TODO: Integrate EncryptionService.encrypt_field() when available
-        # For now, store JSON (will be fixed in next iteration)
-        self._modality_loads_plaintext = json.dumps(value)  # type: ignore[assignment]
+        try:
+            from src.lib.encryption import DataClassification, get_encryption_service
+            plaintext_json = json.dumps(value)
+            encrypted = get_encryption_service().encrypt_field(
+                plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "modality_loads"
+            )
+            self._modality_loads_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception:
+            self._modality_loads_plaintext = json.dumps(value)  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<SensoryProfile(user_id={self.user_id}, overall_load={self.overall_load:.1f})>"
@@ -216,14 +222,32 @@ class MaskingLog(Base):
         """Get decrypted notes."""
         if self._notes_plaintext is None:
             return None
-        # TODO: Integrate EncryptionService.decrypt_field() when available
+        try:
+            import json
+            data = json.loads(str(self._notes_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "notes")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
         return str(self._notes_plaintext)
 
     @notes.setter
     def notes(self, value: str | None) -> None:
         """Set encrypted notes."""
-        # TODO: Integrate EncryptionService.encrypt_field() when available
-        self._notes_plaintext = value  # type: ignore[assignment]
+        if value is None:
+            self._notes_plaintext = None  # type: ignore[assignment]
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
+            )
+            self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception:
+            self._notes_plaintext = value  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<MaskingLog(user_id={self.user_id}, context={self.context}, load={self.load_score:.1f})>"
@@ -312,8 +336,16 @@ class BurnoutAssessment(Base):
         try:
             import json
             plaintext = str(self._energy_trajectory_plaintext)
-            result: list[Any] = json.loads(plaintext)
-            return result
+            data = json.loads(plaintext)
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                decrypted = get_encryption_service().decrypt_field(encrypted, int(self.user_id), "energy_trajectory")
+                result: list[Any] = json.loads(decrypted)
+                return result
+            if isinstance(data, list):
+                return data
+            return []
         except Exception:
             return []
 
@@ -321,19 +353,47 @@ class BurnoutAssessment(Base):
     def energy_trajectory(self, value: list[Any]) -> None:
         """Set encrypted energy trajectory."""
         import json
-        self._energy_trajectory_plaintext = json.dumps(value)  # type: ignore[assignment]
+        try:
+            from src.lib.encryption import DataClassification, get_encryption_service
+            plaintext_json = json.dumps(value)
+            encrypted = get_encryption_service().encrypt_field(
+                plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "energy_trajectory"
+            )
+            self._energy_trajectory_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception:
+            self._energy_trajectory_plaintext = json.dumps(value)  # type: ignore[assignment]
 
     @property
     def notes(self) -> str | None:
         """Get decrypted notes."""
         if self._notes_plaintext is None:
             return None
+        try:
+            import json
+            data = json.loads(str(self._notes_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "notes")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
         return str(self._notes_plaintext)
 
     @notes.setter
     def notes(self, value: str | None) -> None:
         """Set encrypted notes."""
-        self._notes_plaintext = value  # type: ignore[assignment]
+        if value is None:
+            self._notes_plaintext = None  # type: ignore[assignment]
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
+            )
+            self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception:
+            self._notes_plaintext = value  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<BurnoutAssessment(user_id={self.user_id}, type={self.burnout_type}, severity={self.severity_score:.1f})>"
@@ -478,12 +538,32 @@ class InertiaEvent(Base):
         """Get decrypted notes."""
         if self._notes_plaintext is None:
             return None
+        try:
+            import json
+            data = json.loads(str(self._notes_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "notes")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
         return str(self._notes_plaintext)
 
     @notes.setter
     def notes(self, value: str | None) -> None:
         """Set encrypted notes."""
-        self._notes_plaintext = value  # type: ignore[assignment]
+        if value is None:
+            self._notes_plaintext = None  # type: ignore[assignment]
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
+            )
+            self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception:
+            self._notes_plaintext = value  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<InertiaEvent(user_id={self.user_id}, type={self.inertia_type}, severity={self.severity:.1f})>"

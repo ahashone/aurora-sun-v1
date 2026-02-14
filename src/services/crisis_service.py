@@ -26,6 +26,8 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -33,11 +35,19 @@ from datetime import UTC, datetime
 from enum import StrEnum
 
 from src.lib.encryption import (
+    DataClassification,
+    EncryptedField,
     EncryptionService,
+    EncryptionServiceError,
     get_encryption_service,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _hash_uid(user_id: int) -> str:
+    """Return a 12-char SHA-256 prefix for log-safe user identification."""
+    return hashlib.sha256(str(user_id).encode()).hexdigest()[:12]
 
 
 # =============================================================================
@@ -305,8 +315,8 @@ class CrisisService:
             encryption_service: Optional encryption service. Uses global if None.
         """
         self._encryption = encryption_service or get_encryption_service()
-        # In-memory crisis event log (encrypted in production)
-        self._crisis_log: dict[int, list[dict[str, int | str | float | None]]] = {}
+        # In-memory crisis event log (encrypted at rest)
+        self._crisis_log: dict[int, list[dict[str, str | int | None]]] = {}
 
     async def detect_crisis(self, message: str) -> CrisisLevel:
         """
@@ -349,7 +359,10 @@ class CrisisService:
                     )
 
         if crisis_score >= 8:
-            logger.warning(f"CRISIS signal detected: {detected_signal}")
+            logger.warning(
+                "crisis_signal_detected level=crisis severity=%d",
+                detected_signal.severity if detected_signal else 0,
+            )
             return CrisisLevel.CRISIS
 
         # Check for warning signals
@@ -608,7 +621,7 @@ class CrisisService:
             return self.HOTLINES[country_map[country_lower]]
 
         # Fallback to default
-        logger.warning(f"Unknown country code: {country}, using default hotline")
+        logger.warning("unknown_country_code_using_default")
         return dict(self.DEFAULT_HOTLINE)  # Create a new dict to match return type
 
     async def _log_crisis_event(
@@ -641,21 +654,55 @@ class CrisisService:
         if user_id not in self._crisis_log:
             self._crisis_log[user_id] = []
 
-        self._crisis_log[user_id].append(event)
+        # Encrypt event before storing (ART_9_SPECIAL)
+        try:
+            encrypted = self._encryption.encrypt_field(
+                json.dumps(event),
+                user_id=user_id,
+                classification=DataClassification.ART_9_SPECIAL,
+                field_name=f"crisis_event_{len(self._crisis_log[user_id]) + 1}",
+            )
+            self._crisis_log[user_id].append(encrypted.to_db_dict())
+        except EncryptionServiceError:
+            # Fallback: store without encryption (dev mode only)
+            logger.warning("crisis_event_encryption_failed_storing_plaintext")
+            plaintext_record: dict[str, str | int | None] = {
+                "ciphertext": json.dumps(event),
+                "classification": "plaintext_fallback",
+                "version": 0,
+            }
+            self._crisis_log[user_id].append(plaintext_record)
 
-        # In production:
-        # encrypted = self._encryption.encrypt_field(
-        #     json.dumps(event),
-        #     user_id=user_id,
-        #     classification=DataClassification.ART_9_SPECIAL,
-        #     field_name=f"crisis_event_{len(self._crisis_log[user_id])}"
-        # )
-        # await self._db.execute(
-        #     "INSERT INTO crisis_events (user_id, encrypted_data) VALUES ($1, $2)",
-        #     user_id, encrypted.to_db_dict()
-        # )
+        logger.info(
+            "crisis_event_logged user_hash=%s level=%s",
+            _hash_uid(user_id),
+            level.value,
+        )
 
-        logger.info(f"Crisis event logged for user {user_id}: {level.value}")
+    def _decrypt_event(
+        self,
+        stored: dict[str, str | int | None],
+        user_id: int,
+    ) -> dict[str, int | str | float | None]:
+        """Decrypt a single stored crisis event."""
+        classification = stored.get("classification")
+        if classification == "plaintext_fallback":
+            # Dev-mode fallback: stored as plain JSON
+            ciphertext = stored.get("ciphertext")
+            result: dict[str, int | str | float | None] = json.loads(
+                str(ciphertext)
+            )
+            return result
+        try:
+            encrypted = EncryptedField.from_db_dict(
+                {k: v for k, v in stored.items()}
+            )
+            plaintext = self._encryption.decrypt_field(encrypted, user_id=user_id)
+            decrypted: dict[str, int | str | float | None] = json.loads(plaintext)
+            return decrypted
+        except (EncryptionServiceError, json.JSONDecodeError, KeyError):
+            logger.warning("crisis_event_decryption_failed")
+            return {"level": "unknown", "timestamp": None}
 
     async def get_crisis_history(self, user_id: int, limit: int = 10) -> list[dict[str, int | str | float | None]]:
         """
@@ -674,8 +721,10 @@ class CrisisService:
         if user_id not in self._crisis_log:
             return []
 
-        events = self._crisis_log[user_id][-limit:]
-        return list(reversed(events))
+        stored_events = self._crisis_log[user_id][-limit:]
+        return list(reversed([
+            self._decrypt_event(e, user_id) for e in stored_events
+        ]))
 
     async def should_pause_workflows(self, user_id: int) -> bool:
         """
@@ -697,7 +746,8 @@ class CrisisService:
         from datetime import timedelta
 
         recent_crisis = False
-        for event in reversed(self._crisis_log[user_id]):
+        for stored_event in reversed(self._crisis_log[user_id]):
+            event = self._decrypt_event(stored_event, user_id)
             if event.get("level") == CrisisLevel.CRISIS.value:
                 timestamp_val = event.get("timestamp")
                 if isinstance(timestamp_val, str):

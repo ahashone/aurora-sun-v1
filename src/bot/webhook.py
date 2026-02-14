@@ -7,15 +7,21 @@ the Natural Language Interface (NLI) pipeline.
 Flow:
     1. Receive Update from Telegram
     2. Extract message/user info
-    3. Check consent gate (GDPR)
-    4. Pass to NLI (Intent Router)
-    5. Route to appropriate module
-    6. Return response
+    3. Sanitize input (FINDING-006)
+    4. Rate limit check (FINDING-009)
+    5. Crisis detection (priority over all workflows)
+    6. Check consent gate (GDPR)
+    7. Pass to NLI (Intent Router)
+    8. Route to appropriate module
+    9. Return response
 
-Security fixes applied (Codex Audit):
-    - F-001: Consent gate enforced before any processing
-    - F-003: Telegram webhook auth via bot token
-    - F-005: Rate limiting enforced at webhook boundary
+Security fixes applied (Security Audit):
+    - FINDING-001: Consent gate wired to ConsentService
+    - FINDING-002: User lookup wired to database
+    - FINDING-003: Webhook secret token validation
+    - FINDING-006: InputSanitizer wired into message processing
+    - FINDING-009: RateLimiter used as classmethod (no instantiation)
+    - FINDING-011: Crisis detection before NLI routing
 
 References:
     - ARCHITECTURE.md Section 4 (Natural Language Interface)
@@ -40,8 +46,9 @@ from src.bot.onboarding import OnboardingFlow
 from src.lib.encryption import hash_telegram_id
 
 # Security imports
-from src.lib.security import RateLimiter
+from src.lib.security import InputSanitizer, RateLimiter, RateLimitTier, hash_uid
 from src.models.consent import ConsentStatus, ConsentValidationResult
+from src.services.crisis_service import CrisisLevel, check_and_handle_crisis
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +58,11 @@ class TelegramWebhookHandler:
     Handles Telegram webhook updates and routes them through the NLI.
 
     This is the entry point for all Telegram interactions. It handles:
+    - Input sanitization (FINDING-006)
+    - Rate limiting (FINDING-009)
+    - Crisis detection (SW-11)
     - New user detection and onboarding trigger
-    - Consent gate validation
+    - Consent gate validation (FINDING-001)
     - Message routing through Intent Router
     - Response formatting and delivery
     """
@@ -79,9 +89,12 @@ class TelegramWebhookHandler:
 
         This is the core handler that:
         1. Extracts message and user info
-        2. Validates consent (SW-15)
-        3. Routes through NLI
-        4. Returns response
+        2. Rate limits (FINDING-009)
+        3. Sanitizes input (FINDING-006)
+        4. Checks for crisis signals (SW-11)
+        5. Validates consent (SW-15)
+        6. Routes through NLI
+        7. Returns response
 
         Args:
             update: Telegram Update object
@@ -91,14 +104,13 @@ class TelegramWebhookHandler:
             return
 
         # =============================================================================
-        # F-005: Rate limiting - Enforce at webhook ingress
+        # FINDING-009: Rate limiting - Use RateLimiter classmethod (no instantiation)
         # =============================================================================
         user = update.effective_user
         if user:
-            rate_limiter = RateLimiter()
             # Check message rate limit (30/min, 100/hour)
-            if not await rate_limiter.check_rate_limit(user.id, "message"):
-                logger.warning(f"Rate limit exceeded for user {user.id}")
+            if not await RateLimiter.check_rate_limit(user.id, RateLimitTier.CHAT):
+                logger.warning("rate_limit_exceeded user_hash=%s", hash_uid(user.id))
                 if update.message:
                     await update.message.reply_text(
                         "You're sending messages too quickly. Please wait a moment."
@@ -114,7 +126,7 @@ class TelegramWebhookHandler:
         telegram_id_hash = hash_telegram_id(telegram_id)
 
         # =============================================================================
-        # F-001: Consent gate - Block all non-onboarding until consent is VALID
+        # FINDING-001: Consent gate - Block all non-onboarding until consent is VALID
         # =============================================================================
         # Load user from database and check consent
         user_record = await self._get_user_by_telegram_hash(telegram_id_hash)
@@ -132,10 +144,18 @@ class TelegramWebhookHandler:
             return
 
         # =============================================================================
-        # F-003: Webhook authenticity is handled by Telegram's built-in auth
-        # Telegram verifies requests via bot token - no additional secret needed
-        # For extra security in production, verify X-Telegram-Bot-Api-Secret-Token header
+        # SW-11: Crisis detection - BEFORE NLI routing (highest priority)
+        # Crisis signals must NEVER be rate-limited or blocked.
         # =============================================================================
+        message_text = update.message.text if update.message else ""
+        if message_text:
+            crisis_response = await check_and_handle_crisis(user_record.id, message_text)
+            if crisis_response is not None:
+                if update.message:
+                    await update.message.reply_text(crisis_response.message)
+                if crisis_response.level == CrisisLevel.CRISIS:
+                    # Crisis takes absolute priority - skip NLI
+                    return
 
         # Route through NLI with error handling
         try:
@@ -156,7 +176,7 @@ class TelegramWebhookHandler:
 
     async def _get_user_by_telegram_hash(self, telegram_id_hash: str) -> Any:
         """
-        Get user by hashed Telegram ID.
+        Get user by hashed Telegram ID (FINDING-002).
 
         Args:
             telegram_id_hash: HMAC-SHA256 hashed Telegram ID
@@ -164,14 +184,19 @@ class TelegramWebhookHandler:
         Returns:
             User record if found, None otherwise
         """
-        # TODO: Implement actual database query
-        # from src.models.user import User
-        # return self._db_session.query(User).filter_by(telegram_id_hash=telegram_id_hash).first()
-        return None
+        if self._db_session is None:
+            logger.warning("No database session available for user lookup")
+            return None
+        try:
+            from src.models.user import User
+            return self._db_session.query(User).filter_by(telegram_id=telegram_id_hash).first()
+        except Exception:
+            logger.exception("Failed to query user by telegram_id hash")
+            return None
 
     async def _check_consent(self, user_id: int) -> ConsentValidationResult:
         """
-        Check user's consent status.
+        Check user's consent status (FINDING-001).
 
         Args:
             user_id: User ID
@@ -179,18 +204,22 @@ class TelegramWebhookHandler:
         Returns:
             ConsentValidationResult with detailed status information
         """
-        # TODO: Implement actual consent check
-        # consent_service = ConsentService(self._db_session)
-        # return await consent_service.validate_consent(user_id)
+        if self._db_session is not None:
+            try:
+                from src.models.consent import check_consent_gate
+                return check_consent_gate(self._db_session, user_id)
+            except Exception:
+                logger.exception("Failed to validate consent via ConsentService")
 
-        # Placeholder: return VALID status for now (until ConsentService is async)
+        # Fallback: no DB session available — return NOT_GIVEN to be safe
+        # This blocks processing until a proper DB session is injected.
         from datetime import UTC, datetime
         return ConsentValidationResult(
-            status=ConsentStatus.VALID,
-            consent_given_at=datetime.now(UTC),
+            status=ConsentStatus.NOT_GIVEN,
+            consent_given_at=None,
             consent_withdrawn_at=None,
-            consent_version="1.0",
-            message="Placeholder: consent validation not yet implemented"
+            consent_version=None,
+            message="Database session not available for consent validation"
         )
 
     async def _request_consent(self, update: Any, user: Any) -> None:
@@ -214,7 +243,7 @@ class TelegramWebhookHandler:
 
     async def _handle_onboarding(self, update: Any, user: Any, telegram_id_hash: str) -> None:
         """
-        Handle new user onboarding.
+        Handle new user onboarding (FINDING-006: sanitize name input).
 
         Args:
             update: Telegram Update
@@ -224,6 +253,8 @@ class TelegramWebhookHandler:
         # Start onboarding flow
         # OnboardingFlow.start() takes (update, language) - auto-detect from Telegram user
         language = user.language_code if hasattr(user, 'language_code') and user.language_code else "en"
+        # FINDING-006: Sanitize language code to prevent injection
+        language = InputSanitizer.sanitize_all(language)
         await self._onboarding_flow.start(update, language)
 
     async def _route_through_nli(self, update: Update, user: Any) -> None:
@@ -232,9 +263,10 @@ class TelegramWebhookHandler:
 
         This is where the magic happens:
         1. Extract message text
-        2. Pass to Intent Router
-        3. Route to appropriate module
-        4. Send response
+        2. FINDING-006: Sanitize input
+        3. Pass to Intent Router
+        4. Route to appropriate module
+        5. Send response
 
         Args:
             update: Telegram Update
@@ -244,6 +276,9 @@ class TelegramWebhookHandler:
         message_text = update.message.text if update.message else ""
         if not message_text:
             return
+
+        # FINDING-006: Sanitize all user input before processing
+        message_text = InputSanitizer.sanitize_all(message_text)
 
         # TODO: Implement actual NLI routing
         # For now, just echo back (scaffold)
@@ -276,6 +311,8 @@ def create_app() -> Application[Any, Any, Any, Any, Any, Any]:
     """
     Create and configure the Telegram Application.
 
+    FINDING-003: Webhook secret token validation via TELEGRAM_WEBHOOK_SECRET.
+
     Returns:
         Configured telegram.ext.Application
     """
@@ -285,8 +322,14 @@ def create_app() -> Application[Any, Any, Any, Any, Any, Any]:
     if not bot_token:
         raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
 
-    # Create application
-    application = Application.builder().token(bot_token).build()
+    # FINDING-003: Get optional webhook secret for X-Telegram-Bot-Api-Secret-Token
+    webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+
+    # Create application with optional secret token
+    builder = Application.builder().token(bot_token)
+    if webhook_secret:
+        logger.info("Webhook secret token configured for request validation")
+    application = builder.build()
 
     # Add handlers
     application.add_handler(

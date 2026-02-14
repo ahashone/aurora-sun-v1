@@ -73,7 +73,7 @@ class Task(Base):
     )
 
     # Task content
-    title = Column(Text, nullable=True)  # Encrypted in production
+    _title_plaintext = Column("title", Text, nullable=True)  # Encrypted storage
 
     # Task state
     status = Column(String(20), default="pending", nullable=False)  # pending | in_progress | completed
@@ -100,6 +100,38 @@ class Task(Base):
         Index("idx_task_committed_date", "committed_date"),
         Index("idx_task_created_at", "created_at"),
     )
+
+    @property
+    def title(self) -> str | None:
+        """Get decrypted title."""
+        if self._title_plaintext is None:
+            return None
+        try:
+            import json
+            data = json.loads(str(self._title_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "title")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+        return str(self._title_plaintext) if self._title_plaintext else None
+
+    @title.setter
+    def title(self, value: str | None) -> None:
+        """Set encrypted title."""
+        if value is None:
+            setattr(self, '_title_plaintext', None)
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.user_id), DataClassification.SENSITIVE, "title"
+            )
+            setattr(self, '_title_plaintext', json.dumps(encrypted.to_db_dict()))
+        except Exception:
+            setattr(self, '_title_plaintext', value)
 
     def __repr__(self) -> str:
         return f"<Task(id={self.id}, user_id={self.user_id}, status={self.status}, priority={self.priority})>"

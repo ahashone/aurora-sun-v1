@@ -27,12 +27,22 @@ from alembic import context
 from src.models.base import Base
 
 # Import all models to register them with Base.metadata
-from src.models.user import User
-from src.models.vision import Vision
-from src.models.goal import Goal
-from src.models.task import Task
-from src.models.daily_plan import DailyPlan
-from src.models.session import Session
+from src.models.user import User  # noqa: F401
+from src.models.vision import Vision  # noqa: F401
+from src.models.goal import Goal  # noqa: F401
+from src.models.task import Task  # noqa: F401
+from src.models.daily_plan import DailyPlan  # noqa: F401
+from src.models.session import Session  # noqa: F401
+from src.models.consent import ConsentRecord  # noqa: F401
+from src.models.neurostate import (  # noqa: F401
+    SensoryProfile,
+    MaskingLog,
+    BurnoutAssessment,
+    ChannelState,
+    InertiaEvent,
+    EnergyLevelRecord,
+)
+from src.modules.capture import CapturedContent  # noqa: F401
 
 # This is the Alembic Config object
 config = context.config

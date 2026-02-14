@@ -34,6 +34,7 @@ Usage:
     app.add_middleware(SecurityHeaders)
 """
 
+import hashlib
 import re
 import time
 from dataclasses import dataclass
@@ -43,6 +44,11 @@ from typing import Any
 import structlog
 
 logger = structlog.get_logger()
+
+
+def hash_uid(user_id: int) -> str:
+    """Return a 12-char SHA-256 prefix for log-safe user identification."""
+    return hashlib.sha256(str(user_id).encode()).hexdigest()[:12]
 
 
 # ============================================
@@ -478,7 +484,8 @@ class RateLimiter:
     async def check_rate_limit(
         cls,
         user_id: int,
-        action: str = "chat"
+        action: str = "chat",
+        fail_closed: bool = False,
     ) -> bool:
         """
         Check if user is within rate limit for an action.
@@ -486,6 +493,8 @@ class RateLimiter:
         Args:
             user_id: User's Telegram ID
             action: Action tier ("chat", "voice", "api", "admin")
+            fail_closed: If True, deny requests when both Redis and in-memory
+                fallback are unavailable. Use for sensitive endpoints.
 
         Returns:
             True if allowed, False if rate limit exceeded
@@ -493,17 +502,27 @@ class RateLimiter:
         config = RATE_LIMIT_CONFIGS.get(RateLimitTier(action), RATE_LIMIT_CONFIGS[RateLimitTier.CHAT])
 
         # Check minute limit
-        allowed_minute, _ = await cls._check_window(
-            user_id=user_id,
-            action=action,
-            window=config.window_minute,
-            max_requests=config.requests_per_minute
-        )
+        try:
+            allowed_minute, _ = await cls._check_window(
+                user_id=user_id,
+                action=action,
+                window=config.window_minute,
+                max_requests=config.requests_per_minute
+            )
+        except Exception:
+            if fail_closed:
+                logger.warning(
+                    "rate_limit_fail_closed",
+                    user_hash=hash_uid(user_id),
+                    action=action,
+                )
+                return False
+            return True
 
         if not allowed_minute:
             logger.warning(
                 "rate_limit_exceeded_minute",
-                user_id=user_id,
+                user_hash=hash_uid(user_id),
                 action=action,
                 limit=config.requests_per_minute,
                 window=config.window_minute
@@ -511,17 +530,27 @@ class RateLimiter:
             return False
 
         # Check hour limit
-        allowed_hour, _ = await cls._check_window(
-            user_id=user_id,
-            action=action,
-            window=config.window_hour,
-            max_requests=config.requests_per_hour
-        )
+        try:
+            allowed_hour, _ = await cls._check_window(
+                user_id=user_id,
+                action=action,
+                window=config.window_hour,
+                max_requests=config.requests_per_hour
+            )
+        except Exception:
+            if fail_closed:
+                logger.warning(
+                    "rate_limit_fail_closed",
+                    user_hash=hash_uid(user_id),
+                    action=action,
+                )
+                return False
+            return True
 
         if not allowed_hour:
             logger.warning(
                 "rate_limit_exceeded_hour",
-                user_id=user_id,
+                user_hash=hash_uid(user_id),
                 action=action,
                 limit=config.requests_per_hour,
                 window=config.window_hour
@@ -689,7 +718,7 @@ class RateLimiter:
             if keys:
                 await redis_client.delete(*keys)
 
-        logger.info("rate_limit_reset", user_id=user_id, action=action)
+        logger.info("rate_limit_reset", user_hash=hash_uid(user_id), action=action)
 
 
 # ============================================

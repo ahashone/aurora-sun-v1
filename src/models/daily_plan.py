@@ -82,7 +82,7 @@ class DailyPlan(Base):
     auto_review_triggered = Column(Boolean, default=False, nullable=False)
 
     # Reflection (encrypted in production)
-    reflection_text = Column(Text, nullable=True)
+    _reflection_text_plaintext = Column("reflection_text", Text, nullable=True)  # Encrypted storage
 
     # Timestamps
     created_at = Column(
@@ -102,6 +102,38 @@ class DailyPlan(Base):
         Index("idx_daily_plan_user_date", "user_id", "date", unique=True),
         Index("idx_daily_plan_created_at", "created_at"),
     )
+
+    @property
+    def reflection_text(self) -> str | None:
+        """Get decrypted reflection text."""
+        if self._reflection_text_plaintext is None:
+            return None
+        try:
+            import json
+            data = json.loads(str(self._reflection_text_plaintext))
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "reflection_text")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+        return str(self._reflection_text_plaintext) if self._reflection_text_plaintext else None
+
+    @reflection_text.setter
+    def reflection_text(self, value: str | None) -> None:
+        """Set encrypted reflection text."""
+        if value is None:
+            setattr(self, '_reflection_text_plaintext', None)
+            return
+        try:
+            import json
+            from src.lib.encryption import DataClassification, get_encryption_service
+            encrypted = get_encryption_service().encrypt_field(
+                value, int(self.user_id), DataClassification.SENSITIVE, "reflection_text"
+            )
+            setattr(self, '_reflection_text_plaintext', json.dumps(encrypted.to_db_dict()))
+        except Exception:
+            setattr(self, '_reflection_text_plaintext', value)
 
     def __repr__(self) -> str:
         return f"<DailyPlan(id={self.id}, user_id={self.user_id}, date={self.date})>"
