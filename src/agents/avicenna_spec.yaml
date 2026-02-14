@@ -1,0 +1,267 @@
+# Avicenna Architecture Specification
+#
+# This spec defines the expected behavior of Aurora Sun V1 modules:
+# - Valid state transitions
+# - Expected database writes per transition
+# - SLA thresholds (response time, state duration)
+#
+# Avicenna validates runtime behavior against this spec.
+# Philosophy: Diagnose, never fix. Human decides.
+
+version: "1.0"
+
+# =============================================================================
+# Module State Machines
+# =============================================================================
+
+modules:
+  planning:
+    states:
+      - SCOPE
+      - VISION
+      - OVERVIEW
+      - PRIORITIES
+      - BREAKDOWN
+      - SEGMENT_CHECK
+      - COMMITMENT
+      - DONE
+
+    transitions:
+      # Initial entry
+      - from: null
+        to: SCOPE
+        expected_writes:
+          - table: sessions
+            count: 1
+            description: "Session started"
+
+      # Linear flow
+      - from: SCOPE
+        to: VISION
+        expected_writes: []
+
+      - from: VISION
+        to: OVERVIEW
+        expected_writes: []
+
+      - from: OVERVIEW
+        to: PRIORITIES
+        expected_writes: []
+
+      - from: PRIORITIES
+        to: BREAKDOWN
+        expected_writes: []
+
+      - from: BREAKDOWN
+        to: SEGMENT_CHECK
+        expected_writes:
+          - table: tasks
+            count: "1+"
+            description: "Tasks created from breakdown"
+
+      - from: SEGMENT_CHECK
+        to: COMMITMENT
+        expected_writes: []
+
+      - from: COMMITMENT
+        to: DONE
+        expected_writes:
+          - table: daily_plans
+            count: 1
+            description: "Daily plan committed"
+
+      # Exit
+      - from: DONE
+        to: null
+        expected_writes:
+          - table: sessions
+            count: 1
+            description: "Session ended"
+
+  review:
+    states:
+      - COMPLETION_CHECK
+      - ACCOMPLISHMENTS
+      - CHALLENGES
+      - ENERGY
+      - REFLECTION
+      - FORWARD_LOOK
+      - DONE
+
+    transitions:
+      - from: null
+        to: COMPLETION_CHECK
+        expected_writes:
+          - table: sessions
+            count: 1
+            description: "Session started"
+
+      - from: COMPLETION_CHECK
+        to: ACCOMPLISHMENTS
+        expected_writes: []
+
+      - from: ACCOMPLISHMENTS
+        to: CHALLENGES
+        expected_writes: []
+
+      - from: CHALLENGES
+        to: ENERGY
+        expected_writes: []
+
+      - from: ENERGY
+        to: REFLECTION
+        expected_writes: []
+
+      - from: REFLECTION
+        to: FORWARD_LOOK
+        expected_writes: []
+
+      - from: FORWARD_LOOK
+        to: DONE
+        expected_writes:
+          - table: daily_plans
+            count: 1
+            description: "Review data saved to daily plan"
+
+      - from: DONE
+        to: null
+        expected_writes:
+          - table: sessions
+            count: 1
+            description: "Session ended"
+
+  capture:
+    states:
+      - CAPTURE
+      - CLASSIFY
+      - ROUTE
+      - DONE
+
+    transitions:
+      - from: null
+        to: CAPTURE
+        expected_writes: []
+
+      - from: CAPTURE
+        to: CLASSIFY
+        expected_writes: []
+
+      - from: CLASSIFY
+        to: ROUTE
+        expected_writes: []
+
+      - from: ROUTE
+        to: DONE
+        expected_writes:
+          - table: captured_content
+            count: 1
+            description: "Captured item stored"
+
+      - from: DONE
+        to: null
+        expected_writes: []
+
+  future_letter:
+    states:
+      - INTRO
+      - CURRENT_STATE
+      - FUTURE_VISION
+      - LETTER_DRAFT
+      - REVIEW
+      - DONE
+
+    transitions:
+      - from: null
+        to: INTRO
+        expected_writes:
+          - table: sessions
+            count: 1
+            description: "Session started"
+
+      - from: INTRO
+        to: CURRENT_STATE
+        expected_writes: []
+
+      - from: CURRENT_STATE
+        to: FUTURE_VISION
+        expected_writes: []
+
+      - from: FUTURE_VISION
+        to: LETTER_DRAFT
+        expected_writes: []
+
+      - from: LETTER_DRAFT
+        to: REVIEW
+        expected_writes: []
+
+      - from: REVIEW
+        to: DONE
+        expected_writes:
+          - table: visions
+            count: 1
+            description: "Vision created/updated"
+
+      - from: DONE
+        to: null
+        expected_writes:
+          - table: sessions
+            count: 1
+            description: "Session ended"
+
+# =============================================================================
+# SLA Definitions
+# =============================================================================
+
+slas:
+  # Maximum time for a single module response
+  max_response_time_seconds: 30
+
+  # Maximum time in a single state before alerting
+  max_state_duration_minutes: 30
+
+  # Maximum time since last interaction before marking as stale
+  max_interaction_gap_minutes: 60
+
+  # Minimum time between admin notifications (cooldown)
+  admin_notification_cooldown_seconds: 60
+
+  # Maximum concurrent sessions per user
+  max_concurrent_sessions_per_user: 3
+
+# =============================================================================
+# Issue Severity Thresholds
+# =============================================================================
+
+severity_rules:
+  # CRITICAL: immediate admin notification
+  critical:
+    - type: invalid_transition
+      description: "State transition not in spec"
+
+    - type: missing_write
+      description: "Expected DB write didn't happen"
+
+    - type: stuck_state
+      description: "User stuck in state > max_state_duration"
+
+    - type: module_crash
+      description: "Module raised unhandled exception"
+
+  # WARNING: buffer, notify on pattern
+  warning:
+    - type: unexpected_write
+      description: "DB write happened but not in spec"
+
+    - type: slow_response
+      description: "Response time > max_response_time"
+
+    - type: stale_interaction
+      description: "No interaction > max_interaction_gap"
+
+  # INFO: log only
+  info:
+    - type: state_entered
+      description: "Module entered new state"
+
+    - type: state_exited
+      description: "Module exited state normally"

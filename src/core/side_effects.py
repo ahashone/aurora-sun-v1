@@ -62,6 +62,12 @@ class SideEffectType(Enum):
     SCHEDULE_NOTIFICATION = "schedule_notification"
     CANCEL_NOTIFICATION = "cancel_notification"
 
+    # Second Brain routing operations
+    ADD_TO_PLANNING_INBOX = "add_to_planning_inbox"
+    CREATE_GOAL_FROM_CAPTURE = "create_goal_from_capture"
+    ROUTE_TO_AURORA = "route_to_aurora"
+    STORE_IN_SECOND_BRAIN = "store_in_second_brain"
+
     # Custom/Raw side effects
     CUSTOM = "custom"
 

@@ -103,6 +103,7 @@ class Vision(Base):
             return
         try:
             import json
+
             from src.lib.encryption import DataClassification, get_encryption_service
             encrypted = get_encryption_service().encrypt_field(
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "content"

@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.lib.encryption import EncryptionServiceError
 from src.services.crisis_service import (
     CountryCode,
     CrisisLevel,
@@ -44,38 +45,49 @@ from src.services.crisis_service import (
 
 @pytest.fixture
 def crisis_service():
-    """Create a CrisisService with mocked encryption to avoid needing real keys."""
+    """Create a CrisisService with mocked encryption that falls back to plaintext."""
     mock_encryption = MagicMock()
+    mock_encryption.encrypt_field.side_effect = EncryptionServiceError("test mode")
     return CrisisService(encryption_service=mock_encryption)
+
+
+def _plaintext_event(event: dict[str, object]) -> dict[str, str | int | None]:
+    """Wrap a crisis event dict in plaintext_fallback format for _decrypt_event."""
+    import json
+    return {
+        "ciphertext": json.dumps(event),
+        "classification": "plaintext_fallback",
+        "version": 0,
+    }
 
 
 @pytest.fixture
 def crisis_service_with_history(crisis_service):
     """Create a CrisisService pre-populated with crisis event history."""
     crisis_service._crisis_log[1] = [
-        {
+        _plaintext_event({
             "user_id": 1,
             "level": "crisis",
             "signal": "suicide",
             "signal_severity": 8,
             "timestamp": datetime.now(UTC).isoformat(),
-        },
-        {
+        }),
+        _plaintext_event({
             "user_id": 1,
             "level": "warning",
             "signal": "feel hopeless",
             "signal_severity": 5,
             "timestamp": datetime.now(UTC).isoformat(),
-        },
+        }),
     ]
     crisis_service._crisis_log[2] = [
-        {
+        _plaintext_event({
             "user_id": 2,
             "level": "warning",
             "signal": "feel empty",
             "signal_severity": 5,
             "timestamp": datetime.now(UTC).isoformat(),
-        },
+        }),
     ]
     return crisis_service
 
@@ -85,13 +97,13 @@ def crisis_service_with_old_crisis(crisis_service):
     """Create a CrisisService with a crisis event older than 24 hours."""
     old_time = datetime.now(UTC) - timedelta(hours=25)
     crisis_service._crisis_log[99] = [
-        {
+        _plaintext_event({
             "user_id": 99,
             "level": "crisis",
             "signal": "suicide",
             "signal_severity": 9,
             "timestamp": old_time.isoformat(),
-        },
+        }),
     ]
     return crisis_service
 
@@ -1037,13 +1049,13 @@ class TestGetCrisisHistory:
         """History limit parameter caps number of returned events."""
         # Add 5 events
         for i in range(5):
-            crisis_service._crisis_log.setdefault(10, []).append({
+            crisis_service._crisis_log.setdefault(10, []).append(_plaintext_event({
                 "user_id": 10,
                 "level": "warning",
                 "signal": f"signal_{i}",
                 "signal_severity": 5,
                 "timestamp": datetime.now(UTC).isoformat(),
-            })
+            }))
 
         history = await crisis_service.get_crisis_history(user_id=10, limit=3)
         assert len(history) == 3
@@ -1053,13 +1065,13 @@ class TestGetCrisisHistory:
         """Default limit is 10 events."""
         # Add 15 events
         for i in range(15):
-            crisis_service._crisis_log.setdefault(20, []).append({
+            crisis_service._crisis_log.setdefault(20, []).append(_plaintext_event({
                 "user_id": 20,
                 "level": "warning",
                 "signal": f"signal_{i}",
                 "signal_severity": 5,
                 "timestamp": datetime.now(UTC).isoformat(),
-            })
+            }))
 
         history = await crisis_service.get_crisis_history(user_id=20)
         assert len(history) == 10
@@ -1068,13 +1080,13 @@ class TestGetCrisisHistory:
     async def test_history_returns_most_recent_when_limited(self, crisis_service):
         """When limited, the most recent events are returned."""
         for i in range(5):
-            crisis_service._crisis_log.setdefault(30, []).append({
+            crisis_service._crisis_log.setdefault(30, []).append(_plaintext_event({
                 "user_id": 30,
                 "level": "warning",
                 "signal": f"signal_{i}",
                 "signal_severity": 5,
                 "timestamp": datetime.now(UTC).isoformat(),
-            })
+            }))
 
         history = await crisis_service.get_crisis_history(user_id=30, limit=2)
         assert len(history) == 2
@@ -1108,28 +1120,36 @@ class TestLogCrisisEvent:
 
     @pytest.mark.asyncio
     async def test_event_logged_with_signal(self, crisis_service):
-        """Crisis event with signal is logged correctly."""
+        """Crisis event with signal is logged correctly (plaintext fallback in test)."""
+        import json
+
         signal = CrisisSignal(signal="suicide", severity=9, context="test")
         await crisis_service._log_crisis_event(
             user_id=1, level=CrisisLevel.CRISIS, signal=signal
         )
 
         assert 1 in crisis_service._crisis_log
-        event = crisis_service._crisis_log[1][0]
+        stored = crisis_service._crisis_log[1][0]
+        # In test mode, encryption fails and events are stored as plaintext_fallback
+        assert stored["classification"] == "plaintext_fallback"
+        event = json.loads(str(stored["ciphertext"]))
         assert event["user_id"] == 1
         assert event["level"] == "crisis"
         assert event["signal"] == "suicide"
-        assert event["signal_severity"] == 9
+        assert event["signal_severity"] == 9.0
         assert "timestamp" in event
 
     @pytest.mark.asyncio
     async def test_event_logged_without_signal(self, crisis_service):
         """Crisis event without signal is logged with None values."""
+        import json
+
         await crisis_service._log_crisis_event(
             user_id=1, level=CrisisLevel.WARNING, signal=None
         )
 
-        event = crisis_service._crisis_log[1][0]
+        stored = crisis_service._crisis_log[1][0]
+        event = json.loads(str(stored["ciphertext"]))
         assert event["signal"] is None
         assert event["signal_severity"] is None
 

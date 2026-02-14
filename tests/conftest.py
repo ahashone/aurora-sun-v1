@@ -62,6 +62,7 @@ from src.models.task import Task  # noqa: E402, F401
 from src.models.user import User  # noqa: E402, F401
 from src.models.vision import Vision  # noqa: E402, F401
 from src.modules.capture import CapturedContent  # noqa: E402, F401
+from src.modules.second_brain import SecondBrainEntry  # noqa: E402, F401
 from src.services.crisis_service import CrisisService  # noqa: E402
 
 # ---------------------------------------------------------------------------

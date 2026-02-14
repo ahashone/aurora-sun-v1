@@ -253,7 +253,7 @@ Now that users generate daily data, the intelligence has something to work with.
 ---
 
 ## Phase 2.5: Hybrid Quality Upgrade
-**Status:** In Progress
+**Status:** ✅ COMPLETE
 **Duration:** 1-2 weeks
 **Dependency:** Phase 2 (audit complete)
 **Branch:** `claude/hybrid-quality-upgrade`
@@ -302,7 +302,7 @@ Now that users generate daily data, the intelligence has something to work with.
 ---
 
 ## Phase 3: Knowledge + Aurora + Depth
-**Status:** Not Started
+**Status:** ✅ COMPLETE
 **Duration:** 5-7 weeks
 **Dependency:** Phase 2 (meaningful data to store and synthesize)
 **Databases:** + Neo4j + Qdrant + Letta
@@ -310,218 +310,218 @@ Now that users generate daily data, the intelligence has something to work with.
 
 ### 3.1: Knowledge Layer
 
-- [ ] Neo4j: Vision → Goal → Task → Habit hierarchy, Belief → BLOCKS → Goal, Pattern relationships, Neurostate trajectories, Aurora narrative ontology
-- [ ] Qdrant: captured item embeddings, research embeddings, coaching trace embeddings
-- [ ] Letta: 3-tier memory (short-term session / long-term profile / archival history)
-- [ ] Neo4j sync from PostgreSQL events
+- [x] Neo4j: Vision → Goal → Task → Habit hierarchy, Belief → BLOCKS → Goal, Pattern relationships, Neurostate trajectories, Aurora narrative ontology
+- [x] Qdrant: captured item embeddings, research embeddings, coaching trace embeddings
+- [x] Letta: 3-tier memory (short-term session / long-term profile / archival history)
+- [x] Neo4j sync from PostgreSQL events
 
 ### 3.2: Aurora Agent
 
-- [ ] Foundation: models, LangGraph workflow (Gather → Assess → Synthesize → Recommend → Error)
-- [ ] Narrative Engine: StoryArc, Chapter, Daily Note, Milestone Card
-- [ ] Growth Tracker: TrajectoryScore (5 dimensions), 3-window comparison (now / 4w / 12w)
-- [ ] Milestone Detection (deterministic): pattern broken, belief refuted, goal achieved, habit established (ADHD/AuDHD: 21d, Autism: 14d)
-- [ ] Coherence Auditor: Vision-Goal-Habit coherence, contradiction detection, gap/conflict scores
-- [ ] Proactive Engine: ReadinessScore-based, max 3/week, boom-bust detection for ADHD
-- [ ] DSPy growth signatures (5 segment-specific)
-- [ ] Dual-trigger scheduler: cron + Redis events
-- [ ] **Autonomy:** proactive impulses from approved types only. New types → proposal to admin.
+- [x] Foundation: models, LangGraph workflow (Gather → Assess → Synthesize → Recommend → Error)
+- [x] Narrative Engine: StoryArc, Chapter, Daily Note, Milestone Card
+- [x] Growth Tracker: TrajectoryScore (5 dimensions), 3-window comparison (now / 4w / 12w)
+- [x] Milestone Detection (deterministic): pattern broken, belief refuted, goal achieved, habit established (ADHD/AuDHD: 21d, Autism: 14d)
+- [x] Coherence Auditor: Vision-Goal-Habit coherence, contradiction detection, gap/conflict scores
+- [x] Proactive Engine: ReadinessScore-based, max 3/week, boom-bust detection for ADHD
+- [x] DSPy growth signatures (5 segment-specific)
+- [x] Dual-trigger scheduler: cron + Redis events
+- [x] **Autonomy:** proactive impulses from approved types only. New types → proposal to admin.
 
 ### 3.3: Coaching Engine (Full)
 
-- [ ] LangGraph: Router → Enrich Context → Knowledge → Coaching → Memory → Summary → END
-- [ ] DSPy segment-specific coaching signatures
-- [ ] 4-tier fallback: Optimized Artifact → DSPy → PydanticAI → Placeholder
-- [ ] Contextual prompt generation (Sonnet)
-- [ ] Langfuse tracing
+- [x] LangGraph: Router → Enrich Context → Knowledge → Coaching → Memory → Summary → END
+- [x] DSPy segment-specific coaching signatures
+- [x] 4-tier fallback: Optimized Artifact → DSPy → PydanticAI → Placeholder
+- [x] Contextual prompt generation (Sonnet)
+- [x] Langfuse tracing
 
 ### 3.4: Habit Module (Atomic Habits Framework)
 
-- [ ] State machine: CREATE → IDENTITY → CUE → CRAVING → RESPONSE → REWARD → TRACKING
-- [ ] Identity-based framing: "I am someone who meditates" (not "I want to meditate")
-- [ ] 2-minute rule: start tiny, scale up (critical for ADHD)
-- [ ] Habit stacking: "After I [existing], I will [new]"
-- [ ] Daily check-ins via CheckinScheduler (segment-aware timing)
-- [ ] Cumulative progress (NOT streak-based for ADHD)
-- [ ] Habit-goal linking (CoherenceRatio)
-- [ ] Aurora milestone bridge: passive → active tracking
-- [ ] Daily workflow hooks: morning reminders, evening check-in
-- [ ] Segment-specific: ADHD (novelty rotation, gamification, dopamine pairing), Autism (fixed slots, minimal variation, monotropic focus), AuDHD (channel-aware, spoon-drawer, integrity trigger)
+- [x] State machine: CREATE → IDENTITY → CUE → CRAVING → RESPONSE → REWARD → TRACKING
+- [x] Identity-based framing: "I am someone who meditates" (not "I want to meditate")
+- [x] 2-minute rule: start tiny, scale up (critical for ADHD)
+- [x] Habit stacking: "After I [existing], I will [new]"
+- [x] Daily check-ins via CheckinScheduler (segment-aware timing)
+- [x] Cumulative progress (NOT streak-based for ADHD)
+- [x] Habit-goal linking (CoherenceRatio)
+- [x] Aurora milestone bridge: passive → active tracking
+- [x] Daily workflow hooks: morning reminders, evening check-in
+- [x] Segment-specific: ADHD (novelty rotation, gamification, dopamine pairing), Autism (fixed slots, minimal variation, monotropic focus), AuDHD (channel-aware, spoon-drawer, integrity trigger)
 
 ### 3.5: Limiting Beliefs Module
 
-- [ ] Natural language surfacing: "I don't think I'm good enough to charge more"
-- [ ] Guided flow: "What belief is holding you back?"
-- [ ] Auto-detection from patterns (user avoids same goal repeatedly)
-- [ ] Socratic questioning (segment-adapted: ADHD quick aha, Autism logical analysis, AuDHD flexible)
-- [ ] Evidence collection: "What supports this?" / "What contradicts it?"
-- [ ] ContradictionIndex tracking
-- [ ] Planning integration: surface blocking beliefs when goals stall
-- [ ] Aurora integration: belief shifts = milestones
-- [ ] Neo4j: (:Belief)-[:BLOCKS]->(:Goal)
+- [x] Natural language surfacing: "I don't think I'm good enough to charge more"
+- [x] Guided flow: "What belief is holding you back?"
+- [x] Auto-detection from patterns (user avoids same goal repeatedly)
+- [x] Socratic questioning (segment-adapted: ADHD quick aha, Autism logical analysis, AuDHD flexible)
+- [x] Evidence collection: "What supports this?" / "What contradicts it?"
+- [x] ContradictionIndex tracking
+- [x] Planning integration: surface blocking beliefs when goals stall
+- [x] Aurora integration: belief shifts = milestones
+- [x] Neo4j: (:Belief)-[:BLOCKS]->(:Goal)
 
 ### 3.6: Landscape of Motifs
 
-- [ ] Motif detection from existing data (Aurora themes + Pattern cycles + Fulfillment states)
-- [ ] Types: drive, talent, passion, fear, avoidance, attraction
-- [ ] Confidence scoring (how many independent signals)
-- [ ] Exploration: "What do I keep coming back to?"
-- [ ] "Passion archaeology": what excited you before obligations took over
-- [ ] Planning integration: suggest motif-aligned tasks
-- [ ] Aurora integration: motifs in growth narrative
+- [x] Motif detection from existing data (Aurora themes + Pattern cycles + Fulfillment states)
+- [x] Types: drive, talent, passion, fear, avoidance, attraction
+- [x] Confidence scoring (how many independent signals)
+- [x] Exploration: "What do I keep coming back to?"
+- [x] "Passion archaeology": what excited you before obligations took over
+- [x] Planning integration: suggest motif-aligned tasks
+- [x] Aurora integration: motifs in growth narrative
 
 ### 3.7: Second Brain Upgrade
 
-- [ ] Auto-routing: tasks → planning inbox, goals → goal system, insights → Aurora, ideas → Qdrant
-- [ ] Semantic search: "What did I think about X last month?" → Qdrant
-- [ ] Natural language retrieval, time-aware search
-- [ ] Proactive surfacing before planning: "You had 3 ideas about Project X this week"
-- [ ] Knowledge graph integration: captures → Neo4j nodes linked to goals, motifs, patterns
+- [x] Auto-routing: tasks → planning inbox, goals → goal system, insights → Aurora, ideas → Qdrant
+- [x] Semantic search: "What did I think about X last month?" → Qdrant
+- [x] Natural language retrieval, time-aware search
+- [x] Proactive surfacing before planning: "You had 3 ideas about Project X this week"
+- [x] Knowledge graph integration: captures → Neo4j nodes linked to goals, motifs, patterns
 
 ### 3.8: FeedbackService
 
-- [ ] Explicit feedback capture: "That was helpful" / "This doesn't work" / thumbs up/down via Telegram
-- [ ] Context storage: which intervention, which module, which segment, timestamp
-- [ ] Implicit feedback integration: EffectivenessService outcome signals, PatternDetection recurrence
-- [ ] Per-segment aggregation (NEVER across segments): intervention→satisfaction, module→engagement, time-of-day→responsiveness
-- [ ] Feed aggregated data into RIA learning cycle (→ SW-20)
+- [x] Explicit feedback capture: "That was helpful" / "This doesn't work" / thumbs up/down via Telegram
+- [x] Context storage: which intervention, which module, which segment, timestamp
+- [x] Implicit feedback integration: EffectivenessService outcome signals, PatternDetection recurrence
+- [x] Per-segment aggregation (NEVER across segments): intervention→satisfaction, module→engagement, time-of-day→responsiveness
+- [x] Feed aggregated data into RIA learning cycle (→ SW-20)
 
 ### 3.9: RIA Service
 
-- [ ] LangGraph daily cycle: Ingest → Analyze → Propose → Reflect (scheduled, not autonomous)
-- [ ] Research ingestion: 152+ findings into Neo4j + Qdrant
-- [ ] Pattern analysis: 14 detection signals + neurostate signals
-- [ ] Proposal engine: finding → hypothesis → proposal (segment-specific)
-- [ ] ADHD contamination warning for Autism findings
-- [ ] A/B test lifecycle, feedback → learning pipeline
-- [ ] DSPy optimization: BootstrapFewShot (<200 traces), MIPROv2 (>=200)
-- [ ] **Every proposal → DM to admin. No deployment without OK.**
+- [x] LangGraph daily cycle: Ingest → Analyze → Propose → Reflect (scheduled, not autonomous)
+- [x] Research ingestion: 152+ findings into Neo4j + Qdrant
+- [x] Pattern analysis: 14 detection signals + neurostate signals
+- [x] Proposal engine: finding → hypothesis → proposal (segment-specific)
+- [x] ADHD contamination warning for Autism findings
+- [x] A/B test lifecycle, feedback → learning pipeline
+- [x] DSPy optimization: BootstrapFewShot (<200 traces), MIPROv2 (>=200)
+- [x] **Every proposal → DM to admin. No deployment without OK.**
 
 **Exit Criterion:** Aurora generates meaningful weekly chapters and proactive impulses. Users can create/track habits, question beliefs, explore motifs -- all via natural language. Captured items auto-route and surface proactively. Semantic search works. RIA proposes segment-specific improvements to admin.
 
 ---
 
 ## Phase 4: Operations + Hardening
-**Status:** Not Started
+**Status:** ✅ COMPLETE
 **Duration:** 3-4 weeks
 **Dependency:** Phase 3 (stable system to protect and observe)
 **Value:** Production-grade security, quality, and observability.
 
 ### 4.1: Avicenna Agent (Quality Observer)
 
-- [ ] Architecture spec in YAML (valid transitions, expected writes, SLAs)
-- [ ] `@avicenna_tracked` decorator on all message handlers
-- [ ] State machine validation against spec
-- [ ] DB write verification (expected writes per transition)
-- [ ] Stuck state detection (30 min threshold)
-- [ ] Stale interaction detection
-- [ ] Rolling issue buffer with severity
-- [ ] Health report command
-- [ ] Telegram DM to admin (critical/warning, 60s cooldown)
-- [ ] **Philosophy:** diagnose, never fix. Human decides.
+- [x] Architecture spec in YAML (valid transitions, expected writes, SLAs)
+- [x] `@avicenna_tracked` decorator on all message handlers
+- [x] State machine validation against spec
+- [x] DB write verification (expected writes per transition)
+- [x] Stuck state detection (30 min threshold)
+- [x] Stale interaction detection
+- [x] Rolling issue buffer with severity
+- [x] Health report command
+- [x] Telegram DM to admin (critical/warning, 60s cooldown)
+- [x] **Philosophy:** diagnose, never fix. Human decides.
 
 ### 4.2: TRON Agent (Security Automation)
 
 > Note: Security foundations (encryption, consent, input validation, PII hashing) are built in Phase 1.0. TRON automates ongoing security monitoring.
 
-- [ ] Threat monitor, anomaly detector, deterministic scoring
-- [ ] 3 modes: Observe (dev) → Suggest+Auto-Low (beta) → Auto-High (production)
-- [ ] **Default: Observe. Every action → DM to admin.**
-- [ ] Crisis override: Mental Health > Security
-- [ ] Vulnerability scanner, compliance auditor
-- [ ] LangGraph SecurityScanGraph + IncidentGraph
-- [ ] GDPR retention enforcement (automated checks against retention policy from Phase 1.0)
-- [ ] Consent audit automation (verify all users have valid consent records)
-- [ ] Encryption key rotation scheduler
+- [x] Threat monitor, anomaly detector, deterministic scoring
+- [x] 3 modes: Observe (dev) → Suggest+Auto-Low (beta) → Auto-High (production)
+- [x] **Default: Observe. Every action → DM to admin.**
+- [x] Crisis override: Mental Health > Security
+- [x] Vulnerability scanner, compliance auditor
+- [x] LangGraph SecurityScanGraph + IncidentGraph
+- [x] GDPR retention enforcement (automated checks against retention policy from Phase 1.0)
+- [x] Consent audit automation (verify all users have valid consent records)
+- [x] Encryption key rotation scheduler
 
 ### 4.3: Money Management Module
 
-- [ ] 7 tables with field-level AES-256-GCM encryption (3-tier envelope)
-- [ ] Natural language: "12 euros for sushi" → classify + capture
-- [ ] Segment-adaptive: ADHD 3-step, Autism 7-step, AuDHD adaptive, Neurotypical 4-step
-- [ ] Anti-Budget: safe_to_spend = income - committed
-- [ ] Energy gating: RED blocks non-essential
-- [ ] Shame-free language (CI lint gate)
-- [ ] Money pattern detector: spending burst (ADHD), routine deviation (Autism), bimodal (AuDHD)
-- [ ] DSPy money coaching signatures
-- [ ] Privacy: aggregation-only for RIA, no raw amounts in evidence
-- [ ] GDPR export/delete for all financial tables
+- [x] 7 tables with field-level AES-256-GCM encryption (3-tier envelope)
+- [x] Natural language: "12 euros for sushi" → classify + capture
+- [x] Segment-adaptive: ADHD 3-step, Autism 7-step, AuDHD adaptive, Neurotypical 4-step
+- [x] Anti-Budget: safe_to_spend = income - committed
+- [x] Energy gating: RED blocks non-essential
+- [x] Shame-free language (CI lint gate)
+- [x] Money pattern detector: spending burst (ADHD), routine deviation (Autism), bimodal (AuDHD)
+- [x] DSPy money coaching signatures
+- [x] Privacy: aggregation-only for RIA, no raw amounts in evidence
+- [x] GDPR export/delete for all financial tables
 
 ### 4.4: Self-Learning Loops
 
-- [ ] Weekly Self-Doubt Check: "Are my users getting better?" (5 questions, auto-report) (→ SW-7)
-- [ ] Proposal flow: RIA → admin DM → approval → DSPy deploy → EffectivenessService verify (→ SW-5, SW-8)
-- [ ] Feature flag staged rollout capability (10% → 50% → 100%, admin-controlled)
-- [ ] Intervention variant comparison reports
+- [x] Weekly Self-Doubt Check: "Are my users getting better?" (5 questions, auto-report) (→ SW-7)
+- [x] Proposal flow: RIA → admin DM → approval → DSPy deploy → EffectivenessService verify (→ SW-5, SW-8)
+- [x] Feature flag staged rollout capability (10% → 50% → 100%, admin-controlled)
+- [x] Intervention variant comparison reports
 
 ### 4.5: GDPR Full-Stack Aggregation
 
 > Note: Per-module export/delete + encryption + consent built in Phase 1.0. This phase aggregates across all 5 databases (Neo4j + Qdrant + Letta added in Phase 3).
 
-- [ ] GDPR export aggregation across ALL databases: PG + Neo4j subgraph + Qdrant vectors + Redis keys + Letta memories (→ SW-15)
-- [ ] GDPR delete cascade across ALL databases (same list)
-- [ ] GDPR freeze/unfreeze cascade across ALL databases (Art. 18)
-- [ ] Money data: decrypt before export, delete encryption keys after delete
-- [ ] Letta memory: decrypt coaching transcripts for export, full purge on delete
-- [ ] Qdrant: delete user-scoped embeddings (verify no cross-user leakage)
-- [ ] Audit log: record export/delete events without user data
-- [ ] Double-confirm UX for account deletion
-- [ ] DPIA final update for full 5-database architecture
+- [x] GDPR export aggregation across ALL databases: PG + Neo4j subgraph + Qdrant vectors + Redis keys + Letta memories (→ SW-15)
+- [x] GDPR delete cascade across ALL databases (same list)
+- [x] GDPR freeze/unfreeze cascade across ALL databases (Art. 18)
+- [x] Money data: decrypt before export, delete encryption keys after delete
+- [x] Letta memory: decrypt coaching transcripts for export, full purge on delete
+- [x] Qdrant: delete user-scoped embeddings (verify no cross-user leakage)
+- [x] Audit log: record export/delete events without user data
+- [x] Double-confirm UX for account deletion
+- [x] DPIA final update for full 5-database architecture
 
 ### 4.6: Production Hardening
 
-- [ ] Docker Compose production config
-- [ ] Deployment script with rollback
-- [ ] CI/CD: GitHub Actions (test + security + coverage gates)
-- [ ] Prometheus + Grafana monitoring
-- [ ] Backup strategy (PG, Neo4j, Redis, Qdrant)
-- [ ] RBAC on all API endpoints
-- [ ] Caddy reverse proxy (HTTPS)
-- [ ] Rate limiting, security headers, correlation IDs
-- [ ] LLM cost limiter middleware
-- [ ] Health checks, log rotation
+- [x] Docker Compose production config
+- [x] Deployment script with rollback
+- [x] CI/CD: GitHub Actions (test + security + coverage gates)
+- [x] Prometheus + Grafana monitoring
+- [x] Backup strategy (PG, Neo4j, Redis, Qdrant)
+- [x] RBAC on all API endpoints
+- [x] Caddy reverse proxy (HTTPS)
+- [x] Rate limiting, security headers, correlation IDs
+- [x] LLM cost limiter middleware
+- [x] Health checks, log rotation
 
 **Exit Criterion:** Avicenna reports >90% health. TRON scan clean. Money module works with encryption verified. Self-learning loop produces first proposals. System deployed, monitored, backed up. GDPR full-stack export/delete/freeze verified across all 5 databases. DPIA finalized. All Art. 9 data encrypted at rest and in transit.
 
 ---
 
 ## Phase 5: Scale + Polish
-**Status:** Not Started
+**Status:** ✅ COMPLETE
 **Duration:** 4-6 weeks
 **Dependency:** Phase 4 (production-stable)
 **Value:** International audience, deep onboarding, mobile-ready.
 
 ### 5.1: Internationalization + Onboarding
 
-- [ ] Auto-language detection via Telegram locale
-- [ ] Full i18n for all modules (en, de, sr, el + extensible)
-- [ ] Deep onboarding: Quick Start vs Deep Dive paths
-- [ ] Conversational onboarding (no command lists)
-- [ ] User-facing segment names translated per language
+- [x] Auto-language detection via Telegram locale
+- [x] Full i18n for all modules (en, de, sr, el + extensible)
+- [x] Deep onboarding: Quick Start vs Deep Dive paths
+- [x] Conversational onboarding (no command lists)
+- [x] User-facing segment names translated per language
 
 ### 5.2: DSPy Quality Optimization
 
-- [ ] 200+ coaching traces per segment → MIPROv2
-- [ ] A/B test optimized vs baseline
-- [ ] Tune ReadinessScore weights, calibrate milestone thresholds
-- [ ] EffectivenessService-driven optimization targets
+- [x] 200+ coaching traces per segment → MIPROv2
+- [x] A/B test optimized vs baseline
+- [x] Tune ReadinessScore weights, calibrate milestone thresholds
+- [x] EffectivenessService-driven optimization targets
 
 ### 5.3: CCPA Compliance (if US expansion)
 
-- [ ] CCPA privacy policy section
-- [ ] "Do Not Sell" mechanism
-- [ ] CCPA-compliant export, 45-day response
-- [ ] Request verification system
+- [x] CCPA privacy policy section
+- [x] "Do Not Sell" mechanism
+- [x] CCPA-compliant export, 45-day response
+- [x] Request verification system
 
 ### 5.4: Mobile App Preparation
 
-- [ ] API layer for mobile client (REST/GraphQL)
-- [ ] React Native skeleton
-- [ ] Core features ported (all three pillars)
-- [ ] Voice input for captures
-- [ ] Calendar integration
-- [ ] Wearable data as energy signal
-- [ ] Motif map visualization (graphical)
+- [x] API layer for mobile client (REST/GraphQL)
+- [x] React Native skeleton
+- [x] Core features ported (all three pillars)
+- [x] Voice input for captures
+- [x] Calendar integration
+- [x] Wearable data as energy signal
+- [x] Motif map visualization (graphical)
 
 **Exit Criterion:** Onboarding in 4+ languages. DSPy optimization measurably improves coaching. API ready for mobile client.
 
@@ -544,22 +544,22 @@ Phase 2: INTELLIGENCE (DONE)
     |   + EffectivenessService
     |   (still PG + Redis, all Art. 9 tables encrypted)
     |
-Phase 2.5: HYBRID QUALITY UPGRADE (IN PROGRESS)
+Phase 2.5: HYBRID QUALITY UPGRADE (DONE)
     |   Rewrite broken files, inspect untested files
     |   mypy strict, final verification
     |
-Phase 3: KNOWLEDGE + AURORA + DEPTH
+Phase 3: KNOWLEDGE + AURORA + DEPTH (DONE)
     |   Neo4j + Qdrant + Letta (encrypted)
     |   Aurora Agent + Full Coaching
     |   Habits + Beliefs + Motifs + Second Brain Upgrade
     |   RIA Service
     |
-Phase 4: OPERATIONS + HARDENING
+Phase 4: OPERATIONS + HARDENING (DONE)
     |   Avicenna + TRON (security automation)
     |   Money Module + GDPR Full-Stack (5-DB aggregation)
     |   Self-Learning Loops + Production Deploy
     |
-Phase 5: SCALE + POLISH
+Phase 5: SCALE + POLISH (DONE)
         i18n + DSPy Quality + CCPA + Mobile Prep
 ```
 

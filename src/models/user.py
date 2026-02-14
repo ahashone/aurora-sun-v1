@@ -44,6 +44,7 @@ class User(Base):
     daily_plans = relationship("DailyPlan", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     captured_items = relationship("CapturedContent", back_populates="user_relationship", cascade="all, delete-orphan")
+    second_brain_entries = relationship("SecondBrainEntry", back_populates="user_relationship", cascade="all, delete-orphan")
 
     # Columns
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -119,6 +120,7 @@ class User(Base):
             return
         try:
             import json
+
             from src.lib.encryption import DataClassification, get_encryption_service
             encrypted = get_encryption_service().encrypt_field(
                 value, int(self.id), DataClassification.SENSITIVE, "name"

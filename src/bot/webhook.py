@@ -213,7 +213,6 @@ class TelegramWebhookHandler:
 
         # Fallback: no DB session available — return NOT_GIVEN to be safe
         # This blocks processing until a proper DB session is injected.
-        from datetime import UTC, datetime
         return ConsentValidationResult(
             status=ConsentStatus.NOT_GIVEN,
             consent_given_at=None,
