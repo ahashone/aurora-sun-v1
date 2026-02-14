@@ -45,6 +45,9 @@ dependencies = [
     "pydantic>=2.5.0",
     "python-dotenv>=1.0.0",
     "httpx>=0.26.0",
+
+    # Logging
+    "structlog>=24.0.0",
 ]
 
 [project.optional-dependencies]

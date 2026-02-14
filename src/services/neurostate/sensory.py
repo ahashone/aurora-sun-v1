@@ -10,13 +10,11 @@ References:
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from src.models.neurostate import SensoryProfile
-
 
 # =============================================================================
 # Data Classes
@@ -82,7 +80,7 @@ class SensoryStateAssessment:
     async def assess(
         self,
         user_id: int,
-        current_load: Optional[dict[str, float]] = None,
+        current_load: dict[str, float] | None = None,
     ) -> SensoryState:
         """
         Assess the current sensory state for a user.
@@ -165,7 +163,7 @@ class SensoryStateAssessment:
         # Save profile
         profile.modality_loads = modality_loads
         profile.overall_load = max(modality_loads.values())
-        profile.last_assessed = datetime.now(timezone.utc)
+        profile.last_assessed = datetime.now(UTC)
         self.db.commit()
 
         # Return updated state

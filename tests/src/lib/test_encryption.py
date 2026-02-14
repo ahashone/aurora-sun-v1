@@ -13,6 +13,7 @@ the AURORA_DEV_MODE and AURORA_DEV_KEY environment variables.
 
 import base64
 import os
+
 import pytest
 
 # Set up test environment before importing the module
@@ -22,13 +23,11 @@ os.environ["AURORA_HASH_SALT"] = base64.b64encode(b"test-salt-for-hashing-32byte
 # Now import the module
 from src.lib.encryption import (
     DataClassification,
+    DecryptionError,
+    EncryptedField,
     EncryptionService,
     HashService,
-    EncryptedField,
-    DecryptionError,
-    KeyNotFoundError,
 )
-
 
 # =============================================================================
 # Test Fixtures

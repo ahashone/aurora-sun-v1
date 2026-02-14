@@ -12,13 +12,11 @@ References:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from src.models.neurostate import InertiaEvent, InertiaType
-
 
 # =============================================================================
 # Data Classes
@@ -28,17 +26,17 @@ from src.models.neurostate import InertiaEvent, InertiaType
 class InertiaEventData:
     """Represents an inertia event."""
 
-    id: Optional[int] = None
+    id: int | None = None
     user_id: int = 0
     inertia_type: InertiaType = InertiaType.ACTIVATION_DEFICIT
     severity: float = 0.0
-    trigger: Optional[str] = None
+    trigger: str | None = None
     attempted_interventions: list[str] = field(default_factory=list)
-    outcome: Optional[str] = None
-    duration_minutes: Optional[int] = None
-    notes: Optional[str] = None
-    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    resolved_at: Optional[datetime] = None
+    outcome: str | None = None
+    duration_minutes: int | None = None
+    notes: str | None = None
+    detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    resolved_at: datetime | None = None
 
 
 @dataclass
@@ -46,10 +44,10 @@ class InertiaDetectionResult:
     """Result of inertia detection analysis."""
 
     is_inertia: bool
-    inertia_type: Optional[InertiaType] = None
+    inertia_type: InertiaType | None = None
     confidence: float = 0.0
-    trigger: Optional[str] = None
-    recommended_intervention: Optional[str] = None
+    trigger: str | None = None
+    recommended_intervention: str | None = None
     severity: float = 0.0
 
 
@@ -190,8 +188,8 @@ class InertiaDetector:
         user_id: int,
         inertia_type: InertiaType,
         severity: float,
-        trigger: Optional[str] = None,
-        notes: Optional[str] = None,
+        trigger: str | None = None,
+        notes: str | None = None,
     ) -> InertiaEvent:
         """
         Log an inertia event to the database.
@@ -225,7 +223,7 @@ class InertiaDetector:
         event_id: int,
         outcome: str,
         interventions_used: list[str],
-        duration_minutes: Optional[int] = None,
+        duration_minutes: int | None = None,
     ) -> InertiaEvent:
         """
         Mark an inertia event as resolved.
@@ -246,7 +244,7 @@ class InertiaDetector:
         event.outcome = outcome
         event.attempted_interventions = interventions_used
         event.duration_minutes = duration_minutes
-        event.resolved_at = datetime.now(timezone.utc)
+        event.resolved_at = datetime.now(UTC)
 
         self.db.commit()
         self.db.refresh(event)
@@ -255,7 +253,7 @@ class InertiaDetector:
     async def get_active_inertia(
         self,
         user_id: int,
-    ) -> Optional[InertiaEvent]:
+    ) -> InertiaEvent | None:
         """
         Get the current active inertia event for a user.
 
@@ -349,7 +347,7 @@ class InertiaDetector:
 
         return "Gentle prompt with specific offer"
 
-    def _extract_trigger(self, messages: list[str]) -> Optional[str]:
+    def _extract_trigger(self, messages: list[str]) -> str | None:
         """Extract potential trigger from messages."""
         # Look for common triggers
         trigger_phrases = [

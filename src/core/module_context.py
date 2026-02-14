@@ -11,10 +11,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any, TypeAlias
 
 from .segment_context import SegmentContext
-
 
 # Type aliases for clarity
 State: TypeAlias = str  # Current state in module's state machine (e.g., "overview", "priorities", "commitment")
@@ -54,7 +53,7 @@ class ModuleContext:
     last_interaction_at: datetime = field(default_factory=lambda: datetime.utcnow())
 
     # Continuity
-    previous_response: Optional[str] = None
+    previous_response: str | None = None
     message_history: list[dict[str, Any]] = field(default_factory=list)
 
     # Module-specific data
@@ -62,7 +61,7 @@ class ModuleContext:
 
     # Workflow context
     is_daily_workflow_active: bool = False
-    daily_workflow_stage: Optional[str] = None
+    daily_workflow_stage: str | None = None
 
     # GDPR context
     is_frozen: bool = False  # True if user data processing is restricted (Art. 18)
@@ -94,7 +93,3 @@ class ModuleContext:
             List of message dicts
         """
         return self.message_history[-count:]
-
-
-# Import Literal for type hints
-from typing import Literal, Any

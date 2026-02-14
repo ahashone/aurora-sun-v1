@@ -9,17 +9,17 @@ Reference: ARCHITECTURE.md Section 3 (Daily Workflow Engine)
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable, Optional, Any, TYPE_CHECKING
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 if TYPE_CHECKING:
     from .module_context import ModuleContext
-    from .module_response import ModuleResponse
 
 
 # Type for hook callables
 # Each hook receives ModuleContext and returns optional ModuleResponse or data
-DailyWorkflowHook: TypeAlias = Callable[["ModuleContext"], Optional[Any]]
+DailyWorkflowHook: TypeAlias = Callable[["ModuleContext"], Any | None]
 
 
 @dataclass
@@ -44,10 +44,10 @@ class DailyWorkflowHooks:
     """
 
     # Workflow stage hooks
-    morning: Optional[DailyWorkflowHook] = None
-    planning_enrichment: Optional[DailyWorkflowHook] = None
-    midday_check: Optional[DailyWorkflowHook] = None
-    evening_review: Optional[DailyWorkflowHook] = None
+    morning: DailyWorkflowHook | None = None
+    planning_enrichment: DailyWorkflowHook | None = None
+    midday_check: DailyWorkflowHook | None = None
+    evening_review: DailyWorkflowHook | None = None
 
     # Metadata
     hook_name: str = ""  # Name of the module providing these hooks

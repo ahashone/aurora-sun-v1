@@ -9,7 +9,6 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 from enum import Enum
 
 
@@ -44,8 +43,8 @@ class Button:
     """
 
     text: str
-    callback_data: Optional[str] = None
-    url: Optional[str] = None
+    callback_data: str | None = None
+    url: str | None = None
     button_type: ButtonType = ButtonType.INLINE
 
     def __post_init__(self) -> None:
@@ -72,7 +71,7 @@ class Button:
         return cls(text=text, callback_data=callback_data)
 
     @classmethod
-    def url(cls, text: str, url: str) -> Button:
+    def url(cls, text: str, url: str) -> Button:  # noqa: F811
         """Create a URL button.
 
         Args:

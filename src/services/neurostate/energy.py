@@ -13,15 +13,13 @@ References:
 - ARCHITECTURE.md Section 3.7 (Energy Prediction)
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
-from src.models.neurostate import EnergyLevelRecord, EnergyLevel
-
+from src.models.neurostate import EnergyLevel, EnergyLevelRecord
 
 # =============================================================================
 # Data Classes
@@ -31,7 +29,7 @@ from src.models.neurostate import EnergyLevelRecord, EnergyLevel
 class BehavioralSignals:
     """Behavioral signals extracted from user interaction."""
 
-    response_latency_ms: Optional[int] = None
+    response_latency_ms: int | None = None
     message_length: int = 0
     vocabulary_complexity: float = 0.0
     time_of_day_hour: int = 0
@@ -113,7 +111,7 @@ class EnergyPredictor:
     async def predict(
         self,
         user_id: int,
-        behavioral_signals: Optional[BehavioralSignals] = None,
+        behavioral_signals: BehavioralSignals | None = None,
     ) -> EnergyPrediction:
         """
         Predict energy level from behavioral signals.
@@ -191,7 +189,7 @@ class EnergyPredictor:
             recommendations=recommendations,
         )
 
-    def _score_latency(self, latency_ms: Optional[int]) -> float:
+    def _score_latency(self, latency_ms: int | None) -> float:
         """Score response latency."""
         if latency_ms is None:
             return self.ENERGY_BASELINE
@@ -407,7 +405,7 @@ class EnergyPredictor:
         """Extract signals from recent message history."""
         # This would typically query session messages
         # For now, return defaults
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return BehavioralSignals(
             time_of_day_hour=now.hour,
             day_of_week=now.weekday(),
@@ -420,7 +418,7 @@ class EnergyPredictor:
             self.db.query(func.avg(EnergyLevelRecord.energy_score))
             .filter(
                 EnergyLevelRecord.user_id == user_id,
-                EnergyLevelRecord.predicted_at >= datetime.now(timezone.utc) - timedelta(days=7),
+                EnergyLevelRecord.predicted_at >= datetime.now(UTC) - timedelta(days=7),
             )
             .scalar()
         )

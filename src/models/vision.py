@@ -9,15 +9,15 @@ References:
 """
 
 from datetime import datetime
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
 
 if TYPE_CHECKING:
-    from src.models.user import User
+    pass
 
 
 class Vision(Base):

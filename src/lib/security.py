@@ -36,9 +36,8 @@ Usage:
 
 import re
 import time
-from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 import structlog
 
@@ -292,7 +291,7 @@ class InputSanitizer:
 # Rate Limiter Configuration
 # ============================================
 
-class RateLimitTier(str, Enum):
+class RateLimitTier(StrEnum):
     """Rate limit tiers for different action types."""
     CHAT = "chat"          # Standard chat messages (30/min, 100/hour)
     VOICE = "voice"        # Voice message uploads
@@ -317,7 +316,7 @@ class RateLimitConfig:
 
 
 # Default rate limit configurations
-RATE_LIMIT_CONFIGS: Dict[RateLimitTier, RateLimitConfig] = {
+RATE_LIMIT_CONFIGS: dict[RateLimitTier, RateLimitConfig] = {
     RateLimitTier.CHAT: RateLimitConfig(requests_per_minute=30, requests_per_hour=100),
     RateLimitTier.VOICE: RateLimitConfig(requests_per_minute=10, requests_per_hour=50),
     RateLimitTier.API: RateLimitConfig(requests_per_minute=100, requests_per_hour=500),
@@ -338,14 +337,14 @@ class InMemoryRateLimiter:
     """
 
     def __init__(self):
-        self._buckets: Dict[str, Dict] = {}
+        self._buckets: dict[str, dict] = {}
 
     def check_rate_limit(
         self,
         key: str,
         max_requests: int,
         window_seconds: int
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """
         Check if request is allowed using sliding window.
 
@@ -548,7 +547,7 @@ class RateLimiter:
         action: str,
         window: int,
         max_requests: int
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """Check rate limit for a specific window."""
         key = f"{cls.REDIS_PREFIX}{user_id}:{action}:{window}s"
 
@@ -592,9 +591,8 @@ class RateLimiter:
         key: str,
         window: int,
         max_requests: int
-    ) -> Tuple[bool, int]:
+    ) -> tuple[bool, int]:
         """Check rate limit using Redis."""
-        import redis.asyncio as redis
 
         now = time.time()
         window_start = now - window
@@ -645,7 +643,7 @@ class RateLimiter:
         return max(0, max_requests - current_count)
 
     @classmethod
-    async def reset_limit(cls, user_id: int, action: Optional[str] = None):
+    async def reset_limit(cls, user_id: int, action: str | None = None):
         """
         Reset rate limit for a user.
 
@@ -732,7 +730,7 @@ class MessageSizeValidator:
         cls,
         duration_seconds: int,
         file_size_bytes: int
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """
         Validate voice message size and duration.
 
@@ -825,7 +823,7 @@ class SecurityHeaders:
     )
 
     @classmethod
-    def get_headers(cls, csp: Optional[str] = None) -> Dict[str, str]:
+    def get_headers(cls, csp: str | None = None) -> dict[str, str]:
         """
         Get security headers dictionary.
 
@@ -852,7 +850,7 @@ class SecurityHeaders:
         }
 
     @classmethod
-    def apply_to_response(cls, response, csp: Optional[str] = None):
+    def apply_to_response(cls, response, csp: str | None = None):
         """
         Apply security headers to a response object.
 
@@ -872,7 +870,7 @@ class SecurityHeaders:
 
 def create_security_middleware(
     app,
-    csp: Optional[str] = None,
+    csp: str | None = None,
     enable_rate_limiting: bool = True
 ):
     """

@@ -10,19 +10,18 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Optional, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
+from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
-from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.models.base import Base
 
 if TYPE_CHECKING:
-    from src.core.segment_context import SegmentContext
+    pass
 
 
 # Content types for classification
@@ -50,7 +49,7 @@ class CapturedContent(Base):
     __tablename__ = "captured_content"
 
     # Relationships
-    user = relationship("User", back_populates="captured_items")
+    user_relationship = relationship("User", back_populates="captured_items")
 
     # Columns
     id = Column(Integer, primary_key=True)
@@ -117,7 +116,7 @@ Respond with just the category name."""
         """Initialize the Capture Module."""
         # State machine: CAPTURE -> CLASSIFY -> ROUTE -> DONE
         self._state = "capture"
-        self._current_capture: Optional[CapturedItem] = None
+        self._current_capture: CapturedItem | None = None
 
     async def on_enter(self, ctx: ModuleContext) -> ModuleResponse:
         """
@@ -129,7 +128,6 @@ Respond with just the category name."""
         # FIX: Use SegmentContext fields instead of string comparison
         # This follows the ARCHITECTURE.md rule: "Never if segment == 'AD' in code"
         features = ctx.segment_context.features
-        ux = ctx.segment_context.ux
 
         # Segment-adaptive entry message based on features
         if features.routine_anchoring:
@@ -188,7 +186,7 @@ Respond with just the category name."""
         )
 
         # Step 3: Route to destination
-        response = await self.route_content(classification["type"], captured, ctx)
+        await self.route_content(classification["type"], captured, ctx)
 
         # Step 4: Return with confirmation (segment-adaptive)
         confirmation = self._build_confirmation(
@@ -478,7 +476,7 @@ Respond with just the category name."""
                 "financial": f"Financial note: '{display_content}'",
             }
 
-        return confirmations.get(content_type.value, f"Captured: '{display_content}'")
+        return confirmations.get(content_type, f"Captured: '{display_content}'")
 
     async def _process_voice_input(
         self,
@@ -537,7 +535,7 @@ Respond with just the category name."""
     async def _surface_captured_tasks(
         self,
         ctx: ModuleContext,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Surface captured tasks from the capture module.
 

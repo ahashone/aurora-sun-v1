@@ -10,11 +10,9 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 import logging
-from typing import Optional, Dict, List, TYPE_CHECKING
 
+from .daily_workflow_hooks import DailyWorkflowHook
 from .module_protocol import Module
-from .daily_workflow_hooks import DailyWorkflowHooks, DailyWorkflowHook
-
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +40,8 @@ class ModuleRegistry:
 
     def __init__(self) -> None:
         """Initialize an empty registry."""
-        self._modules: Dict[str, Module] = {}
-        self._intent_map: Dict[str, Module] = {}
+        self._modules: dict[str, Module] = {}
+        self._intent_map: dict[str, Module] = {}
         self._initialized: bool = False
 
     def register(self, module: Module) -> None:
@@ -111,7 +109,7 @@ class ModuleRegistry:
         logger.info(f"Deregistered module '{module_name}'")
         return True
 
-    def route(self, intent: str) -> Optional[Module]:
+    def route(self, intent: str) -> Module | None:
         """Route an intent to the appropriate module.
 
         Args:
@@ -122,7 +120,7 @@ class ModuleRegistry:
         """
         return self._intent_map.get(intent)
 
-    def get_module(self, name: str) -> Optional[Module]:
+    def get_module(self, name: str) -> Module | None:
         """Get a module by name.
 
         Args:
@@ -133,7 +131,7 @@ class ModuleRegistry:
         """
         return self._modules.get(name)
 
-    def list_modules(self) -> List[str]:
+    def list_modules(self) -> list[str]:
         """List all registered module names.
 
         Returns:
@@ -141,7 +139,7 @@ class ModuleRegistry:
         """
         return list(self._modules.keys())
 
-    def list_intents(self) -> Dict[str, str]:
+    def list_intents(self) -> dict[str, str]:
         """List all registered intents and their modules.
 
         Returns:
@@ -152,14 +150,14 @@ class ModuleRegistry:
             for intent, module in self._intent_map.items()
         }
 
-    def get_daily_hooks(self) -> Dict[str, List[DailyWorkflowHook]]:
+    def get_daily_hooks(self) -> dict[str, list[DailyWorkflowHook]]:
         """Collect all daily workflow hooks from all modules.
 
         Returns:
             Dict mapping hook stage (morning, planning_enrichment, etc.)
             to list of hook callables from all modules
         """
-        hooks: Dict[str, List[DailyWorkflowHook]] = {
+        hooks: dict[str, list[DailyWorkflowHook]] = {
             "morning": [],
             "planning_enrichment": [],
             "midday_check": [],
@@ -221,7 +219,7 @@ class ModuleRegistry:
 
 # Global registry instance
 # Modules should be registered at application startup
-_global_registry: Optional[ModuleRegistry] = None
+_global_registry: ModuleRegistry | None = None
 
 
 def get_registry() -> ModuleRegistry:

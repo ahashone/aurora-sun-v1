@@ -10,7 +10,7 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional, Any, TYPE_CHECKING
+from typing import Any
 
 from .buttons import Button
 from .side_effects import SideEffect
@@ -36,13 +36,13 @@ class ModuleResponse:
     text: str
 
     # UI elements
-    buttons: Optional[list[Button]] = None
+    buttons: list[Button] | None = None
 
     # State transition
-    next_state: Optional[str] = None
+    next_state: str | None = None
 
     # System actions
-    side_effects: Optional[list[SideEffect]] = None
+    side_effects: list[SideEffect] | None = None
 
     # Additional metadata
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -51,7 +51,7 @@ class ModuleResponse:
     is_end_of_flow: bool = False  # True if this response ends the module flow
     should_trigger_daily_workflow: bool = False  # Trigger daily workflow after response
 
-    def add_button(self, text: str, callback_data: Optional[str] = None, url: Optional[str] = None) -> None:
+    def add_button(self, text: str, callback_data: str | None = None, url: str | None = None) -> None:
         """Add a button to the response.
 
         Args:
@@ -124,6 +124,3 @@ class ModuleResponse:
         """
         return cls(text=text, next_state=next_state)
 
-
-# Type alias for convenience
-ModuleResponse: TypeAlias = ModuleResponse

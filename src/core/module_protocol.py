@@ -9,13 +9,11 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, Optional
-from typing_extensions import TypeAlias
+from typing import Literal, Protocol, TypeAlias
 
+from .daily_workflow_hooks import DailyWorkflowHooks
 from .module_context import ModuleContext
 from .module_response import ModuleResponse
-from .daily_workflow_hooks import DailyWorkflowHooks
-
 
 # Pillar types as defined in ARCHITECTURE.md
 Pillar: TypeAlias = Literal["vision_to_task", "second_brain", "money"]

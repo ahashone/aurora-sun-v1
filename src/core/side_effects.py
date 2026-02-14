@@ -10,11 +10,11 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
-from enum import Enum
-from datetime import datetime
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any
 
 
 class SideEffectType(Enum):
@@ -82,7 +82,7 @@ class SideEffect:
     """
 
     effect_type: SideEffectType
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = field(default_factory=lambda: datetime.utcnow())
     priority: int = 0  # Lower = execute first
@@ -96,7 +96,7 @@ class SideEffect:
                 self.effect_type = SideEffectType.CUSTOM
 
     @classmethod
-    def save_task(cls, task_data: Dict[str, Any], priority: int = 0) -> SideEffect:
+    def save_task(cls, task_data: dict[str, Any], priority: int = 0) -> SideEffect:
         """Create a save_task side effect.
 
         Args:
@@ -130,7 +130,7 @@ class SideEffect:
         )
 
     @classmethod
-    def save_transaction(cls, transaction_data: Dict[str, Any], priority: int = 0) -> SideEffect:
+    def save_transaction(cls, transaction_data: dict[str, Any], priority: int = 0) -> SideEffect:
         """Create a save_transaction side effect.
 
         Args:
@@ -147,7 +147,7 @@ class SideEffect:
         )
 
     @classmethod
-    def custom(cls, effect_name: str, payload: Dict[str, Any], priority: int = 0) -> SideEffect:
+    def custom(cls, effect_name: str, payload: dict[str, Any], priority: int = 0) -> SideEffect:
         """Create a custom side effect.
 
         Args:
@@ -173,16 +173,16 @@ class SideEffectBatch:
     """
 
     effects: list[SideEffect] = field(default_factory=list)
-    user_id: Optional[int] = None
-    session_id: Optional[str] = None
-    source_module: Optional[str] = None
-    source_state: Optional[str] = None
+    user_id: int | None = None
+    session_id: str | None = None
+    source_module: str | None = None
+    source_state: str | None = None
 
     def add(self, effect: SideEffect) -> None:
         """Add a side effect to the batch."""
         self.effects.append(effect)
 
-    def add_save_task(self, task_data: Dict[str, Any]) -> None:
+    def add_save_task(self, task_data: dict[str, Any]) -> None:
         """Add a save_task effect."""
         self.effects.append(SideEffect.save_task(task_data))
 
@@ -190,7 +190,7 @@ class SideEffectBatch:
         """Add a complete_habit effect."""
         self.effects.append(SideEffect.complete_habit(habit_id))
 
-    def add_save_transaction(self, transaction_data: Dict[str, Any]) -> None:
+    def add_save_transaction(self, transaction_data: dict[str, Any]) -> None:
         """Add a save_transaction effect."""
         self.effects.append(SideEffect.save_transaction(transaction_data))
 

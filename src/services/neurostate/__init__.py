@@ -13,42 +13,36 @@ References:
 - ARCHITECTURE.md Section 3 (Neurotype Segmentation)
 """
 
-from src.services.neurostate.sensory import (
-    SensoryStateAssessment,
-    SensoryState,
-    ModalityInput,
-)
-
-from src.services.neurostate.inertia import (
-    InertiaDetector,
-    InertiaEventData,
-    InertiaDetectionResult,
-)
-
 from src.services.neurostate.burnout import (
+    BurnoutClassification,
     BurnoutClassifier,
     BurnoutState,
-    BurnoutClassification,
 )
-
-from src.services.neurostate.masking import (
-    MaskingLoadTracker,
-    MaskingLoad,
-    MaskingEvent,
-)
-
 from src.services.neurostate.channel import (
+    ChannelDetectionResult,
     ChannelDominanceDetector,
     ChannelStateData,
-    ChannelDetectionResult,
 )
-
 from src.services.neurostate.energy import (
-    EnergyPredictor,
     BehavioralSignals,
     EnergyPrediction,
+    EnergyPredictor,
 )
-
+from src.services.neurostate.inertia import (
+    InertiaDetectionResult,
+    InertiaDetector,
+    InertiaEventData,
+)
+from src.services.neurostate.masking import (
+    MaskingEvent,
+    MaskingLoad,
+    MaskingLoadTracker,
+)
+from src.services.neurostate.sensory import (
+    ModalityInput,
+    SensoryState,
+    SensoryStateAssessment,
+)
 
 # Re-export all classes
 __all__ = [

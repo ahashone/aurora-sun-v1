@@ -9,15 +9,13 @@ References:
 - ARCHITECTURE.md Section 3.5 (Masking - AuDHD)
 """
 
-from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from src.models.neurostate import MaskingLog
-
 
 # =============================================================================
 # Data Classes
@@ -39,14 +37,14 @@ class MaskingLoad:
 class MaskingEvent:
     """A single masking event."""
 
-    id: Optional[int] = None
+    id: int | None = None
     user_id: int = 0
     context: str = ""
     masking_type: str = ""
     load_score: float = 0.0
-    duration_minutes: Optional[int] = None
-    notes: Optional[str] = None
-    logged_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    duration_minutes: int | None = None
+    notes: str | None = None
+    logged_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 # =============================================================================
@@ -113,8 +111,8 @@ class MaskingLoadTracker:
         user_id: int,
         context: str,
         masking_behavior: str,
-        duration_minutes: Optional[int] = None,
-        notes: Optional[str] = None,
+        duration_minutes: int | None = None,
+        notes: str | None = None,
     ) -> MaskingLoad:
         """
         Track a masking event and update cumulative load.
@@ -241,6 +239,7 @@ class MaskingLoadTracker:
                 context=context,
                 masking_type="load_reduction",
                 load_score=-reduction,
+                duration_minutes=None,
                 notes="User-reported load reduction",
             )
 
@@ -290,7 +289,7 @@ class MaskingLoadTracker:
         """Get current load per context from database."""
         # Sum load scores by context for unresolved masking
         # For simplicity, use recent events to calculate
-        recent_time = datetime.now(timezone.utc) - timedelta(hours=self.RECENT_WINDOW_HOURS)
+        recent_time = datetime.now(UTC) - timedelta(hours=self.RECENT_WINDOW_HOURS)
 
         results = (
             self.db.query(
@@ -331,8 +330,8 @@ class MaskingLoadTracker:
         context: str,
         masking_type: str,
         load_score: float,
-        duration_minutes: Optional[int],
-        notes: Optional[str],
+        duration_minutes: int | None,
+        notes: str | None,
     ) -> MaskingLog:
         """Log a masking event to the database."""
         event = MaskingLog(
@@ -354,7 +353,7 @@ class MaskingLoadTracker:
         limit: int = 5,
     ) -> list[MaskingLog]:
         """Get recent masking events."""
-        recent_time = datetime.now(timezone.utc) - timedelta(hours=self.RECENT_WINDOW_HOURS)
+        recent_time = datetime.now(UTC) - timedelta(hours=self.RECENT_WINDOW_HOURS)
 
         return (
             self.db.query(MaskingLog)

@@ -29,8 +29,8 @@ Reference:
 from __future__ import annotations
 
 import logging
-from enum import Enum
-from typing import Any, Optional, TypedDict
+from enum import StrEnum
+from typing import Any, TypedDict
 
 from src.core.segment_context import WorkingStyleCode
 
@@ -55,9 +55,9 @@ class DailyGraphState(TypedDict):
     trigger: str
 
     # Neurostate
-    energy_level: Optional[int]
-    sensory_load: Optional[float]
-    burnout_risk: Optional[float]
+    energy_level: int | None
+    sensory_load: float | None
+    burnout_risk: float | None
     overload_detected: bool
     consecutive_red_days: int
 
@@ -71,23 +71,23 @@ class DailyGraphState(TypedDict):
     evening_completed: bool
 
     # Content
-    morning_message: Optional[str]
+    morning_message: str | None
     vision_texts: list[str]
     goals: list[dict[str, Any]]
-    reflection_text: Optional[str]
-    tomorrow_intention: Optional[str]
+    reflection_text: str | None
+    tomorrow_intention: str | None
     interventions_delivered: list[str]
 
     # Redirect
     redirect_triggered: bool
-    redirect_reason: Optional[str]
+    redirect_reason: str | None
 
 
 # =============================================================================
 # Node Names
 # =============================================================================
 
-class GraphNode(str, Enum):
+class GraphNode(StrEnum):
     """Names of nodes in the Daily Workflow graph."""
 
     MORNING_ACTIVATE = "morning_activate"
@@ -105,7 +105,7 @@ class GraphNode(str, Enum):
 # Edge Routes
 # =============================================================================
 
-class EdgeRoute(str, Enum):
+class EdgeRoute(StrEnum):
     """Route names for conditional edges."""
 
     CONTINUE = "continue"
@@ -182,7 +182,7 @@ def build_daily_graph():
         Compiled LangGraph StateGraph
     """
     try:
-        from langgraph.graph import StateGraph, END as LangGraphEnd
+        from langgraph.graph import StateGraph
     except ImportError:
         logger.warning("LangGraph not installed, returning None")
         return None
@@ -263,7 +263,7 @@ async def morning_activate_node(state: DailyGraphState) -> dict[str, Any]:
         Updated state dict
     """
     user_id = state["user_id"]
-    segment_code = state["segment_code"]
+    state["segment_code"]
 
     logger.info(f"Node: morning_activate for user {user_id}")
 
@@ -305,7 +305,7 @@ async def neurostate_preflight_node(state: DailyGraphState) -> dict[str, Any]:
         Updated state dict with neurostate data
     """
     user_id = state["user_id"]
-    segment_code = state["segment_code"]
+    state["segment_code"]
     previous_energy = state.get("energy_level")
     consecutive_red_days = state.get("consecutive_red_days", 0)
 
@@ -425,7 +425,7 @@ async def planning_node(state: DailyGraphState) -> dict[str, Any]:
         Updated state dict
     """
     user_id = state["user_id"]
-    segment_code = state["segment_code"]
+    state["segment_code"]
 
     logger.info(f"Node: planning for user {user_id}")
 
@@ -456,7 +456,7 @@ async def during_day_node(state: DailyGraphState) -> dict[str, Any]:
         Updated state dict
     """
     user_id = state["user_id"]
-    segment_code = state["segment_code"]
+    state["segment_code"]
 
     logger.info(f"Node: during_day for user {user_id}")
 
@@ -544,7 +544,7 @@ async def end_node(state: DailyGraphState) -> dict[str, Any]:
         Final state dict
     """
     user_id = state["user_id"]
-    date = state["date"]
+    state["date"]
 
     logger.info(f"Node: end for user {user_id}")
 
@@ -569,7 +569,7 @@ async def run_daily_graph(
     date: str,
     segment_code: WorkingStyleCode,
     trigger: str = "scheduled",
-    initial_energy: Optional[int] = None,
+    initial_energy: int | None = None,
     consecutive_red_days: int = 0,
 ) -> dict[str, Any]:
     """

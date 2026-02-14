@@ -8,17 +8,16 @@ References:
 - ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
 """
 
-from datetime import datetime, date
-from typing import Optional, TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, ForeignKey, Index
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
 
 if TYPE_CHECKING:
-    from src.models.user import User
-    from src.models.goal import Goal
+    pass
 
 
 class Task(Base):
@@ -84,13 +83,13 @@ class Task(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 

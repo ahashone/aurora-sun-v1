@@ -29,12 +29,10 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Optional
+from datetime import UTC, datetime
+from enum import StrEnum
 
 from src.lib.encryption import (
-    DataClassification,
     EncryptionService,
     get_encryption_service,
 )
@@ -47,7 +45,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-class CrisisLevel(str, Enum):
+class CrisisLevel(StrEnum):
     """Crisis detection levels."""
 
     NONE = "none"      # No crisis signals detected
@@ -55,7 +53,7 @@ class CrisisLevel(str, Enum):
     CRISIS = "crisis"   # Immediate crisis response required
 
 
-class CountryCode(str, Enum):
+class CountryCode(StrEnum):
     """Supported country codes for hotlines."""
 
     US = "US"
@@ -109,8 +107,8 @@ class CrisisResponse:
     should_pause_workflows: bool
     should_notify_admin: bool
     hotline_provided: bool
-    signal_detected: Optional[CrisisSignal] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    signal_detected: CrisisSignal | None = None
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -299,7 +297,7 @@ class CrisisService:
         "text": "See website for text options",
     }
 
-    def __init__(self, encryption_service: Optional[EncryptionService] = None):
+    def __init__(self, encryption_service: EncryptionService | None = None):
         """
         Initialize the Crisis Service.
 
@@ -336,7 +334,7 @@ class CrisisService:
 
         # Check for immediate crisis signals first
         crisis_score = 0
-        detected_signal: Optional[CrisisSignal] = None
+        detected_signal: CrisisSignal | None = None
 
         for signal in self.CRISIS_SIGNALS:
             if signal in message_lower:
@@ -450,7 +448,7 @@ class CrisisService:
         self,
         user_id: int,
         level: CrisisLevel,
-        signal: Optional[CrisisSignal] = None,
+        signal: CrisisSignal | None = None,
     ) -> CrisisResponse:
         """
         Handle a detected crisis with appropriate response.
@@ -494,7 +492,7 @@ class CrisisService:
     async def _handle_crisis_level(
         self,
         user_id: int,
-        signal: Optional[CrisisSignal],
+        signal: CrisisSignal | None,
     ) -> CrisisResponse:
         """Handle immediate crisis level."""
         # Get user's country for hotline (would come from user profile in production)
@@ -532,7 +530,7 @@ class CrisisService:
     async def _handle_warning_level(
         self,
         user_id: int,
-        signal: Optional[CrisisSignal],
+        signal: CrisisSignal | None,
     ) -> CrisisResponse:
         """Handle warning level (concerning but not immediate crisis)."""
         message = (
@@ -617,7 +615,7 @@ class CrisisService:
         self,
         user_id: int,
         level: CrisisLevel,
-        signal: Optional[CrisisSignal],
+        signal: CrisisSignal | None,
     ) -> None:
         """
         Log crisis event for safety review.
@@ -637,7 +635,7 @@ class CrisisService:
             "level": level.value,
             "signal": signal.signal if signal else None,
             "signal_severity": signal.severity if signal else None,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         if user_id not in self._crisis_log:
@@ -702,7 +700,7 @@ class CrisisService:
         for event in reversed(self._crisis_log[user_id]):
             if event.get("level") == CrisisLevel.CRISIS.value:
                 event_time = datetime.fromisoformat(event["timestamp"])
-                if datetime.now(timezone.utc) - event_time < timedelta(hours=24):
+                if datetime.now(UTC) - event_time < timedelta(hours=24):
                     recent_crisis = True
                     break
 
@@ -713,7 +711,7 @@ class CrisisService:
 # Module Singleton and Convenience Functions
 # =============================================================================
 
-_crisis_service: Optional[CrisisService] = None
+_crisis_service: CrisisService | None = None
 
 
 def get_crisis_service() -> CrisisService:
@@ -724,7 +722,7 @@ def get_crisis_service() -> CrisisService:
     return _crisis_service
 
 
-async def check_and_handle_crisis(user_id: int, message: str) -> Optional[CrisisResponse]:
+async def check_and_handle_crisis(user_id: int, message: str) -> CrisisResponse | None:
     """
     Convenience function to check message and handle crisis in one call.
 

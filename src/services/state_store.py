@@ -11,10 +11,10 @@ References:
     - F-008: Unbounded in-memory session stores
 """
 
-import time
-from dataclasses import dataclass, field
-from typing import Any, Optional
 import threading
+import time
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -60,7 +60,7 @@ class BoundedStateStore:
         self,
         key: str,
         value: Any,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> bool:
         """
         Set a value with TTL.
@@ -92,7 +92,7 @@ class BoundedStateStore:
             )
             return True
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get a value if it exists and is not expired.
 
@@ -169,7 +169,7 @@ class BoundedStateStore:
 
 
 # Global instance
-_state_store: Optional[BoundedStateStore] = None
+_state_store: BoundedStateStore | None = None
 
 
 def get_state_store() -> BoundedStateStore:

@@ -9,17 +9,17 @@ Usage:
     from src.bot import webhook, onboarding
 """
 
+from src.bot.onboarding import (
+    CONSENT_TEXTS,
+    SEGMENT_DISPLAY_NAMES,
+    OnboardingFlow,
+    OnboardingStates,
+)
 from src.bot.webhook import (
     TelegramWebhookHandler,
-    webhook_handler,
     create_app,
     process_telegram_update,
-)
-from src.bot.onboarding import (
-    OnboardingStates,
-    OnboardingFlow,
-    SEGMENT_DISPLAY_NAMES,
-    CONSENT_TEXTS,
+    webhook_handler,
 )
 
 __all__ = [

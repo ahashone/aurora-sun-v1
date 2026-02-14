@@ -17,8 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.i18n import DEFAULT_LANGUAGE, LanguageCode
-
+from src.i18n import LanguageCode
 
 # Translation strings organized by language -> module -> key
 TRANSLATIONS: dict[str, dict[str, dict[str, str]]] = {

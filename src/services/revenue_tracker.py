@@ -25,24 +25,20 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
-from enum import Enum
-from typing import Optional
+from datetime import UTC, date, datetime
+from enum import StrEnum
 
 from src.lib.encryption import (
-    DataClassification,
     EncryptionService,
-    EncryptedField,
     get_encryption_service,
 )
-
 
 # =============================================================================
 # Enums and Data Classes
 # =============================================================================
 
 
-class RevenueCategory(str, Enum):
+class RevenueCategory(StrEnum):
     """Categories for revenue entries."""
 
     CLIENT_PAYMENT = "client_payment"      # Income from clients
@@ -58,7 +54,7 @@ class RevenueCategory(str, Enum):
     OTHER_EXPENSE = "other_expense"        # Miscellaneous
 
 
-class EntryType(str, Enum):
+class EntryType(StrEnum):
     """Type of revenue entry."""
 
     INCOME = "income"
@@ -85,8 +81,8 @@ class RevenueEntry:
     source: str
     category: RevenueCategory
     entry_type: EntryType
-    description: Optional[str] = None
-    date: Optional[date] = None
+    description: str | None = None
+    date: date | None = None
     parsed_from: str = ""
 
     def to_dict(self) -> dict:
@@ -121,7 +117,7 @@ class RevenueBalance:
     expenses: float
     committed: float
     safe_to_spend: float
-    calculated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    calculated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -202,7 +198,7 @@ class RevenueTracker:
         r"client[:\s]+([A-Za-z][A-Za-z0-9\s]{1,30})",
     ]
 
-    def __init__(self, encryption_service: Optional[EncryptionService] = None):
+    def __init__(self, encryption_service: EncryptionService | None = None):
         """
         Initialize the Revenue Tracker.
 
@@ -446,7 +442,7 @@ class RevenueTracker:
                 "expenses": 0.0,
                 "committed": 0.0,
                 "safe_to_spend": 0.0,
-                "calculated_at": datetime.now(timezone.utc).isoformat(),
+                "calculated_at": datetime.now(UTC).isoformat(),
             }
 
         entries = self._entries[user_id]
@@ -464,14 +460,14 @@ class RevenueTracker:
             "expenses": expenses,
             "committed": committed,
             "safe_to_spend": safe_to_spend,
-            "calculated_at": datetime.now(timezone.utc).isoformat(),
+            "calculated_at": datetime.now(UTC).isoformat(),
         }
 
     async def get_entries(
         self,
         user_id: int,
-        entry_type: Optional[EntryType] = None,
-        category: Optional[RevenueCategory] = None,
+        entry_type: EntryType | None = None,
+        category: RevenueCategory | None = None,
         limit: int = 50,
     ) -> list[dict]:
         """
@@ -532,7 +528,7 @@ class RevenueTracker:
 # Module Singleton and Convenience Functions
 # =============================================================================
 
-_revenue_tracker: Optional[RevenueTracker] = None
+_revenue_tracker: RevenueTracker | None = None
 
 
 def get_revenue_tracker() -> RevenueTracker:

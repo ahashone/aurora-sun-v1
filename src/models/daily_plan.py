@@ -8,16 +8,16 @@ References:
 - ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
 """
 
-from datetime import datetime, date
-from typing import Optional, TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Date, Boolean, ForeignKey, Index
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Text
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
 
 if TYPE_CHECKING:
-    from src.models.user import User
+    pass
 
 
 class DailyPlan(Base):

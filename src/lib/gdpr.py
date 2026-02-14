@@ -14,11 +14,11 @@ References:
 - Retention Policy (Section 10.6)
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Protocol, Any
 import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class RetentionPolicyConfig:
         if retention == 0:
             return True  # Delete while active (not stored)
 
-        days_since = (datetime.now(timezone.utc) - created_at).days
+        days_since = (datetime.now(UTC) - created_at).days
         return days_since > retention
 
 
@@ -255,7 +255,7 @@ class GDPRService:
                 data = await module.export_user_data(user_id)
                 exports.append(GDPRExportRecord(
                     module_name=module_name,
-                    exported_at=datetime.now(timezone.utc),
+                    exported_at=datetime.now(UTC),
                     data=data,
                 ))
             except Exception as e:
@@ -269,7 +269,7 @@ class GDPRService:
                 if pg_data:
                     exports.append(GDPRExportRecord(
                         module_name="postgres",
-                        exported_at=datetime.now(timezone.utc),
+                        exported_at=datetime.now(UTC),
                         data=pg_data,
                     ))
         except Exception as e:
@@ -282,7 +282,7 @@ class GDPRService:
                 if redis_data:
                     exports.append(GDPRExportRecord(
                         module_name="redis",
-                        exported_at=datetime.now(timezone.utc),
+                        exported_at=datetime.now(UTC),
                         data=redis_data,
                     ))
         except Exception as e:
@@ -295,7 +295,7 @@ class GDPRService:
                 if neo4j_data:
                     exports.append(GDPRExportRecord(
                         module_name="neo4j",
-                        exported_at=datetime.now(timezone.utc),
+                        exported_at=datetime.now(UTC),
                         data=neo4j_data,
                     ))
         except Exception as e:
@@ -308,7 +308,7 @@ class GDPRService:
                 if qdrant_data:
                     exports.append(GDPRExportRecord(
                         module_name="qdrant",
-                        exported_at=datetime.now(timezone.utc),
+                        exported_at=datetime.now(UTC),
                         data=qdrant_data,
                     ))
         except Exception as e:
@@ -321,7 +321,7 @@ class GDPRService:
                 if letta_data:
                     exports.append(GDPRExportRecord(
                         module_name="letta",
-                        exported_at=datetime.now(timezone.utc),
+                        exported_at=datetime.now(UTC),
                         data=letta_data,
                     ))
         except Exception as e:
@@ -332,7 +332,7 @@ class GDPRService:
         export_package = {
             "export_metadata": {
                 "user_id": user_id,
-                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "exported_at": datetime.now(UTC).isoformat(),
                 "aurora_version": "v1",
                 "total_records": len(exports),
                 "errors": errors if errors else None,
@@ -368,7 +368,7 @@ class GDPRService:
         """
         deletion_report: dict[str, Any] = {
             "user_id": user_id,
-            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_at": datetime.now(UTC).isoformat(),
             "components": {},
         }
 
@@ -455,7 +455,7 @@ class GDPRService:
         freeze_report: dict[str, Any] = {
             "user_id": user_id,
             "restriction": ProcessingRestriction.RESTRICTED.value,
-            "frozen_at": datetime.now(timezone.utc).isoformat(),
+            "frozen_at": datetime.now(UTC).isoformat(),
             "components": {},
         }
 
@@ -500,7 +500,7 @@ class GDPRService:
         unfreeze_report: dict[str, Any] = {
             "user_id": user_id,
             "restriction": ProcessingRestriction.ACTIVE.value,
-            "unfrozen_at": datetime.now(timezone.utc).isoformat(),
+            "unfrozen_at": datetime.now(UTC).isoformat(),
             "components": {},
         }
 

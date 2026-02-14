@@ -20,19 +20,18 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
-from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional
+from datetime import date, time
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_response import ModuleResponse
-from src.core.segment_context import SegmentContext, WorkingStyleCode
+from src.core.segment_context import WorkingStyleCode
 
 if TYPE_CHECKING:
-    from src.models.user import User
     from src.models.daily_plan import DailyPlan
-    from src.models.vision import Vision
     from src.models.goal import Goal
+    from src.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ logger = logging.getLogger(__name__)
 # Daily Workflow Triggers
 # =============================================================================
 
-class WorkflowTrigger(str, Enum):
+class WorkflowTrigger(StrEnum):
     """What triggered the daily workflow."""
 
     SCHEDULED = "scheduled"  # Segment-adaptive morning time
@@ -70,11 +69,11 @@ class DailyWorkflowResult:
 
     success: bool
     completed_stages: list[str] = field(default_factory=list)
-    skipped_stage: Optional[str] = None
+    skipped_stage: str | None = None
     final_message: str = ""
-    daily_plan_id: Optional[int] = None
+    daily_plan_id: int | None = None
     redirect_triggered: bool = False
-    redirect_reason: Optional[str] = None
+    redirect_reason: str | None = None
 
     @property
     def was_redirected(self) -> bool:
@@ -123,9 +122,9 @@ class DailyWorkflowState:
     current_stage: str = "morning_activate"
 
     # Neurostate
-    energy_level: Optional[int] = None
-    sensory_load: Optional[float] = None
-    burnout_risk: Optional[float] = None
+    energy_level: int | None = None
+    sensory_load: float | None = None
+    burnout_risk: float | None = None
     overload_detected: bool = False
 
     # Daily workflow flags
@@ -136,14 +135,14 @@ class DailyWorkflowState:
     evening_completed: bool = False
 
     # Reflection
-    reflection_text: Optional[str] = None
-    tomorrow_intention: Optional[str] = None
+    reflection_text: str | None = None
+    tomorrow_intention: str | None = None
 
     # Tracking
     interventions_delivered: list[str] = field(default_factory=list)
 
     # Result (populated at end)
-    result: Optional[DailyWorkflowResult] = None
+    result: DailyWorkflowResult | None = None
 
 
 # =============================================================================
@@ -169,11 +168,11 @@ class SegmentTimingConfig:
     evening_minute: int
 
     # Exact time for Autism (if exact_time strategy) - optional
-    midday_exact_hour: Optional[int] = None
-    midday_exact_minute: Optional[int] = None
+    midday_exact_hour: int | None = None
+    midday_exact_minute: int | None = None
 
     # Interval for ADHD (in minutes, after last interaction) - optional
-    midday_interval_minutes: Optional[int] = None
+    midday_interval_minutes: int | None = None
 
     # Evening reflection cutoff (after which we don't prompt)
     reflection_cutoff_hour: int = 22
@@ -352,7 +351,7 @@ class DailyWorkflow:
         self,
         user_id: int,
         trigger: str = "scheduled",
-        user: Optional["User"] = None,
+        user: User | None = None,
     ) -> DailyWorkflowResult:
         """
         Run the complete daily workflow for a user.
@@ -386,7 +385,7 @@ class DailyWorkflow:
             segment_code = user.working_style_code or "NT"
 
         # Initialize workflow state
-        state = DailyWorkflowState(
+        DailyWorkflowState(
             user_id=user_id,
             date=date.today(),
             segment_code=segment_code,
@@ -451,7 +450,7 @@ class DailyWorkflow:
         self,
         user_id: int,
         segment_code: WorkingStyleCode,
-        previous_energy: Optional[int] = None,
+        previous_energy: int | None = None,
         consecutive_red_days: int = 0,
     ) -> tuple[dict[str, Any], bool]:
         """
@@ -514,7 +513,7 @@ class DailyWorkflow:
         self,
         user_id: int,
         segment_code: WorkingStyleCode,
-    ) -> Optional[time]:
+    ) -> time | None:
         """
         Get segment-adaptive check-in time for midday reminder.
 
@@ -576,7 +575,7 @@ class DailyWorkflow:
     async def run_vision_display(
         self,
         user_id: int,
-    ) -> tuple[list[str], list["Goal"]]:
+    ) -> tuple[list[str], list[Goal]]:
         """
         Display vision and 90-day goals to the user.
 
@@ -659,7 +658,7 @@ class DailyWorkflow:
         user_id: int,
         date: date,
         state: DailyWorkflowState,
-    ) -> "DailyPlan":
+    ) -> DailyPlan:
         """
         Save the daily plan record.
 
@@ -708,7 +707,7 @@ class DailyWorkflow:
 # =============================================================================
 
 # Global daily workflow instance
-_daily_workflow: Optional[DailyWorkflow] = None
+_daily_workflow: DailyWorkflow | None = None
 
 
 def get_daily_workflow() -> DailyWorkflow:

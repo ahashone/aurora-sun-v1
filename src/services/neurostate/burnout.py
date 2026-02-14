@@ -12,13 +12,11 @@ References:
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from src.models.neurostate import BurnoutAssessment, BurnoutType
-
 
 # =============================================================================
 # Data Classes
@@ -144,7 +142,7 @@ class BurnoutClassifier:
     async def assess_current_state(
         self,
         user_id: int,
-    ) -> Optional[BurnoutState]:
+    ) -> BurnoutState | None:
         """
         Get the current burnout state for a user.
 
@@ -168,7 +166,7 @@ class BurnoutClassifier:
             return None
 
         trajectory = assessment.energy_trajectory or []
-        days_in_state = (datetime.now(timezone.utc) - assessment.assessed_at).days
+        days_in_state = (datetime.now(UTC) - assessment.assessed_at).days
 
         return BurnoutState(
             user_id=user_id,
@@ -187,8 +185,8 @@ class BurnoutClassifier:
         burnout_type: BurnoutType,
         severity: float,
         energy_trajectory: list[float],
-        indicators: Optional[dict] = None,
-        notes: Optional[str] = None,
+        indicators: dict | None = None,
+        notes: str | None = None,
     ) -> BurnoutAssessment:
         """
         Create a new burnout assessment.
@@ -214,7 +212,7 @@ class BurnoutClassifier:
             .all()
         )
         for a in active:
-            a.resolved_at = datetime.now(timezone.utc)
+            a.resolved_at = datetime.now(UTC)
 
         # Create new assessment
         assessment = BurnoutAssessment(
@@ -233,7 +231,7 @@ class BurnoutClassifier:
     async def resolve_assessment(
         self,
         assessment_id: int,
-        notes: Optional[str] = None,
+        notes: str | None = None,
     ) -> BurnoutAssessment:
         """
         Mark a burnout assessment as resolved.
@@ -253,7 +251,7 @@ class BurnoutClassifier:
         if not assessment:
             raise ValueError(f"BurnoutAssessment {assessment_id} not found")
 
-        assessment.resolved_at = datetime.now(timezone.utc)
+        assessment.resolved_at = datetime.now(UTC)
         if notes:
             assessment.notes = (assessment.notes or "") + f"\nResolution: {notes}"
 

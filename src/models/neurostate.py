@@ -10,35 +10,31 @@ References:
 """
 
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Index, ForeignKey, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 
 from src.models.base import Base
-from src.lib.encryption import DataClassification, EncryptedField, get_encryption_service
-
 
 # =============================================================================
 # Enums
 # =============================================================================
 
-class InertiaType(str, Enum):
+class InertiaType(StrEnum):
     """Types of inertia as defined in ARCHITECTURE.md Section 3."""
     AUTISTIC_INERTIA = "autistic_inertia"      # Monotropism: cannot switch attention
     ACTIVATION_DEFICIT = "activation_deficit"   # ADHD: motivation/activation failure
     DOUBLE_BLOCK = "double_block"              # AuDHD: both types combined
 
 
-class BurnoutType(str, Enum):
+class BurnoutType(StrEnum):
     """Burnout types as defined in ARCHITECTURE.md Section 3."""
     AD_BOOM_BUST = "ad_boom_bust"               # ADHD: hyperfocus -> collapse cycle
     AU_OVERLOAD = "au_overload"                 # Autism: sensory/cognitive overload -> shutdown
     AH_TRIPLE = "ah_triple"                     # AuDHD: all three types combined
 
 
-class ChannelType(str, Enum):
+class ChannelType(StrEnum):
     """Channel types for AuDHD channel dominance."""
     FOCUS = "focus"
     CREATIVE = "creative"
@@ -47,7 +43,7 @@ class ChannelType(str, Enum):
     LEARNING = "learning"
 
 
-class EnergyLevel(str, Enum):
+class EnergyLevel(StrEnum):
     """Energy levels derived from behavioral proxies."""
     CRITICAL = "critical"        # Near shutdown
     LOW = "low"                 # Below baseline

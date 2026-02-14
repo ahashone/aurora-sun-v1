@@ -29,10 +29,8 @@ import hashlib
 import hmac
 import os
 import secrets
-import struct
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 # Keyring for secure key storage
 try:
@@ -44,10 +42,10 @@ except ImportError:
 
 # Cryptography imports
 try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
     CRYPTO_AVAILABLE = True
 except ImportError:
     CRYPTO_AVAILABLE = False
@@ -113,8 +111,8 @@ class EncryptedField:
     ciphertext: str
     classification: DataClassification
     version: int
-    field_salt: Optional[str] = None
-    envelope_nonce: Optional[str] = None
+    field_salt: str | None = None
+    envelope_nonce: str | None = None
 
     def to_db_dict(self) -> dict:
         """Serialize for database storage."""
@@ -203,8 +201,8 @@ class EncryptionService:
 
     def __init__(
         self,
-        master_key: Optional[bytes] = None,
-        keyring_service: Optional[str] = None,
+        master_key: bytes | None = None,
+        keyring_service: str | None = None,
     ):
         """
         Initialize the encryption service.
@@ -346,7 +344,7 @@ class EncryptionService:
         self,
         user_id: int,
         field_name: str,
-        field_salt: Optional[bytes] = None,
+        field_salt: bytes | None = None,
     ) -> bytes:
         """
         Derive a field-specific encryption key.
@@ -385,7 +383,7 @@ class EncryptionService:
         plaintext: str,
         user_id: int,
         classification: DataClassification,
-        field_name: Optional[str] = None,
+        field_name: str | None = None,
     ) -> EncryptedField:
         """
         Encrypt a field value based on its classification.
@@ -525,7 +523,7 @@ class EncryptionService:
         self,
         encrypted: EncryptedField,
         user_id: int,
-        field_name: Optional[str] = None,
+        field_name: str | None = None,
     ) -> str:
         """
         Decrypt an encrypted field value.
@@ -731,7 +729,7 @@ class HashService:
     rainbow table attacks.
     """
 
-    def __init__(self, hash_salt: Optional[bytes] = None):
+    def __init__(self, hash_salt: bytes | None = None):
         """
         Initialize the hash service.
 
@@ -818,8 +816,8 @@ class HashService:
 # =============================================================================
 
 # Global service instances (lazy initialization)
-_encryption_service: Optional[EncryptionService] = None
-_hash_service: Optional[HashService] = None
+_encryption_service: EncryptionService | None = None
+_hash_service: HashService | None = None
 
 
 def get_encryption_service() -> EncryptionService:
@@ -842,7 +840,7 @@ def encrypt_for_user(
     plaintext: str,
     user_id: int,
     classification: DataClassification,
-    field_name: Optional[str] = None,
+    field_name: str | None = None,
 ) -> EncryptedField:
     """
     Convenience function to encrypt a value for a user.
@@ -864,7 +862,7 @@ def encrypt_for_user(
 def decrypt_for_user(
     encrypted: EncryptedField,
     user_id: int,
-    field_name: Optional[str] = None,
+    field_name: str | None = None,
 ) -> str:
     """
     Convenience function to decrypt a value for a user.

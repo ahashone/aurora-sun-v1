@@ -15,7 +15,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-
 # Internal segment codes (used in code, NOT user-facing)
 WorkingStyleCode: TypeAlias = Literal["AD", "AU", "AH", "NT", "CU"]
 

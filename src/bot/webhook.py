@@ -23,25 +23,25 @@ References:
     - ARCHITECTURE.md Section 13 (SW-13, SW-15)
 """
 
-import os
 import logging
-
-# Security imports
-from src.lib.security import RateLimiter
-from src.models.consent import ConsentService, ConsentStatus
-from typing import Optional, Any
+import os
+from typing import Any
 
 from telegram import Update
 from telegram.ext import (
     Application,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
-    CommandHandler,
     filters,
 )
 
-from src.bot.onboarding import OnboardingFlow, OnboardingStates
+from src.bot.onboarding import OnboardingFlow
 from src.lib.encryption import hash_telegram_id
+
+# Security imports
+from src.lib.security import RateLimiter
+from src.models.consent import ConsentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,6 @@ class TelegramWebhookHandler:
                 return
 
         # Extract user info
-        effective_user = user
         if not user:
             logger.warning("Update has no effective_user")
             return
@@ -231,76 +230,6 @@ class TelegramWebhookHandler:
 
         await update.message.reply_text(response_text)
 
-    async def _handle_onboarding(
-        self,
-        update: Update,
-        user: Any,
-        telegram_id_hash: str,
-    ) -> None:
-        """
-        Handle new user onboarding flow.
-
-        Implements SW-13: User Onboarding
-        1. Language auto-detect via Telegram locale
-        2. Welcome message
-        3. Segment selection
-        4. Consent gate (explicit, not skippable)
-        5. Vision capture
-
-        Args:
-            update: Telegram Update
-            user: Telegram user object
-            telegram_id_hash: Hashed Telegram ID
-        """
-        # Get language from Telegram locale
-        language = user.language_code or "en"
-
-        # Get current onboarding state
-        state = await self._onboarding_flow.get_state(telegram_id_hash)
-
-        if state is None:
-            # Start new onboarding
-            await self._onboarding_flow.start(update, language=language)
-
-        # Process current step
-        await self._onboarding_flow.process_step(update)
-
-    async def _get_user_by_telegram_hash(self, telegram_id_hash: str) -> Optional[Any]:
-        """
-        Get user from database by hashed Telegram ID.
-
-        Args:
-            telegram_id_hash: HMAC-SHA256 hash of Telegram ID
-
-        Returns:
-            User record if found, None otherwise
-        """
-        # TODO: Implement actual database lookup
-        # from src.models.user import User
-        # return self._db_session.query(User).filter(
-        #     User.telegram_id == telegram_id_hash
-        # ).first()
-        return None
-
-    async def _request_consent(self, update: Update, user: Any) -> None:
-        """
-        Request consent from user who hasn't given it yet.
-
-        This is part of the consent gate - no data processing without consent.
-
-        Args:
-            update: Telegram Update
-            user: User record
-        """
-        # TODO: Implement consent request flow
-        consent_text = (
-            "Before we continue, I need your consent to process your data. "
-            "Your data is encrypted and stored securely. "
-            "You can withdraw consent at any time."
-        )
-        # Send consent message with inline keyboard
-
-
 # =============================================================================
 # Webhook Setup
 # =============================================================================
@@ -328,7 +257,6 @@ def create_app() -> Application:
     Returns:
         Configured telegram.ext.Application
     """
-    import asyncio
 
     # Get bot token from environment
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")

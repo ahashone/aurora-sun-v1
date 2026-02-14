@@ -14,17 +14,16 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Optional, Any, TYPE_CHECKING
+from datetime import date
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.module_protocol import Module
+from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
-from src.core.daily_workflow_hooks import DailyWorkflowHooks
-from src.core.segment_context import SegmentContext, WorkingStyleCode
+from src.core.segment_context import WorkingStyleCode
 from src.i18n.strings import t as translate
 
 # Import models
@@ -118,7 +117,7 @@ class ReviewModule:
         "DONE": "Flow complete",
     }
 
-    def __init__(self, db_session: Optional[AsyncSession] = None):
+    def __init__(self, db_session: AsyncSession | None = None):
         """
         Initialize the Review module.
 
@@ -147,7 +146,7 @@ class ReviewModule:
 
     async def _get_today_daily_plan(
         self, ctx: ModuleContext
-    ) -> Optional[DailyPlan]:
+    ) -> DailyPlan | None:
         """
         Get today's DailyPlan for the user.
 
@@ -169,7 +168,7 @@ class ReviewModule:
         return result.scalar_one_or_none()
 
     async def _get_completed_tasks(
-        self, ctx: ModuleContext, target_date: Optional[date] = None
+        self, ctx: ModuleContext, target_date: date | None = None
     ) -> list[Task]:
         """
         Get tasks completed today (or on a specific date).
@@ -341,7 +340,6 @@ class ReviewModule:
             ModuleResponse with text, optional buttons, next_state
         """
         current_state = ctx.state
-        lang = ctx.language
 
         # Route based on current state
         if current_state == ReviewStates.ACCOMPLISHMENTS:
@@ -443,7 +441,7 @@ class ReviewModule:
         lang = ctx.language
 
         # Try to parse energy as a number
-        energy_value: Optional[int] = None
+        energy_value: int | None = None
         if message.strip().isdigit():
             energy_value = int(message.strip())
             if 1 <= energy_value <= 5:
@@ -553,7 +551,7 @@ class ReviewModule:
             DailyWorkflowHooks with evening_review hook
         """
 
-        async def evening_review_hook(ctx: ModuleContext) -> Optional[str]:
+        async def evening_review_hook(ctx: ModuleContext) -> str | None:
             """
             Auto-trigger evening review if not already done.
 

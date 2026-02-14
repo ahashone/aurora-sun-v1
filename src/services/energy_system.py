@@ -16,22 +16,21 @@ Reference: ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Literal, Optional
+from datetime import UTC
+from enum import StrEnum
+from typing import Literal
 
 from src.core.segment_context import (
-    SegmentContext,
-    SegmentService,
     WorkingStyleCode,
 )
+from src.core.segment_service import SegmentService
 from src.models.task import Task
-
 
 # Energy state levels for simple RED/YELLOW/GREEN model
 EnergyLevel = Literal["RED", "YELLOW", "GREEN"]
 
 
-class EnergyStateEnum(str, Enum):
+class EnergyStateEnum(StrEnum):
     """Simple energy state levels."""
 
     RED = "RED"      # Low energy - rest needed
@@ -84,12 +83,8 @@ class IBNSResult:
     interest: float     # Interest component (0-1)
     challenge: float    # Challenge component (0-1)
     novelty: float     # Novelty component (0-1)
-    urgency: urgency    # Urgency component (0-1)
+    urgency: float      # Urgency component (0-1)
     recommendation: str  # "highly_recommended" | "recommended" | "neutral" | "discouraged"
-
-
-# Type alias for urgency score
-urgency = float
 
 
 @dataclass
@@ -289,8 +284,8 @@ class EnergySystem:
     async def update_energy_state(
         self,
         user_id: int,
-        level: Optional[EnergyStateEnum] = None,
-        score: Optional[float] = None,
+        level: EnergyStateEnum | None = None,
+        score: float | None = None,
     ) -> EnergyState:
         """
         Update the user's energy state.
@@ -434,13 +429,13 @@ class EnergySystem:
         """
         Calculate novelty score based on task creation recency.
         """
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         if not task.created_at:
             return 0.5  # Default if no creation date
 
         # Tasks created in last 24 hours are most novel
-        age = datetime.now(timezone.utc) - task.created_at
+        age = datetime.now(UTC) - task.created_at
         if age < timedelta(hours=24):
             return 1.0
         elif age < timedelta(days=7):
@@ -454,8 +449,7 @@ class EnergySystem:
         """
         Calculate urgency score based on committed date.
         """
-        from datetime import date, timezone
-        from datetime import datetime as dt
+        from datetime import date
 
         if not task.committed_date:
             return 0.3  # Default if no commitment
@@ -577,12 +571,12 @@ class EnergySystem:
     async def update_spoon_drawer(
         self,
         user_id: int,
-        social: Optional[int] = None,
-        sensory: Optional[int] = None,
-        ef: Optional[int] = None,
-        emotional: Optional[int] = None,
-        physical: Optional[int] = None,
-        masking: Optional[int] = None,
+        social: int | None = None,
+        sensory: int | None = None,
+        ef: int | None = None,
+        emotional: int | None = None,
+        physical: int | None = None,
+        masking: int | None = None,
     ) -> SpoonDrawer:
         """
         Update specific spoon pools.
@@ -692,8 +686,8 @@ class EnergySystem:
     async def update_sensory_cognitive_load(
         self,
         user_id: int,
-        sensory: Optional[float] = None,
-        cognitive: Optional[float] = None,
+        sensory: float | None = None,
+        cognitive: float | None = None,
     ) -> SensoryCognitiveLoad:
         """
         Update sensory and cognitive load.
@@ -813,7 +807,7 @@ class EnergySystem:
     async def get_energy_recommendation(
         self,
         user_id: int,
-        task: Optional[Task] = None,
+        task: Task | None = None,
     ) -> dict:
         """
         Get comprehensive energy recommendation for a user.
@@ -832,7 +826,7 @@ class EnergySystem:
             Dictionary with segment-appropriate energy data
         """
         segment = await self._get_user_segment(user_id)
-        segment_context = self._segment_service.get_segment_context(segment)
+        self._segment_service.get_segment_context(segment)
 
         # Base response
         response = {
@@ -887,7 +881,7 @@ class EnergySystem:
 
 
 # Module-level singleton for easy access
-_energy_system: Optional[EnergySystem] = None
+_energy_system: EnergySystem | None = None
 
 
 def get_energy_system() -> EnergySystem:

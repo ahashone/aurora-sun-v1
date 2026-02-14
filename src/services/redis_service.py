@@ -1,8 +1,8 @@
 """Redis service for distributed state management."""
 
-import os
-from typing import Any, Optional
 import json
+import os
+from typing import Any
 
 import redis.asyncio as redis
 
@@ -12,11 +12,11 @@ class RedisService:
 
     def __init__(self):
         """Initialize Redis connection."""
-        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-        self._client: Optional[redis.Redis] = None
-        self._sync_client: Optional[redis.Redis] = None
+        os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        self._client: redis.Redis | None = None
+        self._sync_client: redis.Redis | None = None
 
-    async def _ensure_async_client(self) -> Optional[redis.Redis]:
+    async def _ensure_async_client(self) -> redis.Redis | None:
         """Get or create async Redis client."""
         if self._client is None:
             redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -29,7 +29,7 @@ class RedisService:
                 self._client = None
         return self._client
 
-    def _get_sync_client(self) -> Optional[redis.Redis]:
+    def _get_sync_client(self) -> redis.Redis | None:
         """Get synchronous Redis client for sync operations."""
         if self._sync_client is None:
             redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -46,14 +46,14 @@ class RedisService:
         """Get the raw async Redis client for advanced operations."""
         return self._client
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         """Get value by key."""
         client = await self._ensure_async_client()
         if client is None:
             return None
         return await client.get(key)
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
         """Set key-value with optional TTL (seconds)."""
         client = await self._ensure_async_client()
         if client is None:
@@ -76,7 +76,7 @@ class RedisService:
             return False
         return bool(await client.exists(key))
 
-    async def incr(self, key: str, amount: int = 1) -> Optional[int]:
+    async def incr(self, key: str, amount: int = 1) -> int | None:
         """Increment counter."""
         client = await self._ensure_async_client()
         if client is None:
@@ -91,14 +91,14 @@ class RedisService:
         return await client.expire(key, ttl)
 
     # Sync versions for backward compatibility
-    def get_sync(self, key: str) -> Optional[str]:
+    def get_sync(self, key: str) -> str | None:
         """Get value by key (sync)."""
         client = self._get_sync_client()
         if client is None:
             return None
         return client.get(key)
 
-    def set_sync(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    def set_sync(self, key: str, value: Any, ttl: int | None = None) -> bool:
         """Set key-value with optional TTL (seconds, sync)."""
         client = self._get_sync_client()
         if client is None:
@@ -109,7 +109,7 @@ class RedisService:
 
 
 # Singleton instance
-_redis_service: Optional[RedisService] = None
+_redis_service: RedisService | None = None
 
 
 def get_redis_service() -> RedisService:

@@ -19,12 +19,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from src.core.module_protocol import Module
+from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
-from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.segment_context import SegmentContext, WorkingStyleCode
 
 if TYPE_CHECKING:
@@ -119,7 +118,7 @@ class FutureLetterSession:
     """Session data for the future letter flow."""
 
     # Time horizon: 5, 10, or 20 years
-    time_horizon: Optional[int] = None
+    time_horizon: int | None = None
 
     # User's description of their life now
     life_now: str = ""
@@ -134,7 +133,7 @@ class FutureLetterSession:
     wisdom: str = ""
 
     # Final compiled letter
-    compiled_letter: Optional[str] = None
+    compiled_letter: str | None = None
 
     # Timestamp
     created_at: datetime = field(default_factory=datetime.now)
@@ -526,14 +525,14 @@ class FutureLetterModule:
             Localized or segment-specific prompt
         """
         # Get working style code
-        code = segment.core.working_style_code
+        code = segment.core.code
 
         # Fallback to CU if not found
         prompts = SEGMENT_PROMPTS.get(code, SEGMENT_PROMPTS["CU"])
 
         return prompts.get(stage, SEGMENT_PROMPTS["CU"].get(stage, ""))
 
-    def _parse_time_horizon(self, message: str) -> Optional[int]:
+    def _parse_time_horizon(self, message: str) -> int | None:
         """
         Parse time horizon from user message.
 
@@ -637,10 +636,10 @@ Written on {session.created_at.strftime('%Y-%m-%d')}
         Returns:
             Welcome message text
         """
-        display_name = ctx.segment_context.core.display_name
 
+        user_name = ctx.metadata.get("user_name", "there")
         return (
-            f"Welcome to the Future Letter exercise, {ctx.user_name or 'there'}!\n\n"
+            f"Welcome to the Future Letter exercise, {user_name}!\n\n"
             f"This is a powerful exercise for vision anchoring. "
             f"You'll write a letter to your future self, exploring where you are now, "
             f"where you're heading, and what wisdom you'd share."
@@ -661,15 +660,14 @@ Written on {session.created_at.strftime('%Y-%m-%d')}
         Returns:
             Completion message text
         """
-        years = session.time_horizon or 10
 
         return (
-            f"Beautiful! You've written a powerful letter to your future self.\n\n"
-            f"I've saved this for you. This letter can serve as an anchor for your vision "
-            f"and daily planning. When you're setting your priorities, you can look back "
-            f"at what your future self wanted you to know.\n\n"
-            f"Here's your letter:\n\n"
-            f"---"
+            "Beautiful! You've written a powerful letter to your future self.\n\n"
+            "I've saved this for you. This letter can serve as an anchor for your vision "
+            "and daily planning. When you're setting your priorities, you can look back "
+            "at what your future self wanted you to know.\n\n"
+            "Here's your letter:\n\n"
+            "---"
         )
 
     async def _persist_letter(

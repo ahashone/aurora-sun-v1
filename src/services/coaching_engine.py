@@ -17,19 +17,16 @@ Reference: SW-3 (Inline Coaching Trigger), SW-11 (Crisis Override), SW-12 (Burno
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Literal
 
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
-from src.core.segment_context import WorkingStyleCode
 
 from .tension_engine import (
+    Quadrant,
     TensionEngine,
     get_tension_engine,
-    TensionState,
-    Quadrant,
 )
-
 
 # Type aliases
 ChannelDominance = Literal["ADHD", "AUTISM", "BALANCED"]
@@ -46,7 +43,7 @@ class CoachingResponse:
     should_continue_module: bool = True  # If False, module should pause/suspend
     is_crisis_response: bool = False     # True if this is a crisis protocol response
     is_burnout_redirect: bool = False    # True if this redirects to burnout recovery
-    recommended_action: Optional[str] = None  # e.g., "pause_module", "suspend_daily_workflow"
+    recommended_action: str | None = None  # e.g., "pause_module", "suspend_daily_workflow"
     metadata: dict = None  # Additional coaching metadata
 
     def __post_init__(self):
@@ -110,7 +107,7 @@ class CoachingEngine:
         "i was doing something else",
     ]
 
-    def __init__(self, tension_engine: Optional[TensionEngine] = None):
+    def __init__(self, tension_engine: TensionEngine | None = None):
         """Initialize the coaching engine.
 
         Args:
@@ -205,7 +202,6 @@ class CoachingEngine:
         # Step 3: Route to segment-specific protocol
         # FIX: Use SegmentContext fields instead of string comparison
         # This follows the ARCHITECTURE.md rule: "Never if segment == 'AD' in code"
-        segment = ctx.segment_context.core.code
         features = ctx.segment_context.features
 
         # Route based on segment features, not string comparison
@@ -536,7 +532,7 @@ class CoachingEngine:
 
 
 # Module-level singleton for easy access
-_coaching_engine: Optional[CoachingEngine] = None
+_coaching_engine: CoachingEngine | None = None
 
 
 def get_coaching_engine() -> CoachingEngine:

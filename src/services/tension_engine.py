@@ -10,18 +10,14 @@ Reference: SW-3, SW-11, SW-12
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
-from typing import Literal, Optional
-
-from src.core.segment_context import WorkingStyleCode
-
+from enum import StrEnum
+from typing import Literal
 
 # Quadrant levels (0-1 scale)
 TensionLevel: Literal[0, 1] = Literal[0, 1]
 
 
-class Quadrant(str, Enum):
+class Quadrant(StrEnum):
     """Four quadrants based on Sonne vs Erde axes."""
 
     SWEET_SPOT = "SWEET_SPOT"   # HIGH sonne + HIGH erde: Reinforce
@@ -158,8 +154,8 @@ class TensionEngine:
     async def update_state(
         self,
         user_id: int,
-        sonne: Optional[float] = None,
-        erde: Optional[float] = None,
+        sonne: float | None = None,
+        erde: float | None = None,
     ) -> TensionState:
         """Update the tension state for a user.
 
@@ -247,7 +243,7 @@ class TensionEngine:
         self,
         user_id: int,
         previous_quadrant: Quadrant,
-    ) -> Optional[Quadrant]:
+    ) -> Quadrant | None:
         """Detect if user has shifted quadrants.
 
         Args:
@@ -295,7 +291,7 @@ class TensionEngine:
 
 
 # Module-level singleton for easy access
-_tension_engine: Optional[TensionEngine] = None
+_tension_engine: TensionEngine | None = None
 
 
 def get_tension_engine() -> TensionEngine:

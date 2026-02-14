@@ -16,14 +16,13 @@ References:
     - ARCHITECTURE.md Section 3 (Neurotype Segmentation)
 """
 
-import os
 import logging
-from enum import Enum
-from typing import Optional, Dict, Any, Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 
 from src.lib.encryption import hash_telegram_id
 
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
-class OnboardingStates(str, Enum):
+class OnboardingStates(StrEnum):
     """Onboarding state machine states."""
 
     LANGUAGE = "language"           # Language selection
@@ -143,9 +142,9 @@ class OnboardingStep:
 
     state: OnboardingStates
     prompt_key: str
-    keyboard: Optional[list[list[InlineKeyboardButton]]] = None
-    validator: Optional[Callable[[str], bool]] = None
-    transformer: Optional[Callable[[str], str]] = None
+    keyboard: list[list[InlineKeyboardButton]] | None = None
+    validator: Callable[[str], bool] | None = None
+    transformer: Callable[[str], str] | None = None
 
 
 class OnboardingFlow:
@@ -167,8 +166,8 @@ class OnboardingFlow:
 
     def __init__(self):
         """Initialize the onboarding flow."""
-        self._states: Dict[str, OnboardingStates] = {}  # user_hash -> state
-        self._user_data: Dict[str, Dict[str, Any]] = {}  # user_hash -> data
+        self._states: dict[str, OnboardingStates] = {}  # user_hash -> state
+        self._user_data: dict[str, dict[str, Any]] = {}  # user_hash -> data
 
         # Define onboarding steps
         self._steps: list[OnboardingStep] = [
@@ -267,7 +266,7 @@ class OnboardingFlow:
 
         await self._send_prompt(update, user_hash)
 
-    async def get_state(self, user_hash: str) -> Optional[OnboardingStates]:
+    async def get_state(self, user_hash: str) -> OnboardingStates | None:
         """
         Get the current onboarding state for a user.
 
@@ -427,7 +426,7 @@ class OnboardingFlow:
             text = "Welcome to Aurora Sun! Please select your language:"
 
         elif current_step.state == OnboardingStates.NAME:
-            text = f"Great! What's your name?"
+            text = "Great! What's your name?"
 
         elif current_step.state == OnboardingStates.WORKING_STYLE:
             text = """
@@ -491,7 +490,7 @@ Type anything to start your first daily planning session!
             elif update.callback_query:
                 await update.callback_query.message.edit_text(text)
 
-    def get_user_data(self, user_hash: str) -> Optional[Dict[str, Any]]:
+    def get_user_data(self, user_hash: str) -> dict[str, Any] | None:
         """
         Get collected user data after onboarding.
 

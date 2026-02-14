@@ -8,10 +8,9 @@ References:
 - ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
 """
 
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Index
+from sqlalchemy import Column, DateTime, Index, Integer, String
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
@@ -68,13 +67,13 @@ class User(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 

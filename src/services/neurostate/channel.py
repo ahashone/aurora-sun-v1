@@ -9,14 +9,12 @@ References:
 - ARCHITECTURE.md Section 3.6 (Channel Dominance - AuDHD)
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from src.models.neurostate import ChannelState, ChannelType
-
 
 # =============================================================================
 # Data Classes
@@ -134,7 +132,7 @@ class ChannelDominanceDetector:
     async def detect(
         self,
         user_id: int,
-        recent_messages: Optional[list[dict]] = None,
+        recent_messages: list[dict] | None = None,
     ) -> ChannelDetectionResult:
         """
         Detect current channel dominance.
@@ -194,7 +192,7 @@ class ChannelDominanceDetector:
         user_id: int,
         channel_scores: dict[ChannelType, float],
         confidence: float,
-        supporting_signals: Optional[list[str]] = None,
+        supporting_signals: list[str] | None = None,
     ) -> ChannelState:
         """
         Update the channel state for a user.
@@ -241,7 +239,7 @@ class ChannelDominanceDetector:
     async def get_current_state(
         self,
         user_id: int,
-    ) -> Optional[ChannelStateData]:
+    ) -> ChannelStateData | None:
         """
         Get current channel state for a user.
 

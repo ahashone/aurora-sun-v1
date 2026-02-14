@@ -17,107 +17,98 @@ Services:
 Reference: ARCHITECTURE.md Section 4 (Intelligence Layer)
 """
 
-from .tension_engine import (
-    TensionEngine,
-    TensionState,
-    Quadrant,
-    OverrideLevel,
-    FulfillmentType,
-    get_tension_engine,
-    get_user_tension,
-)
-
 from .coaching_engine import (
+    ChannelDominance,
     CoachingEngine,
     CoachingResponse,
-    ChannelDominance,
     get_coaching_engine,
-)
-
-from .pattern_detection import (
-    PatternDetectionService,
-    CycleType,
-    CycleSeverity,
-    DetectedCycle,
-    SignalName,
-    Intervention,
-    get_pattern_detection_service,
-)
-
-# Neurostate Services
-from .neurostate.sensory import (
-    SensoryStateAssessment,
-    SensoryState,
-    ModalityInput,
-)
-
-from .neurostate.inertia import (
-    InertiaDetector,
-    InertiaEventData,
-    InertiaDetectionResult,
-)
-
-from .neurostate.burnout import (
-    BurnoutClassifier,
-    BurnoutState,
-    BurnoutClassification,
-)
-
-from .neurostate.masking import (
-    MaskingLoadTracker,
-    MaskingLoad,
-    MaskingEvent,
-)
-
-from .neurostate.channel import (
-    ChannelDominanceDetector,
-    ChannelStateData,
-    ChannelDetectionResult,
-)
-
-from .neurostate.energy import (
-    EnergyPredictor,
-    BehavioralSignals,
-    EnergyPrediction,
-)
-
-from .effectiveness import (
-    EffectivenessService,
-    InterventionType,
-    InterventionOutcome,
-    SegmentCode,
-    InterventionInstance,
-    EffectivenessMetrics,
-    VariantExperiment,
-    EffectivenessMetricsResponse,
-    VariantComparisonResult,
-    InterventionOutcomeData,
-    EffectivenessReport,
-    get_effectiveness_service,
-)
-
-# Revenue Tracker (Money Pillar)
-from .revenue_tracker import (
-    RevenueTracker,
-    RevenueEntry,
-    RevenueBalance,
-    RevenueCategory,
-    EntryType,
-    get_revenue_tracker,
-    parse_and_save_revenue,
 )
 
 # Crisis Safety Net (SW-11)
 from .crisis_service import (
-    CrisisService,
-    CrisisLevel,
-    CrisisSignal,
-    CrisisResponse,
     CountryCode,
-    get_crisis_service,
+    CrisisLevel,
+    CrisisResponse,
+    CrisisService,
+    CrisisSignal,
     check_and_handle_crisis,
+    get_crisis_service,
+)
+from .effectiveness import (
+    EffectivenessMetrics,
+    EffectivenessMetricsResponse,
+    EffectivenessReport,
+    EffectivenessService,
+    InterventionInstance,
+    InterventionOutcome,
+    InterventionOutcomeData,
+    InterventionType,
+    SegmentCode,
+    VariantComparisonResult,
+    VariantExperiment,
+    get_effectiveness_service,
+)
+from .neurostate.burnout import (
+    BurnoutClassification,
+    BurnoutClassifier,
+    BurnoutState,
+)
+from .neurostate.channel import (
+    ChannelDetectionResult,
+    ChannelDominanceDetector,
+    ChannelStateData,
+)
+from .neurostate.energy import (
+    BehavioralSignals,
+    EnergyPrediction,
+    EnergyPredictor,
+)
+from .neurostate.inertia import (
+    InertiaDetectionResult,
+    InertiaDetector,
+    InertiaEventData,
+)
+from .neurostate.masking import (
+    MaskingEvent,
+    MaskingLoad,
+    MaskingLoadTracker,
 )
 
+# Neurostate Services
+from .neurostate.sensory import (
+    ModalityInput,
+    SensoryState,
+    SensoryStateAssessment,
+)
+from .pattern_detection import (
+    CycleSeverity,
+    CycleType,
+    DetectedCycle,
+    Intervention,
+    PatternDetectionService,
+    SignalName,
+    get_pattern_detection_service,
+)
+
+# Revenue Tracker (Money Pillar)
+from .revenue_tracker import (
+    EntryType,
+    RevenueBalance,
+    RevenueCategory,
+    RevenueEntry,
+    RevenueTracker,
+    get_revenue_tracker,
+    parse_and_save_revenue,
+)
+from .tension_engine import (
+    FulfillmentType,
+    OverrideLevel,
+    Quadrant,
+    TensionEngine,
+    TensionState,
+    get_tension_engine,
+    get_user_tension,
+)
 
 __all__ = [
     # Tension Engine

@@ -18,19 +18,16 @@ Reference:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
-from typing import Optional, Any, TYPE_CHECKING
+from datetime import date
+from typing import TYPE_CHECKING, Any
 
-from src.core.module_protocol import Module
+from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
-from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.segment_context import SegmentContext
 
 if TYPE_CHECKING:
-    from src.models.task import Task
-    from src.models.goal import Goal
-    from src.models.vision import Vision
+    pass
 
 
 # =============================================================================
@@ -87,8 +84,8 @@ class PriorityItem:
 
     id: str
     title: str
-    goal_id: Optional[int] = None
-    estimated_minutes: Optional[int] = None
+    goal_id: int | None = None
+    estimated_minutes: int | None = None
 
 
 @dataclass
@@ -108,7 +105,7 @@ class PlanningSession:
     goals_90d: list[dict[str, Any]] = field(default_factory=list)
 
     # User's vision
-    vision_content: Optional[str] = None
+    vision_content: str | None = None
 
     # User confirmed vision alignment
     vision_aligned: bool = False
@@ -717,7 +714,7 @@ class PlanningModule:
     async def _planning_enrichment_hook(
         self,
         ctx: ModuleContext,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Hook to surface pending tasks from previous sessions.
 
@@ -827,7 +824,6 @@ class PlanningModule:
             Welcome message text
         """
         segment = ctx.segment_context
-        display_name = segment.core.display_name
 
         # Build vision section
         vision_section = ""
@@ -1092,7 +1088,7 @@ class PlanningModule:
         # Default to middle
         return 3
 
-    def _parse_channel(self, message: str) -> Optional[str]:
+    def _parse_channel(self, message: str) -> str | None:
         """
         Parse channel dominance from message.
 

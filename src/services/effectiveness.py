@@ -16,22 +16,29 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from enum import Enum
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Index, Text
-from sqlalchemy import and_, func, select
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    Integer,
+    String,
+    and_,
+    func,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.base import Base
-
 
 # ============================================================================
 # Enums
 # ============================================================================
 
-class InterventionType(str, Enum):
+class InterventionType(StrEnum):
     """Types of interventions delivered to users."""
 
     # Coaching interventions
@@ -58,7 +65,7 @@ class InterventionType(str, Enum):
     GENERIC_PROMPT = "generic_prompt"
 
 
-class InterventionOutcome(str, Enum):
+class InterventionOutcome(StrEnum):
     """Outcomes measured after 48h window."""
 
     # Positive outcomes
@@ -79,7 +86,7 @@ class InterventionOutcome(str, Enum):
     NO_DATA = "no_data"
 
 
-class SegmentCode(str, Enum):
+class SegmentCode(StrEnum):
     """Internal segment codes."""
 
     AD = "ad"  # ADHD (Momentum)
@@ -117,7 +124,7 @@ class InterventionInstance(Base):
     delivered_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(UTC)
     )
     outcome_logged_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -165,7 +172,7 @@ class EffectivenessMetrics(Base):
     last_updated = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(UTC)
     )
 
 
@@ -198,7 +205,7 @@ class VariantExperiment(Base):
     started_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc)
+        default=lambda: datetime.now(UTC)
     )
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -234,8 +241,8 @@ class VariantComparisonResult:
     variant_b_success_rate: float
     variant_a_count: int
     variant_b_count: int
-    winner: Optional[str]
-    confidence: Optional[float]
+    winner: str | None
+    confidence: float | None
     is_significant: bool
 
 
@@ -244,12 +251,12 @@ class InterventionOutcomeData:
     """Data for logging an intervention outcome."""
 
     outcome: InterventionOutcome
-    task_completion_before: Optional[float] = None
-    task_completion_after: Optional[float] = None
-    response_latency_change: Optional[float] = None
-    session_length_change: Optional[float] = None
-    energy_trajectory: Optional[str] = None
-    pattern_recurrence: Optional[bool] = None
+    task_completion_before: float | None = None
+    task_completion_after: float | None = None
+    response_latency_change: float | None = None
+    session_length_change: float | None = None
+    energy_trajectory: str | None = None
+    pattern_recurrence: bool | None = None
 
 
 @dataclass
@@ -322,7 +329,7 @@ class EffectivenessService:
         intervention_id: str,
         segment: str,
         module: str,
-        variant: Optional[str] = None,
+        variant: str | None = None,
     ) -> str:
         """
         Log an intervention delivery. Returns intervention_instance_id.
@@ -346,7 +353,7 @@ class EffectivenessService:
             intervention_id=intervention_id,
             module=module,
             variant=variant,
-            delivered_at=datetime.now(timezone.utc),
+            delivered_at=datetime.now(UTC),
         )
 
         self.session.add(instance)
@@ -358,7 +365,7 @@ class EffectivenessService:
         self,
         intervention_instance_id: str,
         outcome: InterventionOutcome,
-        behavioral_signals: Optional[InterventionOutcomeData] = None,
+        behavioral_signals: InterventionOutcomeData | None = None,
     ) -> None:
         """
         Log outcome after 48h window.
@@ -379,7 +386,7 @@ class EffectivenessService:
             raise ValueError(f"Intervention instance not found: {intervention_instance_id}")
 
         # Calculate latency
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         latency = now - instance.delivered_at
         latency_hours = latency.total_seconds() / 3600
 
@@ -428,7 +435,7 @@ class EffectivenessService:
 
         # Update counts
         metrics.delivery_count += 1
-        metrics.last_updated = datetime.now(timezone.utc)
+        metrics.last_updated = datetime.now(UTC)
 
         # Categorize outcome
         if outcome in self.SUCCESS_OUTCOMES:
@@ -453,8 +460,8 @@ class EffectivenessService:
 
     async def get_effectiveness(
         self,
-        intervention_type: Optional[str] = None,
-        segment: Optional[str] = None,
+        intervention_type: str | None = None,
+        segment: str | None = None,
     ) -> EffectivenessMetricsResponse:
         """
         Get effectiveness metrics for intervention/segment.
@@ -513,7 +520,7 @@ class EffectivenessService:
         intervention_type: str,
         variant_a: str,
         variant_b: str,
-        segment: Optional[str] = None,
+        segment: str | None = None,
         min_samples: int = 20,
     ) -> VariantComparisonResult:
         """
@@ -627,7 +634,7 @@ class EffectivenessService:
 
                 if total_a >= min_samples and total_b >= min_samples:
                     experiment.status = "completed"
-                    experiment.completed_at = datetime.now(timezone.utc)
+                    experiment.completed_at = datetime.now(UTC)
 
                 await self.session.commit()
 
@@ -653,7 +660,7 @@ class EffectivenessService:
         Returns:
             EffectivenessReport with comprehensive metrics
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         week_ago = now - timedelta(days=7)
 
         # Get all interventions from the past week
@@ -807,7 +814,7 @@ class EffectivenessService:
         Returns:
             List of intervention instances awaiting outcome
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=max_age_hours)
 
         stmt = select(InterventionInstance).where(
             and_(
@@ -824,7 +831,7 @@ class EffectivenessService:
 # Service Factory
 # ============================================================================
 
-_effectiveness_service: Optional[EffectivenessService] = None
+_effectiveness_service: EffectivenessService | None = None
 
 
 async def get_effectiveness_service(session: AsyncSession) -> EffectivenessService:

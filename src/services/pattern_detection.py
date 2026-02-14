@@ -27,17 +27,13 @@ Author: Aurora Sun V1 Team
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
-
-from src.core.segment_context import SegmentContext
-
+from enum import StrEnum
 
 # ============================================================================
 # Core Cycles (5 Destructive Patterns)
 # ============================================================================
 
-class CycleType(str, Enum):
+class CycleType(StrEnum):
     """The 5 core destructive cycles detected by the service."""
 
     META_SPIRALE = "meta_spirale"       # Overthinking about overthinking
@@ -47,7 +43,7 @@ class CycleType(str, Enum):
     FREE_WORK = "free_work"            # Unpaid labor consuming energy
 
 
-class CycleSeverity(str, Enum):
+class CycleSeverity(StrEnum):
     """Severity levels for detected cycles."""
 
     NONE = "none"
@@ -65,15 +61,15 @@ class DetectedCycle:
     confidence: float                    # 0.0 - 1.0
     evidence: list[str] = field(default_factory=list)
     trend: str = "stable"               # "improving", "stable", "worsening"
-    first_detected: Optional[str] = None  # ISO date string
-    last_detected: Optional[str] = None   # ISO date string
+    first_detected: str | None = None  # ISO date string
+    last_detected: str | None = None   # ISO date string
 
 
 # ============================================================================
 # Signal Definitions (14 Daily Burden Signals)
 # ============================================================================
 
-class SignalName(str, Enum):
+class SignalName(StrEnum):
     """14 signals from Daily Burden research."""
 
     # AD (ADHD) Signals
@@ -252,7 +248,7 @@ class Intervention:
     description: str
     resources: list[str] = field(default_factory=list)
     urgency: str = "normal"            # "low", "normal", "high"
-    when_to_escalate: Optional[str] = None
+    when_to_escalate: str | None = None
 
 
 # Segment-specific intervention strategies
@@ -680,7 +676,7 @@ class PatternDetectionService:
         self,
         cycle: DetectedCycle,
         segment: str,
-    ) -> Optional[Intervention]:
+    ) -> Intervention | None:
         """
         Return a segment-specific intervention for a detected cycle.
 
@@ -844,7 +840,7 @@ class PatternDetectionService:
 # Module-level singleton for easy access
 # ============================================================================
 
-_pattern_detection_service: Optional[PatternDetectionService] = None
+_pattern_detection_service: PatternDetectionService | None = None
 
 
 def get_pattern_detection_service() -> PatternDetectionService:

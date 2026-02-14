@@ -15,23 +15,22 @@ Exports:
     - Button, SideEffect: UI and action elements
 """
 
+from .buttons import Button, ButtonGrid, ButtonRow, ButtonType
+from .daily_workflow_hooks import DailyWorkflowHook, DailyWorkflowHooks
+from .module_context import ModuleContext
 from .module_protocol import Module
 from .module_registry import ModuleRegistry, get_registry, set_registry
-from .module_context import ModuleContext
 from .module_response import ModuleResponse
-from .daily_workflow_hooks import DailyWorkflowHooks, DailyWorkflowHook
 from .segment_context import (
+    SEGMENT_DISPLAY_NAMES,
+    NeurostateConfig,
     SegmentContext,
     SegmentCore,
-    SegmentUX,
-    NeurostateConfig,
     SegmentFeatures,
-    SEGMENT_DISPLAY_NAMES,
+    SegmentUX,
     WorkingStyleCode,
 )
-from .buttons import Button, ButtonRow, ButtonGrid, ButtonType
-from .side_effects import SideEffect, SideEffectType, SideEffectBatch, SideEffectExecutor
-
+from .side_effects import SideEffect, SideEffectBatch, SideEffectExecutor, SideEffectType
 
 __all__ = [
     # Protocol

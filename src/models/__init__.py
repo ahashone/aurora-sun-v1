@@ -10,24 +10,24 @@ Usage:
 """
 
 from src.models.base import Base
-from src.models.user import User
-from src.models.vision import Vision
-from src.models.goal import Goal
-from src.models.task import Task
 from src.models.daily_plan import DailyPlan
-from src.models.session import Session
+from src.models.goal import Goal
 from src.models.neurostate import (
-    SensoryProfile,
-    MaskingLog,
     BurnoutAssessment,
-    ChannelState,
-    InertiaEvent,
-    EnergyLevelRecord,
-    InertiaType,
     BurnoutType,
+    ChannelState,
     ChannelType,
     EnergyLevel,
+    EnergyLevelRecord,
+    InertiaEvent,
+    InertiaType,
+    MaskingLog,
+    SensoryProfile,
 )
+from src.models.session import Session
+from src.models.task import Task
+from src.models.user import User
+from src.models.vision import Vision
 
 __all__ = [
     # Base

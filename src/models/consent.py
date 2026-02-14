@@ -30,26 +30,23 @@ Usage:
     await service.withdraw_consent(user_id=1)
 """
 
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Optional, NamedTuple
 import hashlib
 import hmac
-import uuid
+from datetime import UTC, datetime
+from enum import Enum
+from typing import NamedTuple
 
 from sqlalchemy import (
     Column,
-    Integer,
-    String,
     DateTime,
     ForeignKey,
     Index,
-    Boolean,
-    Text,
+    Integer,
+    String,
 )
-from sqlalchemy.orm import DeclarativeBase, Session as DbSession
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.sql import func
-
 
 # ============================================
 # SQLAlchemy Base
@@ -93,9 +90,9 @@ class ConsentValidationResult(NamedTuple):
         message: Human-readable explanation of the status.
     """
     status: ConsentStatus
-    consent_given_at: Optional[datetime]
-    consent_withdrawn_at: Optional[datetime]
-    consent_version: Optional[str]
+    consent_given_at: datetime | None
+    consent_withdrawn_at: datetime | None
+    consent_version: str | None
     message: str
 
 
@@ -154,7 +151,7 @@ class ConsentRecord(Base):
     consent_given_at = Column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     consent_withdrawn_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -219,7 +216,7 @@ class ConsentService:
     # Default consent version - should be updated with each consent text change
     DEFAULT_CONSENT_VERSION = "1.0"
 
-    def __init__(self, session: DbSession, hmac_secret: Optional[str] = None):
+    def __init__(self, session: DbSession, hmac_secret: str | None = None):
         """
         Initialize the consent service.
 
@@ -314,7 +311,7 @@ class ConsentService:
         existing = await self._get_active_consent(user_id)
         if existing:
             # Update existing record instead of creating new one
-            existing.consent_given_at = datetime.now(timezone.utc)
+            existing.consent_given_at = datetime.now(UTC)
             existing.consent_version = version
             existing.consent_language = language
             existing.ip_hash = self._hash_ip(ip)
@@ -328,7 +325,7 @@ class ConsentService:
             user_id=user_id,
             consent_version=version,
             consent_language=language,
-            consent_given_at=datetime.now(timezone.utc),
+            consent_given_at=datetime.now(UTC),
             consent_withdrawn_at=None,
             ip_hash=self._hash_ip(ip),
             consent_text_hash=self._hash_consent_text(consent_text),
@@ -462,10 +459,10 @@ class ConsentService:
                 "Cannot withdraw consent."
             )
 
-        record.consent_withdrawn_at = datetime.now(timezone.utc)
+        record.consent_withdrawn_at = datetime.now(UTC)
         self._session.commit()
 
-    async def get_consent_version(self, user_id: int) -> Optional[str]:
+    async def get_consent_version(self, user_id: int) -> str | None:
         """
         Get the current consent version for a user.
 
@@ -485,7 +482,7 @@ class ConsentService:
 
         return record.consent_version
 
-    async def get_consent_record(self, user_id: int) -> Optional[ConsentRecord]:
+    async def get_consent_record(self, user_id: int) -> ConsentRecord | None:
         """
         Get the most recent consent record for a user.
 
@@ -499,7 +496,7 @@ class ConsentService:
             ConsentRecord.user_id == user_id
         ).order_by(ConsentRecord.consent_given_at.desc()).first()
 
-    async def _get_active_consent(self, user_id: int) -> Optional[ConsentRecord]:
+    async def _get_active_consent(self, user_id: int) -> ConsentRecord | None:
         """
         Get the active (non-withdrawn) consent record for a user.
 
