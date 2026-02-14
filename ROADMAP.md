@@ -252,6 +252,55 @@ Now that users generate daily data, the intelligence has something to work with.
 
 ---
 
+## Phase 2.5: Hybrid Quality Upgrade
+**Status:** In Progress
+**Duration:** 1-2 weeks
+**Dependency:** Phase 2 (audit complete)
+**Branch:** `claude/hybrid-quality-upgrade`
+**Full Plan:** `docs/HYBRID-QUALITY-UPGRADE-PLAN.md`
+**Value:** Production-quality Phase 1+2 code. Rewrite broken files, inspect untested files, keep clean tested files.
+
+### 2.5.0: Branch Setup
+- [x] Create branch from audit branch
+- [ ] Verify 689 tests passing
+- [ ] Verify 0 ruff errors
+
+### 2.5.1: Rewrite Critical Files (6 files with systemic issues)
+- [ ] state_store.py — asyncio.Lock, proper LRU, Redis persistence
+- [ ] tension_engine.py — fix type bugs, Redis persistence, correct quadrant logic
+- [ ] energy_system.py — remove `if segment ==` checks, use SegmentContext.neuro fields
+- [ ] pattern_detection.py — remove segment string matching, use SegmentContext fields
+- [ ] coaching_engine.py — remove segment code checks, real LangGraph workflow
+- [ ] effectiveness.py — replace placeholder methods with real DB-backed tracking
+
+### 2.5.2: Deep Inspect & Fix Untested Files (~16 files)
+- [ ] Modules: planning.py, review.py, capture.py, future_letter.py, belief.py, habit.py, motif.py
+- [ ] Bot & infra: webhook.py, onboarding.py, module_registry.py
+- [ ] Supporting: segment_service.py, redis_service.py, revenue_tracker.py
+
+### 2.5.3: Neurostate Services Inspection
+- [ ] sensory.py — cumulative load, no habituation
+- [ ] energy.py — behavioral proxy for AU/AH
+- [ ] masking.py — exponential for AuDHD
+- [ ] channel.py — channel dominance detection
+- [ ] __init__.py — proper exports
+
+### 2.5.4: Workflows Inspection
+- [ ] daily_graph.py — LangGraph StateGraph correctness
+- [ ] daily_workflow.py — node implementations, tiered pre-flight
+
+### 2.5.5: mypy Strict Compliance
+- [ ] mypy src/ --strict → 0 errors (from 171)
+
+### 2.5.6: Final Verification
+- [ ] All tests pass
+- [ ] 0 ruff errors
+- [ ] 0 segment code comparisons in modules
+- [ ] 0 threading.Lock usage
+- [ ] No in-memory user state dicts
+
+---
+
 ## Phase 3: Knowledge + Aurora + Depth
 **Status:** Not Started
 **Duration:** 5-7 weeks
