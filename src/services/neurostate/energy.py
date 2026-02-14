@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.core.segment_context import SegmentContext, WorkingStyleCode
+from src.core.segment_context import SegmentContext
 from src.models.neurostate import EnergyLevel, EnergyLevelRecord
 
 # =============================================================================
@@ -49,7 +49,7 @@ class EnergyPrediction:
     energy_level: EnergyLevel
     energy_score: float                       # Numeric score (0-100)
     confidence: float                         # Prediction confidence (0-1)
-    signals_used: dict                        # Which signals were used
+    signals_used: dict[str, float]            # Which signals were used
     contributing_factors: list[str]          # What's affecting energy
     recommendations: list[str]
 
@@ -115,13 +115,20 @@ class EnergyPredictor:
         self,
         user_id: int,
         behavioral_signals: BehavioralSignals | None = None,
+        self_report_score: float | None = None,
     ) -> EnergyPrediction:
         """
-        Predict energy level from behavioral signals.
+        Predict energy level from behavioral signals (and optionally self-report).
+
+        Segment-aware assessment:
+        - AU: behavioral_proxy only (interoception unreliable)
+        - AH: composite (behavioral + self-report, behavioral weighted heavily)
+        - AD/NT: self_report primary, behavioral supplementary
 
         Args:
             user_id: The user's ID
             behavioral_signals: Optional pre-extracted signals
+            self_report_score: Optional self-reported energy (0-100)
 
         Returns:
             EnergyPrediction with level and recommendations
@@ -142,14 +149,41 @@ class EnergyPredictor:
         time_score = self._score_time_of_day(signals.time_of_day_hour, signals.day_of_week)
         engagement_score = self._score_engagement(signals)
 
-        # Weighted combination
-        raw_score = (
+        # Weighted combination (behavioral)
+        behavioral_score = (
             latency_score * self.LATENCY_WEIGHT +
             length_score * self.MESSAGE_LENGTH_WEIGHT +
             vocab_score * self.VOCAB_WEIGHT +
             time_score * self.TIME_WEIGHT +
             engagement_score * self.ENGAGEMENT_WEIGHT
         )
+
+        # Apply segment-specific assessment method
+        if self.segment_context:
+            assessment_method = self.segment_context.neuro.energy_assessment
+            interoception = self.segment_context.neuro.interoception_reliability
+
+            if assessment_method == "behavioral_proxy":
+                # AU: ONLY behavioral (interoception unreliable)
+                raw_score = behavioral_score
+                confidence_note = f"Behavioral proxy only (interoception: {interoception})"
+            elif assessment_method == "composite" and self_report_score is not None:
+                # AH: Composite with behavioral weighted heavily (85% behavioral, 15% self-report)
+                # because interoception is very_low
+                raw_score = behavioral_score * 0.85 + self_report_score * 0.15
+                confidence_note = f"Composite: 85% behavioral + 15% self-report (interoception: {interoception})"
+            elif assessment_method == "self_report" and self_report_score is not None:
+                # AD/NT: Self-report primary (60% self-report, 40% behavioral)
+                raw_score = self_report_score * 0.60 + behavioral_score * 0.40
+                confidence_note = f"Self-report primary (interoception: {interoception})"
+            else:
+                # Fallback: behavioral only if no self-report provided
+                raw_score = behavioral_score
+                confidence_note = "Behavioral proxy (no self-report provided)"
+        else:
+            # No segment context: use behavioral only (safe default)
+            raw_score = behavioral_score
+            confidence_note = "Behavioral proxy (no segment context)"
 
         # Adjust for user baseline
         adjusted_score = self._adjust_for_baseline(raw_score, baseline)
@@ -165,6 +199,7 @@ class EnergyPredictor:
         factors = self._get_contributing_factors(
             signals, latency_score, length_score, vocab_score, time_score, engagement_score
         )
+        factors.append(confidence_note)  # Add assessment method note
 
         # Get recommendations
         recommendations = self._get_recommendations(energy_level, energy_score)

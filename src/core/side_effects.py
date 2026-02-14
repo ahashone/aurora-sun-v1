@@ -238,6 +238,8 @@ class SideEffectExecutor:
         """
         batch.sort_by_priority()
         results = []
+        if batch.user_id is None:
+            raise ValueError("batch.user_id cannot be None")
         for effect in batch.effects:
             success = await self.execute(effect, batch.user_id)
             results.append(success)

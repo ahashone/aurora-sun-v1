@@ -25,6 +25,7 @@ from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.core.segment_context import SegmentContext, WorkingStyleCode
+from src.core.side_effects import SideEffect
 
 if TYPE_CHECKING:
     from src.core.module_response import ModuleResponse
@@ -213,12 +214,13 @@ class FutureLetterModule:
         # F-008: Use bounded state store with TTL
         user_id = ctx.user_id
         session_key = f"{self._session_key_prefix}{user_id}"
-        session = self._state_store.get(session_key)
+        state_store = await self._state_store
+        session = await state_store.get(session_key)
 
         if session is None:
             session = FutureLetterSession()
             # Store with 24 hour TTL (future letter can be multi-day)
-            self._state_store.set(session_key, session, ttl=86400)
+            await state_store.set(session_key, session, ttl=86400)
 
         # Get segment-specific prompt
         prompt = self._get_segment_prompt(ctx.segment_context, "setting")
@@ -258,7 +260,8 @@ class FutureLetterModule:
         """
         # F-008: Use bounded state store with TTL
         session_key = f"{self._session_key_prefix}{ctx.user_id}"
-        session = self._state_store.get(session_key)
+        state_store = await self._state_store
+        session = await state_store.get(session_key)
         if session is None:
             # Restart session if not found
             return await self.on_enter(ctx)
@@ -291,14 +294,15 @@ class FutureLetterModule:
         # F-008: Use bounded state store with TTL
         user_id = ctx.user_id
         session_key = f"{self._session_key_prefix}{user_id}"
-        session = self._state_store.get(session_key)
+        state_store = await self._state_store
+        session = await state_store.get(session_key)
         if session:
             # Persist letter if complete
             if session.compiled_letter:
                 await self._persist_letter(ctx, session)
 
             # Clean up session
-            self._state_store.delete(session_key)
+            await state_store.delete(session_key)
 
     def get_daily_workflow_hooks(self) -> DailyWorkflowHooks:
         """
@@ -318,7 +322,7 @@ class FutureLetterModule:
     # GDPR Methods
     # =========================================================================
 
-    async def export_user_data(self, user_id: int) -> dict:
+    async def export_user_data(self, user_id: int) -> dict[str, Any]:
         """
         GDPR export for future letter data.
 
@@ -519,15 +523,15 @@ class FutureLetterModule:
             text=completion_text,
             is_end_of_flow=True,
             side_effects=[
-                {
-                    "effect_type": "vision_anchor",
-                    "payload": {
+                SideEffect(
+                    effect_type="vision_anchor",  # type: ignore[arg-type]
+                    payload={
                         "letter": session.compiled_letter,
                         "time_horizon": session.time_horizon,
                         "key_insights": self._extract_key_insights(session),
                         "created_at": session.created_at.isoformat(),
                     },
-                }
+                )
             ],
             metadata={
                 "time_horizon": session.time_horizon,

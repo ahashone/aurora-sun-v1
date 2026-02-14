@@ -8,7 +8,7 @@ References:
 - ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
@@ -63,13 +63,13 @@ class Vision(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 

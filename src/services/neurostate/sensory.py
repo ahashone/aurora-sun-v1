@@ -113,8 +113,8 @@ class SensoryStateAssessment:
             user_id=user_id,
             modality_loads=modality_loads,
             overall_load=overall_load,
-            last_assessed=profile.last_assessed,
-            segment_code=profile.segment_code or "AU",
+            last_assessed=profile.last_assessed if isinstance(profile.last_assessed, datetime) else datetime.now(UTC),
+            segment_code=profile.segment_code if isinstance(profile.segment_code, str) else "AU",
             is_overloaded=is_overloaded,
             is_critical=is_critical,
         )
@@ -163,7 +163,7 @@ class SensoryStateAssessment:
         # Save profile
         profile.modality_loads = modality_loads
         profile.overall_load = max(modality_loads.values())
-        profile.last_assessed = datetime.now(UTC)
+        profile.last_assessed = datetime.now(UTC)  # type: ignore[assignment]
         self.db.commit()
 
         # Return updated state

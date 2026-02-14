@@ -27,6 +27,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from enum import StrEnum
+from typing import Any
 
 from src.lib.encryption import (
     EncryptionService,
@@ -85,7 +86,7 @@ class RevenueEntry:
     date: date | None = None
     parsed_from: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "amount": self.amount,
@@ -119,7 +120,7 @@ class RevenueBalance:
     safe_to_spend: float
     calculated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "user_id": self.user_id,
@@ -414,7 +415,7 @@ class RevenueTracker:
 
         return f"entry_{len(self._entries[user_id])}"
 
-    async def get_balance(self, user_id: int) -> dict:
+    async def get_balance(self, user_id: int) -> dict[str, Any]:
         """
         Get user's current financial balance.
 
@@ -469,7 +470,7 @@ class RevenueTracker:
         entry_type: EntryType | None = None,
         category: RevenueCategory | None = None,
         limit: int = 50,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         Get revenue entries for a user with optional filtering.
 
@@ -527,7 +528,7 @@ class RevenueTracker:
     # GDPR Methods
     # =========================================================================
 
-    async def export_user_data(self, user_id: int) -> dict:
+    async def export_user_data(self, user_id: int) -> dict[str, Any]:
         """
         GDPR export for revenue tracking data.
 
@@ -606,7 +607,7 @@ def get_revenue_tracker() -> RevenueTracker:
     return _revenue_tracker
 
 
-async def parse_and_save_revenue(user_id: int, message: str) -> dict:
+async def parse_and_save_revenue(user_id: int, message: str) -> dict[str, Any]:
     """
     Convenience function to parse and save revenue in one call.
 

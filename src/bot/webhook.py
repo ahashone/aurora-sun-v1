@@ -222,7 +222,9 @@ class TelegramWebhookHandler:
             telegram_id_hash: Hashed Telegram ID
         """
         # Start onboarding flow
-        await self._onboarding_flow.start(update, user, telegram_id_hash)
+        # OnboardingFlow.start() takes (update, language) - auto-detect from Telegram user
+        language = user.language_code if hasattr(user, 'language_code') and user.language_code else "en"
+        await self._onboarding_flow.start(update, language)
 
     async def _route_through_nli(self, update: Update, user: Any) -> None:
         """
@@ -247,7 +249,8 @@ class TelegramWebhookHandler:
         # For now, just echo back (scaffold)
         response_text = f"Echo: {message_text}"
 
-        await update.message.reply_text(response_text)
+        if update.message:
+            await update.message.reply_text(response_text)
 
 # =============================================================================
 # Webhook Setup
@@ -269,7 +272,7 @@ async def webhook_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await handler.handle_update(update)
 
 
-def create_app() -> Application:
+def create_app() -> Application[Any, Any, Any, Any, Any, Any]:
     """
     Create and configure the Telegram Application.
 

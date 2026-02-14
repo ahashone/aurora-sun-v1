@@ -8,7 +8,7 @@ References:
 - ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Text
@@ -87,13 +87,13 @@ class DailyPlan(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -116,7 +116,7 @@ class DailyPlan(Base):
             self.priorities_selected,
             self.tasks_committed,
         ])
-        return (completed / total) * 100
+        return float((completed / total) * 100)
 
 
 __all__ = ["DailyPlan"]

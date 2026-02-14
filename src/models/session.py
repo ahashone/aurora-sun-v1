@@ -8,7 +8,7 @@ References:
 - ARCHITECTURE.md Section 4 (Natural Language Interface)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String
@@ -79,13 +79,13 @@ class Session(Base):
     # Timestamps
     started_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -103,9 +103,9 @@ class Session(Base):
         """Check if session is still active (within timeout)."""
         if self.state == "idle":
             return False
-        now = datetime.now(datetime.timezone.utc)
+        now = datetime.now(UTC)
         delta = now - self.updated_at
-        return delta.total_seconds() < (timeout_minutes * 60)
+        return bool(delta.total_seconds() < (timeout_minutes * 60))
 
 
 __all__ = ["Session"]

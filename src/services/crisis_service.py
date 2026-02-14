@@ -110,7 +110,7 @@ class CrisisResponse:
     signal_detected: CrisisSignal | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, str | list[str] | bool | None]:
         """Convert to dictionary representation."""
         return {
             "level": self.level.value,
@@ -214,7 +214,7 @@ class CrisisService:
     ]
 
     # Hotlines by country (international standardized numbers where available)
-    HOTLINES: dict[CountryCode, dict[str, str]] = {
+    HOTLINES: dict[CountryCode, dict[str, str | None]] = {
         CountryCode.US: {
             "name": "988 Suicide & Crisis Lifeline",
             "number": "988",
@@ -290,7 +290,7 @@ class CrisisService:
     }
 
     # Default/fallback hotline (US 988 is internationally recognized)
-    DEFAULT_HOTLINE = {
+    DEFAULT_HOTLINE: dict[str, str] = {
         "name": "International Association for Suicide Prevention",
         "number": "Varies by country - see https://www.iasp.info/resources/Crisis_Centres/",
         "website": "findahelpline.com",
@@ -306,7 +306,7 @@ class CrisisService:
         """
         self._encryption = encryption_service or get_encryption_service()
         # In-memory crisis event log (encrypted in production)
-        self._crisis_log: dict[int, list[dict]] = {}
+        self._crisis_log: dict[int, list[dict[str, int | str | float | None]]] = {}
 
     async def detect_crisis(self, message: str) -> CrisisLevel:
         """
@@ -557,7 +557,7 @@ class CrisisService:
             signal_detected=signal,
         )
 
-    async def get_hotline(self, country: str) -> dict:
+    async def get_hotline(self, country: str) -> dict[str, str | None]:
         """
         Get crisis hotline information for a country.
 
@@ -609,7 +609,7 @@ class CrisisService:
 
         # Fallback to default
         logger.warning(f"Unknown country code: {country}, using default hotline")
-        return self.DEFAULT_HOTLINE
+        return dict(self.DEFAULT_HOTLINE)  # Create a new dict to match return type
 
     async def _log_crisis_event(
         self,
@@ -630,11 +630,11 @@ class CrisisService:
             level: Crisis level detected
             signal: Signal details (if any)
         """
-        event = {
+        event: dict[str, int | str | float | None] = {
             "user_id": user_id,
             "level": level.value,
             "signal": signal.signal if signal else None,
-            "signal_severity": signal.severity if signal else None,
+            "signal_severity": float(signal.severity) if signal else None,
             "timestamp": datetime.now(UTC).isoformat(),
         }
 
@@ -657,7 +657,7 @@ class CrisisService:
 
         logger.info(f"Crisis event logged for user {user_id}: {level.value}")
 
-    async def get_crisis_history(self, user_id: int, limit: int = 10) -> list[dict]:
+    async def get_crisis_history(self, user_id: int, limit: int = 10) -> list[dict[str, int | str | float | None]]:
         """
         Get crisis event history for a user.
 
@@ -699,10 +699,12 @@ class CrisisService:
         recent_crisis = False
         for event in reversed(self._crisis_log[user_id]):
             if event.get("level") == CrisisLevel.CRISIS.value:
-                event_time = datetime.fromisoformat(event["timestamp"])
-                if datetime.now(UTC) - event_time < timedelta(hours=24):
-                    recent_crisis = True
-                    break
+                timestamp_val = event.get("timestamp")
+                if isinstance(timestamp_val, str):
+                    event_time = datetime.fromisoformat(timestamp_val)
+                    if datetime.now(UTC) - event_time < timedelta(hours=24):
+                        recent_crisis = True
+                        break
 
         return recent_crisis
 

@@ -19,6 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -278,19 +279,19 @@ class EffectivenessReport:
     total_with_outcomes: int
 
     # Per-segment breakdown
-    segment_stats: dict[str, dict] = field(default_factory=dict)
+    segment_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # Per-intervention-type breakdown
-    type_stats: dict[str, dict] = field(default_factory=dict)
+    type_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # Top performing interventions (per segment)
-    top_performers: list[dict] = field(default_factory=list)
+    top_performers: list[dict[str, Any]] = field(default_factory=list)
 
     # Underperforming interventions
-    underperformers: list[dict] = field(default_factory=list)
+    underperformers: list[dict[str, Any]] = field(default_factory=list)
 
     # Active experiments
-    active_experiments: list[dict] = field(default_factory=list)
+    active_experiments: list[dict[str, Any]] = field(default_factory=list)
 
     # Recommendations
     recommendations: list[str] = field(default_factory=list)
@@ -371,7 +372,7 @@ class EffectivenessService:
 
         await self.session.commit()
 
-        return instance.instance_id
+        return str(instance.instance_id)
 
     async def _increment_delivery_count(
         self,
@@ -397,8 +398,8 @@ class EffectivenessService:
             )
             self.session.add(metrics)
 
-        metrics.delivery_count += 1
-        metrics.last_updated = datetime.now(UTC)
+        metrics.delivery_count += 1  # type: ignore[assignment]
+        metrics.last_updated = datetime.now(UTC)  # type: ignore[assignment]
 
     async def log_outcome(
         self,
@@ -430,18 +431,18 @@ class EffectivenessService:
         latency_hours = latency.total_seconds() / 3600
 
         # Update instance
-        instance.outcome = outcome.value
-        instance.outcome_logged_at = now
+        instance.outcome = outcome.value  # type: ignore[assignment]
+        instance.outcome_logged_at = now  # type: ignore[assignment]
         instance.outcome_latency_hours = latency_hours
 
         # Add behavioral signals if provided
         if behavioral_signals:
-            instance.task_completion_before = behavioral_signals.task_completion_before
-            instance.task_completion_after = behavioral_signals.task_completion_after
-            instance.response_latency_change = behavioral_signals.response_latency_change
-            instance.session_length_change = behavioral_signals.session_length_change
-            instance.energy_trajectory = behavioral_signals.energy_trajectory
-            instance.pattern_recurrence = behavioral_signals.pattern_recurrence
+            instance.task_completion_before = behavioral_signals.task_completion_before  # type: ignore[assignment]
+            instance.task_completion_after = behavioral_signals.task_completion_after  # type: ignore[assignment]
+            instance.response_latency_change = behavioral_signals.response_latency_change  # type: ignore[assignment]
+            instance.session_length_change = behavioral_signals.session_length_change  # type: ignore[assignment]
+            instance.energy_trajectory = behavioral_signals.energy_trajectory  # type: ignore[assignment]
+            instance.pattern_recurrence = behavioral_signals.pattern_recurrence  # type: ignore[assignment]
 
         # Update aggregated metrics
         await self._update_metrics(instance, outcome)
@@ -473,28 +474,28 @@ class EffectivenessService:
             self.session.add(metrics)
 
         # Update last_updated
-        metrics.last_updated = datetime.now(UTC)
+        metrics.last_updated = datetime.now(UTC)  # type: ignore[assignment]
 
         # Categorize outcome
         if outcome in self.SUCCESS_OUTCOMES:
-            metrics.success_count += 1
+            metrics.success_count += 1  # type: ignore[assignment]
         elif outcome in self.FAILURE_OUTCOMES:
-            metrics.failure_count += 1
+            metrics.failure_count += 1  # type: ignore[assignment]
         else:  # NO_RESPONSE, SESSION_ENDED_EARLY, NO_DATA
-            metrics.no_response_count += 1
+            metrics.no_response_count += 1  # type: ignore[assignment]
 
         if instance.outcome_latency_hours:
-            metrics.total_latency_hours += instance.outcome_latency_hours
-            metrics.outcome_count += 1
+            metrics.total_latency_hours += instance.outcome_latency_hours  # type: ignore[assignment]
+            metrics.outcome_count += 1  # type: ignore[assignment]
 
         # Recalculate rates
         if metrics.delivery_count > 0:
-            metrics.success_rate = metrics.success_count / metrics.delivery_count
-            metrics.failure_rate = metrics.failure_count / metrics.delivery_count
-            metrics.no_response_rate = metrics.no_response_count / metrics.delivery_count
+            metrics.success_rate = metrics.success_count / metrics.delivery_count  # type: ignore[assignment]
+            metrics.failure_rate = metrics.failure_count / metrics.delivery_count  # type: ignore[assignment]
+            metrics.no_response_rate = metrics.no_response_count / metrics.delivery_count  # type: ignore[assignment]
 
         if metrics.outcome_count > 0:
-            metrics.avg_latency_hours = metrics.total_latency_hours / metrics.outcome_count
+            metrics.avg_latency_hours = metrics.total_latency_hours / metrics.outcome_count  # type: ignore[assignment]
 
     async def get_effectiveness(
         self,
@@ -545,12 +546,12 @@ class EffectivenessService:
         return EffectivenessMetricsResponse(
             intervention_type=intervention_type or "all",
             segment=segment or "all",
-            delivery_count=total_delivery,
-            success_rate=total_success / total_delivery if total_delivery > 0 else 0.0,
-            avg_latency_hours=total_latency / total_outcomes if total_outcomes > 0 else 0.0,
-            outcome_count=total_outcomes,
-            failure_rate=total_failure / total_delivery if total_delivery > 0 else 0.0,
-            no_response_rate=total_no_response / total_delivery if total_delivery > 0 else 0.0,
+            delivery_count=int(total_delivery),
+            success_rate=float(total_success / total_delivery if total_delivery > 0 else 0.0),
+            avg_latency_hours=float(total_latency / total_outcomes if total_outcomes > 0 else 0.0),
+            outcome_count=int(total_outcomes),
+            failure_rate=float(total_failure / total_delivery if total_delivery > 0 else 0.0),
+            no_response_rate=float(total_no_response / total_delivery if total_delivery > 0 else 0.0),
         )
 
     async def compare_variants(
@@ -683,15 +684,15 @@ class EffectivenessService:
             experiment = result_exp.scalar_one_or_none()
 
             if experiment:
-                experiment_id = experiment.experiment_id
-                experiment.variant_a_success_rate = rate_a
-                experiment.variant_b_success_rate = rate_b
-                experiment.winner = winner
-                experiment.confidence = confidence
+                experiment_id = experiment.experiment_id  # type: ignore[assignment]
+                experiment.variant_a_success_rate = rate_a  # type: ignore[assignment]
+                experiment.variant_b_success_rate = rate_b  # type: ignore[assignment]
+                experiment.winner = winner  # type: ignore[assignment]
+                experiment.confidence = confidence  # type: ignore[assignment]
 
                 if total_a >= min_samples and total_b >= min_samples:
-                    experiment.status = "completed"
-                    experiment.completed_at = datetime.now(UTC)
+                    experiment.status = "completed"  # type: ignore[assignment]
+                    experiment.completed_at = datetime.now(UTC)  # type: ignore[assignment]
 
                 await self.session.commit()
 
@@ -732,7 +733,7 @@ class EffectivenessService:
         total_with_outcomes = sum(1 for i in interventions if i.outcome is not None)
 
         # Per-segment breakdown
-        segment_stats: dict[str, dict] = {}
+        segment_stats: dict[str, dict[str, Any]] = {}
         # Use canonical segment codes from segment_context
         all_segments: list[WorkingStyleCode] = ["AD", "AU", "AH", "NT", "CU"]
         for segment in all_segments:
@@ -754,7 +755,7 @@ class EffectivenessService:
                 }
 
         # Per-intervention-type breakdown
-        type_stats: dict[str, dict] = {}
+        type_stats: dict[str, dict[str, Any]] = {}
         for i_type in [t.value for t in InterventionType]:
             type_interventions = [i for i in interventions if i.intervention_type == i_type]
             type_with_outcomes = [i for i in type_interventions if i.outcome is not None]
@@ -826,10 +827,10 @@ class EffectivenessService:
         recommendations = []
 
         # Check for low-performing segments
-        for segment, stats in segment_stats.items():
+        for segment_key, stats in segment_stats.items():
             if stats["success_rate"] < 0.4 and stats["delivery_count"] >= 10:
                 recommendations.append(
-                    f"Segment {segment.upper()} has low success rate ({stats['success_rate']:.1%}). "
+                    f"Segment {segment_key.upper()} has low success rate ({stats['success_rate']:.1%}). "
                     f"Consider reviewing intervention approach."
                 )
 
@@ -883,7 +884,7 @@ class EffectivenessService:
         )
 
         result = await self.session.execute(stmt)
-        return result.scalars().all()
+        return list(result.scalars().all())
 
 
 # ============================================================================

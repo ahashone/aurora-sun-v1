@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .buttons import Button
-from .side_effects import SideEffect
+from .side_effects import SideEffect, SideEffectType
 
 
 @dataclass
@@ -63,7 +63,7 @@ class ModuleResponse:
             self.buttons = []
         self.buttons.append(Button(text=text, callback_data=callback_data, url=url))
 
-    def add_side_effect(self, effect_type: str, payload: dict[str, Any]) -> None:
+    def add_side_effect(self, effect_type: str | SideEffectType, payload: dict[str, Any]) -> None:
         """Add a side effect to the response.
 
         Args:
@@ -72,7 +72,12 @@ class ModuleResponse:
         """
         if self.side_effects is None:
             self.side_effects = []
-        self.side_effects.append(SideEffect(effect_type=effect_type, payload=payload))
+        # Convert string to SideEffectType if needed
+        if isinstance(effect_type, str):
+            effect_type_enum = SideEffectType(effect_type)
+        else:
+            effect_type_enum = effect_type
+        self.side_effects.append(SideEffect(effect_type=effect_type_enum, payload=payload))
 
     @classmethod
     def text_only(cls, text: str) -> ModuleResponse:

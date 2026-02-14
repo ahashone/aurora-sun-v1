@@ -13,7 +13,7 @@ They use fields from SegmentContext instead.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, cast
 
 # Internal segment codes (used in code, NOT user-facing)
 WorkingStyleCode: TypeAlias = Literal["AD", "AU", "AH", "NT", "CU"]
@@ -269,11 +269,11 @@ SegmentFeatures_configs: dict[WorkingStyleCode, SegmentFeatures] = {
 
 # Pre-built contexts for each segment
 _SEGMENT_CONTEXTS: dict[WorkingStyleCode, SegmentContext] = {
-    code: SegmentContext(
-        core=SegmentCore_configs[code],
-        ux=SegmentUX_configs[code],
-        neuro=NeurostateConfig_configs[code],
-        features=SegmentFeatures_configs[code],
+    cast(WorkingStyleCode, code): SegmentContext(
+        core=SegmentCore_configs[cast(WorkingStyleCode, code)],
+        ux=SegmentUX_configs[cast(WorkingStyleCode, code)],
+        neuro=NeurostateConfig_configs[cast(WorkingStyleCode, code)],
+        features=SegmentFeatures_configs[cast(WorkingStyleCode, code)],
     )
     for code in ("AD", "AU", "AH", "NT", "CU")
 }

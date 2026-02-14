@@ -112,7 +112,7 @@ Respond with just the category name."""
         "goal": ["goal", "want to", "aim to", "marathon", "achieve", "learn to"],
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Capture Module."""
         # State machine: CAPTURE -> CLASSIFY -> ROUTE -> DONE
         self._state = "capture"
@@ -204,7 +204,7 @@ Respond with just the category name."""
             },
         )
 
-    async def classify_content(self, message: str) -> dict:
+    async def classify_content(self, message: str) -> dict[str, Any]:
         """
         Classify the content type using Haiku.
 
@@ -269,7 +269,7 @@ Respond with just the category name."""
         message_lower = message.lower()
         return any(kw in message_lower for kw in financial_keywords)
 
-    def _extract_financial_entities(self, message: str) -> dict:
+    def _extract_financial_entities(self, message: str) -> dict[str, Any]:
         """Extract financial entities from message."""
         import re
 
@@ -322,90 +322,96 @@ Respond with just the category name."""
         if content_type == "task":
             # Route to Planning Module (via side effect)
             # The planning module will pick this up in next session
+            from src.core.side_effects import SideEffect
             return ModuleResponse(
                 text="",
                 side_effects=[
-                    {
-                        "effect_type": "add_to_planning_inbox",
-                        "payload": {
+                    SideEffect(
+                        effect_type="add_to_planning_inbox",  # type: ignore[arg-type]
+                        payload={
                             "content": captured.content,
                             "source": "capture",
                             "original_message": captured.original_message,
                         },
-                    }
+                    )
                 ],
             )
         elif content_type == "idea" or content_type == "note":
             # Store in Second Brain
+            from src.core.side_effects import SideEffect
             return ModuleResponse(
                 text="",
                 side_effects=[
-                    {
-                        "effect_type": "store_in_second_brain",
-                        "payload": {
+                    SideEffect(
+                        effect_type="store_in_second_brain",  # type: ignore[arg-type]
+                        payload={
                             "content_type": content_type,
                             "content": captured.content,
                             "source": "capture",
                         },
-                    }
+                    )
                 ],
             )
         elif content_type == "goal":
             # Route to Goal system
+            from src.core.side_effects import SideEffect
             return ModuleResponse(
                 text="",
                 side_effects=[
-                    {
-                        "effect_type": "create_goal_from_capture",
-                        "payload": {
+                    SideEffect(
+                        effect_type="create_goal_from_capture",  # type: ignore[arg-type]
+                        payload={
                             "title": captured.content,
                             "source": "capture",
                         },
-                    }
+                    )
                 ],
             )
         elif content_type == "insight" or content_type == "question":
             # Route to Aurora for coaching/reflection
+            from src.core.side_effects import SideEffect
             return ModuleResponse(
                 text="",
                 side_effects=[
-                    {
-                        "effect_type": "route_to_aurora",
-                        "payload": {
+                    SideEffect(
+                        effect_type="route_to_aurora",  # type: ignore[arg-type]
+                        payload={
                             "content_type": content_type,
                             "content": captured.content,
                             "source": "capture",
                         },
-                    }
+                    )
                 ],
             )
         elif content_type == "financial":
             # Route to Money Module
+            from src.core.side_effects import SideEffect
             return ModuleResponse(
                 text="",
                 side_effects=[
-                    {
-                        "effect_type": "route_to_money_module",
-                        "payload": {
+                    SideEffect(
+                        effect_type="route_to_money_module",  # type: ignore[arg-type]
+                        payload={
                             "content": captured.content,
                             "entities": captured.extracted_entities,
                         },
-                    }
+                    )
                 ],
             )
 
         # Default: store in Second Brain
+        from src.core.side_effects import SideEffect
         return ModuleResponse(
             text="",
             side_effects=[
-                {
-                    "effect_type": "store_in_second_brain",
-                    "payload": {
+                SideEffect(
+                    effect_type="store_in_second_brain",  # type: ignore[arg-type]
+                    payload={
                         "content_type": "note",
                         "content": captured.content,
                         "source": "capture",
                     },
-                }
+                )
             ],
         )
 
@@ -535,7 +541,7 @@ Respond with just the category name."""
     async def _surface_captured_tasks(
         self,
         ctx: ModuleContext,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """
         Surface captured tasks from the capture module.
 
@@ -561,7 +567,7 @@ Respond with just the category name."""
 
     # GDPR Methods
 
-    async def export_user_data(self, user_id: int) -> dict:
+    async def export_user_data(self, user_id: int) -> dict[str, Any]:
         """
         Export all captured content for a user.
 

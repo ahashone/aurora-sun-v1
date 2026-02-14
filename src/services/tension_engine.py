@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import json
 from enum import StrEnum
-from typing import Literal, TypeAlias
-
-from src.services.redis_service import RedisService
+from typing import Any, Literal, TypeAlias
 
 # Quadrant levels (0-1 scale)
 TensionLevel: TypeAlias = Literal[0, 1]
@@ -104,7 +102,7 @@ class TensionState:
         """
         return self.quadrant == Quadrant.CRISIS
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "user_id": self.user_id,
@@ -133,12 +131,13 @@ class TensionEngine:
         - CRISIS: SW-11 (Crisis Override)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Tension Engine."""
         # In-memory cache of user tension states
         self._states: dict[int, TensionState] = {}
         # Redis service for persistence
-        self._redis = RedisService()
+        from src.services.redis_service import get_redis_service
+        self._redis = get_redis_service()
 
     async def get_state(self, user_id: int) -> TensionState:
         """Get the current tension state for a user.

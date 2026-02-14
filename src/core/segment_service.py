@@ -12,8 +12,11 @@ Reference: ARCHITECTURE.md Section 3 (Neurotype Segmentation)
 
 from __future__ import annotations
 
+from typing import cast
+
 from src.core.segment_context import (
     SegmentContext,
+    WorkingStyleCode,
 )
 
 
@@ -73,7 +76,7 @@ class SegmentService:
             )
 
         # Get context from SegmentContext
-        context = SegmentContext.from_code(code)
+        context = SegmentContext.from_code(cast(WorkingStyleCode, code))
 
         # Cache for future use
         cls._context_cache[code] = context

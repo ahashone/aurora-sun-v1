@@ -32,7 +32,7 @@ class BurnoutState:
     is_active: bool
     days_in_state: int
     trajectory: list[float]                # Last N days of energy
-    indicators: dict
+    indicators: dict[str, float | int | str]
     last_assessed: datetime
 
 
@@ -168,15 +168,16 @@ class BurnoutClassifier:
         trajectory = assessment.energy_trajectory or []
         days_in_state = (datetime.now(UTC) - assessment.assessed_at).days
 
+        # Cast Column types to proper types
         return BurnoutState(
             user_id=user_id,
-            burnout_type=BurnoutType(assessment.burnout_type),
-            severity=assessment.severity_score,
+            burnout_type=BurnoutType(str(assessment.burnout_type)),
+            severity=float(assessment.severity_score),
             is_active=assessment.resolved_at is None,
             days_in_state=days_in_state,
             trajectory=trajectory,
-            indicators=assessment.indicators or {},
-            last_assessed=assessment.assessed_at,
+            indicators=dict(assessment.indicators) if assessment.indicators else {},
+            last_assessed=assessment.assessed_at,  # type: ignore[arg-type]
         )
 
     async def create_assessment(
@@ -185,7 +186,7 @@ class BurnoutClassifier:
         burnout_type: BurnoutType,
         severity: float,
         energy_trajectory: list[float],
-        indicators: dict | None = None,
+        indicators: dict[str, float | int | str] | None = None,
         notes: str | None = None,
     ) -> BurnoutAssessment:
         """
@@ -203,16 +204,15 @@ class BurnoutClassifier:
             Created BurnoutAssessment
         """
         # Close any existing active assessment
-        active = (
-            self.db.query(BurnoutAssessment)
-            .filter(
+        from sqlalchemy import update
+        self.db.execute(
+            update(BurnoutAssessment)
+            .where(
                 BurnoutAssessment.user_id == user_id,
-                BurnoutAssessment.resolved_at.is_(None),
+                BurnoutAssessment.resolved_at.is_(None)
             )
-            .all()
+            .values(resolved_at=datetime.now(UTC))
         )
-        for a in active:
-            a.resolved_at = datetime.now(UTC)
 
         # Create new assessment
         assessment = BurnoutAssessment(
@@ -243,6 +243,7 @@ class BurnoutClassifier:
         Returns:
             Updated BurnoutAssessment
         """
+        from sqlalchemy import update
         assessment = (
             self.db.query(BurnoutAssessment)
             .filter(BurnoutAssessment.id == assessment_id)
@@ -251,10 +252,17 @@ class BurnoutClassifier:
         if not assessment:
             raise ValueError(f"BurnoutAssessment {assessment_id} not found")
 
-        assessment.resolved_at = datetime.now(UTC)
-        if notes:
-            assessment.notes = (assessment.notes or "") + f"\nResolution: {notes}"
+        # Build notes value
+        new_notes = (assessment.notes or "") + (f"\nResolution: {notes}" if notes else "")
 
+        self.db.execute(
+            update(BurnoutAssessment)
+            .where(BurnoutAssessment.id == assessment_id)
+            .values(
+                resolved_at=datetime.now(UTC),
+                notes=new_notes
+            )
+        )
         self.db.commit()
         self.db.refresh(assessment)
         return assessment
@@ -407,7 +415,9 @@ class BurnoutClassifier:
         """Get user's segment code."""
         from src.models.user import User
         user = self.db.query(User).filter(User.id == user_id).first()
-        return user.working_style_code if user else "NT"
+        if user and user.working_style_code:
+            return str(user.working_style_code)
+        return "NT"
 
 
 __all__ = ["BurnoutClassifier", "BurnoutState", "BurnoutClassification"]

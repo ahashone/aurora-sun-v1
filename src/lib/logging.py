@@ -40,7 +40,7 @@ def setup_logging() -> None:
 
     if dev_mode:
         # Human-readable output for development
-        renderer = structlog.dev.ConsoleRenderer()
+        renderer: structlog.types.Processor = structlog.dev.ConsoleRenderer()
     else:
         # JSON output for production (machine-parseable)
         renderer = structlog.processors.JSONRenderer()

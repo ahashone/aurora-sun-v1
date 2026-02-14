@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 from src.core.segment_context import SegmentContext
 
@@ -100,7 +101,7 @@ class SignalName(StrEnum):
 
 
 # Signal metadata for each segment
-SIGNAL_METADATA: dict[SignalName, dict] = {
+SIGNAL_METADATA: dict[SignalName, dict[str, Any]] = {
     # AD Signals
     SignalName.MASKING_ESCALATION: {
         "segment": "AD",
@@ -548,7 +549,7 @@ class PatternDetectionService:
         signal_score = await service.detect_signal(user_id=123, signal_name="masking_escalation")
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Pattern Detection Service."""
         # In production, this would connect to database/Redis
         self._cycle_history: dict[int, list[DetectedCycle]] = {}
@@ -557,7 +558,7 @@ class PatternDetectionService:
     async def detect_cycles(
         self,
         user_id: int,
-        recent_data: dict,
+        recent_data: dict[str, Any],
     ) -> list[DetectedCycle]:
         """
         Detect all 5 core destructive cycles from user data.
@@ -847,7 +848,7 @@ class PatternDetectionService:
     async def get_cycle_summary(
         self,
         user_id: int,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Get a summary of all detected cycles for a user.
 

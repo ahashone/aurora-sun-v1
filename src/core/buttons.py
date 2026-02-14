@@ -8,8 +8,9 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 class ButtonType(Enum):
@@ -71,17 +72,17 @@ class Button:
         return cls(text=text, callback_data=callback_data)
 
     @classmethod
-    def url(cls, text: str, url: str) -> Button:  # noqa: F811
+    def url_button(cls, text: str, target_url: str) -> Button:
         """Create a URL button.
 
         Args:
             text: Button text
-            url: Target URL
+            target_url: Target URL
 
         Returns:
             Button instance
         """
-        return cls(text=text, url=url)
+        return cls(text=text, url=target_url)
 
     @classmethod
     def switch_inline(cls, text: str, query: str) -> Button:
@@ -96,7 +97,7 @@ class Button:
         """
         return cls(text=text, callback_data=f"switch_inline:{query}", button_type=ButtonType.SWITCH_INLINE)
 
-    def to_telegram_format(self) -> dict:
+    def to_telegram_format(self) -> dict[str, Any]:
         """Convert to Telegram button format.
 
         Returns:
@@ -118,17 +119,13 @@ class Button:
 class ButtonRow:
     """A row of buttons displayed together."""
 
-    buttons: list[Button] = None
-
-    def __post_init__(self) -> None:
-        if self.buttons is None:
-            self.buttons = []
+    buttons: list[Button] = field(default_factory=list)
 
     def add_button(self, button: Button) -> None:
         """Add a button to this row."""
         self.buttons.append(button)
 
-    def to_telegram_format(self) -> list[dict]:
+    def to_telegram_format(self) -> list[dict[str, Any]]:
         """Convert to Telegram format."""
         return [button.to_telegram_format() for button in self.buttons]
 
@@ -137,11 +134,7 @@ class ButtonRow:
 class ButtonGrid:
     """A grid of buttons (multiple rows)."""
 
-    rows: list[ButtonRow] = None
-
-    def __post_init__(self) -> None:
-        if self.rows is None:
-            self.rows = []
+    rows: list[ButtonRow] = field(default_factory=list)
 
     def add_row(self, row: ButtonRow) -> None:
         """Add a row to the grid."""
@@ -152,7 +145,7 @@ class ButtonGrid:
         row = ButtonRow(buttons=list(buttons))
         self.rows.append(row)
 
-    def to_telegram_format(self) -> list[list[dict]]:
+    def to_telegram_format(self) -> list[list[dict[str, Any]]]:
         """Convert to Telegram inline keyboard format."""
         return [row.to_telegram_format() for row in self.rows]
 

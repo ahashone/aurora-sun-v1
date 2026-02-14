@@ -303,12 +303,13 @@ class ConsentService:
         existing = self._get_active_consent(user_id)
         if existing:
             # Update existing record instead of creating new one
-            existing.consent_given_at = datetime.now(UTC)
-            existing.consent_version = version
-            existing.consent_language = language
-            existing.ip_hash = self._hash_ip(ip)
-            existing.consent_text_hash = self._hash_consent_text(consent_text)
-            existing.consent_withdrawn_at = None
+            # SQLAlchemy ORM: use setattr for Column assignments
+            setattr(existing, 'consent_given_at', datetime.now(UTC))
+            setattr(existing, 'consent_version', version)
+            setattr(existing, 'consent_language', language)
+            setattr(existing, 'ip_hash', self._hash_ip(ip))
+            setattr(existing, 'consent_text_hash', self._hash_consent_text(consent_text))
+            setattr(existing, 'consent_withdrawn_at', None)
             self._session.commit()
             return existing
 
@@ -393,12 +394,17 @@ class ConsentService:
             )
 
         # Check if withdrawn
+        # SQLAlchemy Column types: cast to runtime types for ConsentValidationResult
         if record.consent_withdrawn_at is not None:
+            from typing import cast
+            given_at = cast('datetime | None', record.consent_given_at)
+            withdrawn_at = cast('datetime | None', record.consent_withdrawn_at)
+            version = cast('str | None', record.consent_version)
             return ConsentValidationResult(
                 status=ConsentStatus.WITHDRAWN,
-                consent_given_at=record.consent_given_at,
-                consent_withdrawn_at=record.consent_withdrawn_at,
-                consent_version=record.consent_version,
+                consent_given_at=given_at,
+                consent_withdrawn_at=withdrawn_at,
+                consent_version=version,
                 message="Consent has been withdrawn",
             )
 
@@ -413,11 +419,15 @@ class ConsentService:
             )
 
         # Valid consent
+        # SQLAlchemy Column types: cast to runtime types
+        from typing import cast
+        given_at = cast('datetime | None', record.consent_given_at)
+        version = cast('str | None', record.consent_version)
         return ConsentValidationResult(
             status=ConsentStatus.VALID,
-            consent_given_at=record.consent_given_at,
+            consent_given_at=given_at,
             consent_withdrawn_at=None,
-            consent_version=record.consent_version,
+            consent_version=version,
             message="Consent is valid and active",
         )
 
@@ -451,7 +461,8 @@ class ConsentService:
                 "Cannot withdraw consent."
             )
 
-        record.consent_withdrawn_at = datetime.now(UTC)
+        # SQLAlchemy ORM: use setattr for Column assignments
+        setattr(record, 'consent_withdrawn_at', datetime.now(UTC))
         self._session.commit()
 
     def get_consent_version(self, user_id: int) -> str | None:
@@ -472,7 +483,9 @@ class ConsentService:
         if record is None:
             return None
 
-        return record.consent_version
+        # SQLAlchemy Column types: cast to runtime type
+        from typing import cast
+        return cast('str | None', record.consent_version)
 
     def get_consent_record(self, user_id: int) -> ConsentRecord | None:
         """

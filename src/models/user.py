@@ -97,26 +97,30 @@ class User(Base):
             return None
         # TODO: Integrate EncryptionService.decrypt_field() when available
         # For now, return plaintext (will be fixed in next iteration)
-        return self._name_plaintext
+        # mypy: SQLAlchemy Column is accessed as string at runtime
+        return str(self._name_plaintext) if self._name_plaintext else None
 
     @name.setter
     def name(self, value: str | None) -> None:
         """Set encrypted name."""
         # TODO: Integrate EncryptionService.encrypt_field() when available
         # For now, store plaintext (will be fixed in next iteration)
-        self._name_plaintext = value
+        # mypy: SQLAlchemy allows setting Column via setattr
+        setattr(self, '_name_plaintext', value)
 
     @property
     def segment_display_name(self) -> str:
         """Convert internal segment code to user-facing name."""
-        SEGMENT_DISPLAY_NAMES = {
+        SEGMENT_DISPLAY_NAMES: dict[str, str] = {
             "AD": "ADHD",
             "AU": "Autism",
             "AH": "AuDHD",
             "NT": "Neurotypical",
             "CU": "Custom",
         }
-        return SEGMENT_DISPLAY_NAMES.get(self.working_style_code, "Neurotypical")
+        # working_style_code is a Column[str] at class definition, but str | None at runtime
+        code = str(self.working_style_code) if self.working_style_code else None
+        return SEGMENT_DISPLAY_NAMES.get(code, "Neurotypical") if code else "Neurotypical"
 
 
 __all__ = ["User"]

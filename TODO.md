@@ -21,19 +21,19 @@
 - [x] effectiveness.py — canonical SegmentCode, z-test, fix double-count | effectiveness.py
 
 ### Step 2: Inspect & Fix Untested Files (→ ROADMAP 2.5.2, plan Step 2)
-- [ ] 7 modules (planning, review, capture, future_letter, belief, habit, motif)
+- [x] 4/7 modules (planning, review, capture, future_letter) | planning.py, future_letter.py (belief/habit/motif not yet implemented)
 - [x] 3 bot/infra (webhook, onboarding, module_registry) | webhook.py
-- [ ] 3 supporting (segment_service, redis_service, revenue_tracker)
+- [x] 3 supporting (segment_service, redis_service, revenue_tracker) | redis_service.py, revenue_tracker.py
 
 ### Step 3: Neurostate Inspection (→ ROADMAP 2.5.3, plan Step 3)
-- [ ] 5 neurostate files (sensory, energy, masking, channel, __init__)
+- [x] 5 neurostate files (sensory, energy, masking, channel, __init__) | energy.py (segment-aware assessment)
 
 ### Step 4: Workflows Inspection (→ ROADMAP 2.5.4, plan Step 4)
-- [ ] daily_graph.py + daily_workflow.py
+- [x] daily_graph.py + daily_workflow.py | daily_graph.py (typo fix + SegmentContext)
 
 ### Step 5-6: Verification (→ ROADMAP 2.5.5-2.5.6, plan Steps 5-6)
-- [ ] mypy strict compliance (0 errors from 171)
-- [ ] Full verification suite (tests, ruff, grep checks)
+- [x] mypy strict compliance (0 errors from 171) | 22 files fixed
+- [x] Full verification suite (tests, ruff, grep checks) | all gates green
 
 ---
 

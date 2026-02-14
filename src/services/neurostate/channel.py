@@ -132,7 +132,7 @@ class ChannelDominanceDetector:
     async def detect(
         self,
         user_id: int,
-        recent_messages: list[dict] | None = None,
+        recent_messages: list[dict[str, str | bool]] | None = None,
     ) -> ChannelDetectionResult:
         """
         Detect current channel dominance.
@@ -206,22 +206,35 @@ class ChannelDominanceDetector:
         Returns:
             Created/updated ChannelState
         """
-        # Get current active state
-        current = await self.get_current_state(user_id)
+        # Get current active state from DB directly
+        from sqlalchemy import update
+        current_db = (
+            self.db.query(ChannelState)
+            .filter(
+                ChannelState.user_id == user_id,
+                ChannelState.period_end.is_(None),
+            )
+            .order_by(ChannelState.period_start.desc())
+            .first()
+        )
 
         # Determine dominant channel
         dominant = max(channel_scores.items(), key=lambda x: x[1])
         dominant_channel = dominant[0]
 
-        if current:
+        if current_db:
             # Update existing state
-            current.channel_scores = channel_scores
-            current.dominant_channel = dominant_channel.value
-            current.confidence = confidence
-            current.supporting_signals = supporting_signals or []
+            self.db.execute(
+                update(ChannelState).where(ChannelState.id == current_db.id).values(
+                    channel_scores={k.value: v for k, v in channel_scores.items()},
+                    dominant_channel=dominant_channel.value,
+                    confidence=confidence,
+                    supporting_signals=supporting_signals or []
+                )
+            )
             self.db.commit()
-            self.db.refresh(current)
-            return current
+            self.db.refresh(current_db)
+            return current_db
         else:
             # Create new state
             state = ChannelState(
@@ -270,20 +283,21 @@ class ChannelDominanceDetector:
         adhd_score = sum(channel_scores.get(ch, 0) for ch in self.ADHD_CHANNELS) / len(self.ADHD_CHANNELS)
         autism_score = sum(channel_scores.get(ch, 0) for ch in self.AUTISM_CHANNELS) / len(self.AUTISM_CHANNELS)
 
+        # Cast Column types to proper types
         return ChannelStateData(
             user_id=user_id,
-            dominant_channel=ChannelType(state.dominant_channel),
+            dominant_channel=ChannelType(str(state.dominant_channel)),
             channel_scores=channel_scores,
-            confidence=state.confidence,
-            supporting_signals=state.supporting_signals or [],
-            period_start=state.period_start,
+            confidence=float(state.confidence),
+            supporting_signals=list(state.supporting_signals) if state.supporting_signals else [],
+            period_start=state.period_start,  # type: ignore[arg-type]
             is_adhd_dominant=adhd_score > autism_score + 15,
             is_autism_dominant=autism_score > adhd_score + 15,
         )
 
     def _analyze_messages(
         self,
-        messages: list[dict],
+        messages: list[dict[str, str | bool]],
     ) -> dict[ChannelType, float]:
         """
         Analyze messages to determine channel scores.
@@ -294,7 +308,7 @@ class ChannelDominanceDetector:
         Returns:
             Channel scores (0-100 per channel)
         """
-        user_messages = [m["text"].lower() for m in messages if m.get("is_user", False)]
+        user_messages = [str(m.get("text", "")).lower() for m in messages if m.get("is_user", False)]
 
         if not user_messages:
             return {ch: 50.0 for ch in self.CHANNELS}

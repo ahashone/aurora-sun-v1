@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from src.core.segment_context import SegmentContext
 from src.models.task import Task
@@ -58,7 +58,7 @@ class EnergyState:
         """Check if user has enough energy for demanding tasks."""
         return self.level == EnergyStateEnum.GREEN
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "user_id": self.user_id,
@@ -143,9 +143,9 @@ class SpoonDrawer:
         if self.masking <= 0:
             return 1.0
         # Formula: 1.0 + (masking_spoons / 10) ^ 1.5 * 2.0
-        return 1.0 + pow(self.masking / 10, 1.5) * 2.0
+        return float(1.0 + pow(self.masking / 10, 1.5) * 2.0)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "social": self.social,
@@ -184,7 +184,7 @@ class SensoryCognitiveLoad:
         """Check if user needs immediate break."""
         return self.sensory_load >= 8 or self.cognitive_load >= 8
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "sensory_load": self.sensory_load,
@@ -228,7 +228,7 @@ class EnergySystem:
         can_proceed = await energy_system.can_attempt_task(user_id=123, task=my_task)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Energy System."""
         # In-memory storage for energy states (in production, backed by Redis)
         self._energy_states: dict[int, EnergyState] = {}
@@ -327,8 +327,9 @@ class EnergySystem:
             IBNSResult with component scores and recommendation
         """
         # Get task attributes for scoring
-        task_title = task.title or ""
-        task_priority = task.priority or 3
+        # Cast Column types to plain Python types for mypy
+        task_title = str(task.title) if task.title is not None else ""
+        task_priority = int(task.priority) if task.priority is not None else 3
 
         # Calculate components (simplified - in production, use LLM for nuanced scoring)
 
@@ -472,8 +473,9 @@ class EnergySystem:
             ICNUResult with component scores and integrity trigger flag
         """
         # Calculate components (same as IBNS but kept separate)
-        task_title = task.title or ""
-        task_priority = task.priority or 3
+        # Cast Column types to plain Python types for mypy
+        task_title = str(task.title) if task.title is not None else ""
+        task_priority = int(task.priority) if task.priority is not None else 3
 
         interest = self._calculate_interest_score(task_title, task_priority)
         challenge = self._calculate_challenge_score(task_priority)
@@ -745,7 +747,9 @@ class EnergySystem:
         if energy_state.level == EnergyStateEnum.RED:
             # RED blocks non-essential tasks
             # Check if task is essential (high priority or high integrity)
-            is_essential = task.priority is not None and task.priority <= 2
+            # Cast Column type to int for comparison
+            task_priority_val = int(task.priority) if task.priority is not None else 3
+            is_essential = task_priority_val <= 2
 
             # For segments with integrity trigger enabled, also check integrity
             if segment_context.features.integrity_trigger_enabled:
@@ -789,7 +793,7 @@ class EnergySystem:
         user_id: int,
         segment_context: SegmentContext,
         task: Task | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Get comprehensive energy recommendation for a user.
 
@@ -808,8 +812,8 @@ class EnergySystem:
             Dictionary with segment-appropriate energy data
         """
         # Base response
-        response = {
-            "segment": segment_context.core.working_style_code,
+        response: dict[str, Any] = {
+            "segment": segment_context.core.code,  # Use 'code' instead of 'working_style_code'
             "user_id": user_id,
         }
 

@@ -25,6 +25,7 @@ from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.core.segment_context import SegmentContext
+from src.core.side_effects import SideEffect
 
 if TYPE_CHECKING:
     pass
@@ -186,12 +187,13 @@ class PlanningModule:
         # F-008: Use bounded state store with TTL
         user_id = ctx.user_id
         session_key = f"{self._session_key_prefix}{user_id}"
-        session = self._state_store.get(session_key)
+        state_store = await self._state_store
+        session = await state_store.get(session_key)
 
         if session is None:
             session = PlanningSession()
             # Store with 1 hour TTL
-            self._state_store.set(session_key, session, ttl=3600)
+            await state_store.set(session_key, session, ttl=3600)
 
         # Load user's vision and 90d goals
         await self._load_vision_and_goals(ctx, session)
@@ -247,7 +249,8 @@ class PlanningModule:
         """
         # F-008: Use bounded state store with TTL
         session_key = f"{self._session_key_prefix}{ctx.user_id}"
-        session = self._state_store.get(session_key)
+        state_store = await self._state_store
+        session = await state_store.get(session_key)
         if session is None:
             # Restart session if not found
             return await self.on_enter(ctx)
@@ -279,12 +282,13 @@ class PlanningModule:
         """
         # F-008: Use bounded state store with TTL
         session_key = f"{self._session_key_prefix}{ctx.user_id}"
-        session = self._state_store.get(session_key)
+        state_store = await self._state_store
+        session = await state_store.get(session_key)
         if session:
             # Optionally persist session data before cleanup
             await self._persist_session(ctx, session)
             # Delete from state store
-            self._state_store.delete(session_key)
+            await state_store.delete(session_key)
 
     def get_daily_workflow_hooks(self) -> DailyWorkflowHooks:
         """
@@ -305,7 +309,7 @@ class PlanningModule:
     # GDPR Methods
     # =========================================================================
 
-    async def export_user_data(self, user_id: int) -> dict:
+    async def export_user_data(self, user_id: int) -> dict[str, Any]:
         """
         GDPR export for planning data.
 
@@ -676,13 +680,13 @@ class PlanningModule:
                 text=self._get_message(ctx, "commitment_confirmed"),
                 is_end_of_flow=True,
                 side_effects=[
-                    {
-                        "effect_type": "create_tasks",
-                        "payload": {
+                    SideEffect(
+                        effect_type="create_tasks",  # type: ignore[arg-type]
+                        payload={
                             "tasks": session.tasks,
                             "committed_date": date.today().isoformat(),
                         },
-                    }
+                    )
                 ],
                 metadata={
                     "gamification": gamification,

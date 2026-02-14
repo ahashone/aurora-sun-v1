@@ -253,7 +253,7 @@ class DailyWorkflow:
     - Feed Aurora narrative update
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the Daily Workflow Engine."""
         self._hooks: dict[str, DailyWorkflowHooks] = {}
         logger.info("DailyWorkflow engine initialized")
@@ -382,7 +382,11 @@ class DailyWorkflow:
         # Get segment context
         segment_code: WorkingStyleCode = "NT"
         if user:
-            segment_code = user.working_style_code or "NT"
+            # working_style_code is Column[str] | None at class level, str | None at runtime
+            raw_code = str(user.working_style_code) if user.working_style_code else None
+            # Cast to WorkingStyleCode if valid, otherwise default to NT
+            from typing import cast
+            segment_code = cast(WorkingStyleCode, raw_code) if raw_code in ("AD", "AU", "AH", "NT", "CU") else "NT"
 
         # Initialize workflow state
         DailyWorkflowState(
@@ -590,7 +594,7 @@ class DailyWorkflow:
         # goals = await self._get_90d_goals(user_id)
 
         visions: list[str] = []
-        goals: list = []
+        goals: list[Goal] = []
 
         logger.info(f"Vision display for user {user_id}")
         return visions, goals

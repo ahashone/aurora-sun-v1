@@ -20,7 +20,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
@@ -48,9 +48,9 @@ class CoachingResponse:
     is_crisis_response: bool = False     # True if this is a crisis protocol response
     is_burnout_redirect: bool = False    # True if this redirects to burnout recovery
     recommended_action: str | None = None  # e.g., "pause_module", "suspend_daily_workflow"
-    metadata: dict = None  # Additional coaching metadata
+    metadata: dict[str, Any] | None = None  # Additional coaching metadata
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.metadata is None:
             self.metadata = {}
 
@@ -58,7 +58,7 @@ class CoachingResponse:
         """Convert to ModuleResponse for return to module system."""
         return ModuleResponse(
             text=self.text,
-            metadata=self.metadata,
+            metadata=self.metadata or {},
         )
 
 
@@ -317,7 +317,8 @@ class CoachingEngine:
 
         if cached:
             try:
-                return json.loads(cached)
+                result: ChannelDominance = json.loads(cached)
+                return result
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -555,11 +556,17 @@ class CoachingEngine:
             return
 
         try:
+            from sqlalchemy.ext.asyncio import AsyncSession
+
             from src.services.effectiveness import get_effectiveness_service
+
+            # Type guard for session
+            if not isinstance(session, AsyncSession):
+                return
 
             effectiveness_service = await get_effectiveness_service(session)
 
-            protocol = response.metadata.get("protocol", "unknown")
+            protocol = (response.metadata or {}).get("protocol", "unknown")
 
             await effectiveness_service.log_intervention(
                 user_id=user_id,

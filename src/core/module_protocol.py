@@ -9,7 +9,7 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 
 from __future__ import annotations
 
-from typing import Literal, Protocol, TypeAlias
+from typing import Any, Literal, Protocol, TypeAlias
 
 from .daily_workflow_hooks import DailyWorkflowHooks
 from .module_context import ModuleContext
@@ -70,7 +70,7 @@ class Module(Protocol):
         """
         ...
 
-    async def export_user_data(self, user_id: int) -> dict:
+    async def export_user_data(self, user_id: int) -> dict[str, Any]:
         """GDPR export for this module's data.
 
         Args:

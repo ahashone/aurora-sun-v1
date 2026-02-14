@@ -118,7 +118,7 @@ class EdgeRoute(StrEnum):
 # LangGraph Builder Functions
 # =============================================================================
 
-def build_daily_graph():
+def build_daily_graph() -> Any:
     """
     Build the Daily Workflow LangGraph.
 
@@ -192,7 +192,7 @@ def build_daily_graph():
 
     # Add nodes
     workflow.add_node(GraphNode.MORNING_ACTIVATE, morning_activate_node)
-    workflow.add_node(GraphNode.NEUROSTATE_PREFILIGHT, neurostate_preflight_node)
+    workflow.add_node(GraphNode.NEUROSTATE_PREFLIGHT, neurostate_preflight_node)
     workflow.add_node(GraphNode.GENTLE_REDIRECT, gentle_redirect_node)
     workflow.add_node(GraphNode.VISION_DISPLAY, vision_display_node)
     workflow.add_node(GraphNode.PLANNING, planning_node)
@@ -206,11 +206,11 @@ def build_daily_graph():
 
     # Add edges
     # morning_activate → neurostate_preflight
-    workflow.add_edge(GraphNode.MORNING_ACTIVATE, GraphNode.NEUROSTATE_PREFILIGHT)
+    workflow.add_edge(GraphNode.MORNING_ACTIVATE, GraphNode.NEUROSTATE_PREFLIGHT)
 
     # neurostate_preflight → conditional (overload check)
     workflow.add_conditional_edges(
-        GraphNode.NEUROSTATE_PREFILIGHT,
+        GraphNode.NEUROSTATE_PREFLIGHT,
         check_overload,
         {
             EdgeRoute.REDIRECT: GraphNode.GENTLE_REDIRECT,
@@ -327,8 +327,8 @@ async def neurostate_preflight_node(state: DailyGraphState) -> dict[str, Any]:
     overload_detected = False
 
     return {
-        "current_stage": GraphNode.NEUROSTATE_PREFILIGHT,
-        "completed_stages": state["completed_stages"] + [GraphNode.NEUROSTATE_PREFILIGHT],
+        "current_stage": GraphNode.NEUROSTATE_PREFLIGHT,
+        "completed_stages": state["completed_stages"] + [GraphNode.NEUROSTATE_PREFLIGHT],
         "burnout_risk": 0.0,
         "overload_detected": overload_detected,
     }
@@ -622,7 +622,7 @@ async def run_daily_graph(
     }
 
     # Run the graph
-    result = await graph.ainvoke(initial_state)
+    result: dict[str, Any] = await graph.ainvoke(initial_state)
 
     logger.info(f"Daily graph completed for user {user_id}")
     return result
@@ -636,20 +636,30 @@ def get_segment_adaptive_schedule(segment_code: WorkingStyleCode) -> dict[str, A
     """
     Get segment-adaptive schedule times.
 
+    Uses SegmentContext.ux.notification_strategy to determine timing approach:
+    - interval (AD/NT): Time-based on interval from last interaction
+    - exact_time (AU): Fixed exact times
+    - semi_predictable (AH): Flexible, channel-dependent
+
     Args:
         segment_code: User's segment code
 
     Returns:
         Dict with morning, midday, evening times
     """
+    from src.core.segment_context import SegmentContext
     from src.workflows.daily_workflow import SEGMENT_TIMING_CONFIGS
 
+    # Get segment context for notification strategy
+    ctx = SegmentContext.from_code(segment_code)
+
+    # Get timing config (still needed for actual times)
     config = SEGMENT_TIMING_CONFIGS.get(segment_code, SEGMENT_TIMING_CONFIGS["NT"])
 
     return {
         "morning": {"hour": config.morning_hour, "minute": config.morning_minute},
         "midday": {
-            "strategy": config.midday_strategy,
+            "strategy": ctx.ux.notification_strategy,  # Use SegmentContext
             "exact_time": (
                 {"hour": config.midday_exact_hour, "minute": config.midday_exact_minute}
                 if config.midday_exact_hour

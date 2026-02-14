@@ -149,7 +149,7 @@ class OnboardingStep:
 
     state: OnboardingStates
     prompt_key: str
-    keyboard: list[list[InlineKeyboardButton]] | None = None
+    keyboard: Callable[[str], list[list[InlineKeyboardButton]]] | None = None
     validator: Callable[[str], bool] | None = None
     transformer: Callable[[str], str] | None = None
 
@@ -171,7 +171,7 @@ class OnboardingFlow:
     - Segment selection uses display names, not internal codes
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the onboarding flow."""
         # In-memory fallback when Redis is unavailable
         self._states_fallback: dict[str, OnboardingStates] = {}
@@ -238,7 +238,8 @@ class OnboardingFlow:
         try:
             raw = await self._redis.get(f"{_ONBOARDING_DATA_PREFIX}{user_hash}")
             if raw is not None:
-                return json.loads(raw)
+                data: dict[str, Any] = json.loads(raw)
+                return data
         except Exception:
             pass
         return self._user_data_fallback.get(user_hash, {})
@@ -378,6 +379,8 @@ class OnboardingFlow:
         step: OnboardingStep,
     ) -> None:
         """Handle callback query from inline keyboard."""
+        if not update.callback_query or not update.callback_query.data:
+            return
         callback_data = update.callback_query.data
         user_data = await self._get_data(user_hash)
 
@@ -410,10 +413,11 @@ class OnboardingFlow:
                 await self._set_data(user_hash, user_data)
                 await self._advance_state(update, user_hash)
             elif callback_data == "consent_reject":
-                await update.callback_query.message.edit_text(
-                    "Consent is required to use Aurora Sun. "
-                    "You can restart anytime with /start"
-                )
+                if update.callback_query.message and hasattr(update.callback_query.message, "edit_text"):
+                    await update.callback_query.message.edit_text(
+                        "Consent is required to use Aurora Sun. "
+                        "You can restart anytime with /start"
+                    )
                 await self._set_state(user_hash, OnboardingStates.COMPLETED)
 
         # Answer callback to remove loading state
@@ -426,6 +430,8 @@ class OnboardingFlow:
         step: OnboardingStep,
     ) -> None:
         """Handle text input from user."""
+        if not update.message or not update.message.text:
+            return
         text = update.message.text
         user_data = await self._get_data(user_hash)
 
@@ -529,22 +535,22 @@ Type anything to start your first daily planning session!
             text = "Processing..."
 
         # Send message with keyboard if applicable
-        keyboard = None
-        if current_step.keyboard:
+        keyboard: list[list[InlineKeyboardButton]] | None = None
+        if current_step.keyboard is not None:
             keyboard = current_step.keyboard(language)
 
-        if keyboard:
+        if keyboard is not None:
             reply_markup = InlineKeyboardMarkup(keyboard)
             if update.message:
                 await update.message.reply_text(text, reply_markup=reply_markup)
-            elif update.callback_query:
+            elif update.callback_query and update.callback_query.message and hasattr(update.callback_query.message, "edit_text"):
                 await update.callback_query.message.edit_text(
                     text, reply_markup=reply_markup
                 )
         else:
             if update.message:
                 await update.message.reply_text(text)
-            elif update.callback_query:
+            elif update.callback_query and update.callback_query.message and hasattr(update.callback_query.message, "edit_text"):
                 await update.callback_query.message.edit_text(text)
 
     async def get_user_data(self, user_hash: str) -> dict[str, Any] | None:

@@ -111,7 +111,7 @@ class InertiaDetector:
     async def detect(
         self,
         user_id: int,
-        recent_messages: list[dict],
+        recent_messages: list[dict[str, str | bool]],
     ) -> InertiaDetectionResult:
         """
         Detect inertia based on recent conversation messages.
@@ -130,7 +130,7 @@ class InertiaDetector:
         segment_code = self._get_user_segment(user_id)
 
         # Analyze messages
-        user_messages = [m["text"].lower() for m in recent_messages if m.get("is_user", False)]
+        user_messages = [str(m.get("text", "")).lower() for m in recent_messages if m.get("is_user", False)]
 
         if not user_messages:
             return InertiaDetectionResult(is_inertia=False)
@@ -241,10 +241,16 @@ class InertiaDetector:
         if not event:
             raise ValueError(f"InertiaEvent {event_id} not found")
 
-        event.outcome = outcome
-        event.attempted_interventions = interventions_used
-        event.duration_minutes = duration_minutes
-        event.resolved_at = datetime.now(UTC)
+        # Update fields by creating a dict and using update
+        from sqlalchemy import update
+        self.db.execute(
+            update(InertiaEvent).where(InertiaEvent.id == event_id).values(
+                outcome=outcome,
+                attempted_interventions=interventions_used,
+                duration_minutes=duration_minutes,
+                resolved_at=datetime.now(UTC)
+            )
+        )
 
         self.db.commit()
         self.db.refresh(event)
@@ -365,7 +371,9 @@ class InertiaDetector:
         """Get user's segment code."""
         from src.models.user import User
         user = self.db.query(User).filter(User.id == user_id).first()
-        return user.working_style_code if user else "NT"
+        if user and user.working_style_code:
+            return str(user.working_style_code)
+        return "NT"
 
 
 __all__ = ["InertiaDetector", "InertiaEventData", "InertiaDetectionResult"]

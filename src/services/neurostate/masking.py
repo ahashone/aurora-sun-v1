@@ -30,7 +30,7 @@ class MaskingLoad:
     context_loads: dict[str, float]       # Load per context
     is_overloaded: bool                  # True if total > 80%
     is_critical: bool                    # True if total > 95%
-    recent_events: list                  # Last N masking events
+    recent_events: list[MaskingLog]      # Last N masking events
 
 
 @dataclass

@@ -38,6 +38,7 @@ import re
 import time
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 import structlog
 
@@ -250,11 +251,11 @@ class InputSanitizer:
         result = input_text
 
         # Neutralize javascript: and data: links
-        for pattern, _ in cls.MARKDOWN_DANGEROUS_PATTERNS:
-            if callable(_):
-                result = pattern.sub(_, result)
+        for pattern, replacement in cls.MARKDOWN_DANGEROUS_PATTERNS:
+            if callable(replacement):
+                result = pattern.sub(replacement, result)
             else:
-                result = pattern.sub(_, result)
+                result = pattern.sub(str(replacement), result)
 
         # Encode angle brackets in URLs to prevent HTML injection
         result = re.sub(
@@ -336,8 +337,8 @@ class InMemoryRateLimiter:
     rate limiting to prevent blocking all traffic or allowing unlimited access.
     """
 
-    def __init__(self):
-        self._buckets: dict[str, dict] = {}
+    def __init__(self) -> None:
+        self._buckets: dict[str, dict[str, list[float] | float | int]] = {}
 
     def check_rate_limit(
         self,
@@ -365,18 +366,28 @@ class InMemoryRateLimiter:
         cutoff = now - window_seconds
 
         # Remove expired requests
-        bucket["requests"] = [ts for ts in bucket["requests"] if ts > cutoff]
+        requests_list = bucket["requests"]
+        if isinstance(requests_list, list):
+            bucket["requests"] = [ts for ts in requests_list if isinstance(ts, float) and ts > cutoff]
+        else:
+            bucket["requests"] = []
 
         # Check limit
-        if len(bucket["requests"]) >= max_requests:
-            oldest = bucket["requests"][0]
-            retry_after = int(oldest + window_seconds - now) + 1
-            return False, max(retry_after, 1)
+        requests_list2 = bucket["requests"]
+        if isinstance(requests_list2, list):
+            if len(requests_list2) >= max_requests:
+                oldest = requests_list2[0]
+                if isinstance(oldest, float):
+                    retry_after = int(oldest + window_seconds - now) + 1
+                    return False, max(retry_after, 1)
+                return False, 1
 
-        # Record this request
-        bucket["requests"].append(now)
-        bucket["last_check"] = now
-        return True, 0
+            # Record this request
+            requests_list2.append(now)
+            bucket["last_check"] = now
+            return True, 0
+
+        return False, 1
 
     def get_remaining(
         self,
@@ -394,16 +405,20 @@ class InMemoryRateLimiter:
         cutoff = now - window_seconds
 
         # Count valid requests
-        active_requests = [ts for ts in bucket["requests"] if ts > cutoff]
-        return max(0, max_requests - len(active_requests))
+        requests_list = bucket["requests"]
+        if isinstance(requests_list, list):
+            active_requests = [ts for ts in requests_list if isinstance(ts, float) and ts > cutoff]
+            return max(0, max_requests - len(active_requests))
+        return max_requests
 
-    def cleanup_stale_buckets(self, max_age_seconds: float = 600.0):
+    def cleanup_stale_buckets(self, max_age_seconds: float = 600.0) -> None:
         """Remove buckets not accessed recently."""
         now = time.monotonic()
-        stale_keys = [
-            k for k, v in self._buckets.items()
-            if now - v.get("last_check", 0) > max_age_seconds
-        ]
+        stale_keys = []
+        for k, v in self._buckets.items():
+            last_check = v.get("last_check")
+            if isinstance(last_check, (int, float)) and now - last_check > max_age_seconds:
+                stale_keys.append(k)
         for k in stale_keys:
             del self._buckets[k]
 
@@ -446,7 +461,7 @@ class RateLimiter:
     _memory_fallback_enabled = True
 
     @classmethod
-    async def _get_redis_client(cls):
+    async def _get_redis_client(cls) -> Any:
         """
         Get Redis client from RedisService.
 
@@ -587,7 +602,7 @@ class RateLimiter:
     @classmethod
     async def _check_redis(
         cls,
-        client,
+        client: Any,
         key: str,
         window: int,
         max_requests: int
@@ -627,7 +642,7 @@ class RateLimiter:
     @classmethod
     async def _get_remaining_redis(
         cls,
-        client,
+        client: Any,
         key: str,
         window: int,
         max_requests: int
@@ -638,12 +653,12 @@ class RateLimiter:
 
         # Clean old entries and count
         await client.zremrangebyscore(key, 0, window_start)
-        current_count = await client.zcard(key)
+        current_count: int = await client.zcard(key)
 
         return max(0, max_requests - current_count)
 
     @classmethod
-    async def reset_limit(cls, user_id: int, action: str | None = None):
+    async def reset_limit(cls, user_id: int, action: str | None = None) -> None:
         """
         Reset rate limit for a user.
 
@@ -850,7 +865,7 @@ class SecurityHeaders:
         }
 
     @classmethod
-    def apply_to_response(cls, response, csp: str | None = None):
+    def apply_to_response(cls, response: Any, csp: str | None = None) -> Any:
         """
         Apply security headers to a response object.
 
@@ -869,10 +884,10 @@ class SecurityHeaders:
 # ============================================
 
 def create_security_middleware(
-    app,
+    app: Any,
     csp: str | None = None,
     enable_rate_limiting: bool = True
-):
+) -> None:
     """
     Add all security middleware to a FastAPI application.
 
@@ -890,11 +905,10 @@ def create_security_middleware(
     """
     from fastapi import Request
     from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.responses import Response
 
     # Add security headers middleware
     class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next) -> Response:
+        async def dispatch(self, request: Request, call_next: Any) -> Any:
             response = await call_next(request)
             return SecurityHeaders.apply_to_response(response, csp)
 

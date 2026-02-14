@@ -15,7 +15,7 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.core.segment_context import WorkingStyleCode
+from src.i18n import LanguageCode
 from src.i18n.strings import t as translate
 
 # Import models
@@ -126,6 +127,14 @@ class ReviewModule:
         """
         self._db_session = db_session
 
+    def _t(self, lang: str, module: str, key: str, **kwargs: object) -> str:
+        """Helper to call translate with proper type casting."""
+        from typing import cast
+        # Cast lang to LanguageCode - fallback to 'en' if not valid
+        valid_langs = ("en", "de", "sr", "el")
+        lang_code: LanguageCode = cast(LanguageCode, lang) if lang in valid_langs else "en"
+        return translate(lang_code, module, key, **kwargs)
+
     async def _get_db_session(self, ctx: ModuleContext) -> AsyncSession:
         """
         Get the database session from context or use the stored one.
@@ -141,7 +150,10 @@ class ReviewModule:
         # In production, this would come from a database service
         # For now, we rely on metadata being passed through context
         if "db_session" in ctx.metadata:
-            return ctx.metadata["db_session"]
+            db_session = ctx.metadata["db_session"]
+            # mypy: metadata is dict[str, Any], we assert the type here
+            assert isinstance(db_session, AsyncSession)
+            return db_session
         raise RuntimeError("No database session available")
 
     async def _get_today_daily_plan(
@@ -300,15 +312,15 @@ class ReviewModule:
             tasks_text = "\n".join(
                 [f"- {task.title}" for task in completed_tasks[:5] if task.title]
             )
-            intro = translate(lang, "review", "welcome_with_tasks").format(
+            intro = self._t(lang, "review", "welcome_with_tasks").format(
                 count=len(completed_tasks),
                 tasks=tasks_text,
             )
         else:
-            intro = translate(lang, "review", "welcome_no_tasks")
+            intro = self._t(lang, "review", "welcome_no_tasks")
 
         # Start with accomplishments state
-        prompt = translate(lang, "review", "accomplishments_prompt")
+        prompt = self._t(lang, "review", "accomplishments_prompt")
 
         return ModuleResponse(
             text=intro + "\n\n" + prompt,
@@ -375,12 +387,12 @@ class ReviewModule:
         challenges_prompt = await self._get_segment_prompt(ctx, "challenges")
 
         # Also provide fallback to translation
-        fallback = translate(lang, "review", "challenges_prompt")
+        fallback = self._t(lang, "review", "challenges_prompt")
 
         prompt = challenges_prompt or fallback
 
         return ModuleResponse(
-            text=translate(lang, "review", "challenges_intro") + "\n\n" + prompt,
+            text=self._t(lang, "review", "challenges_intro") + "\n\n" + prompt,
             next_state=ReviewStates.CHALLENGES,
             metadata={"accomplishments": message},
         )
@@ -404,7 +416,7 @@ class ReviewModule:
         energy_prompt = await self._get_segment_prompt(ctx, "energy")
 
         # Fallback to translation
-        fallback = translate(lang, "review", "energy_prompt")
+        fallback = self._t(lang, "review", "energy_prompt")
 
         prompt = energy_prompt or fallback
 
@@ -413,12 +425,12 @@ class ReviewModule:
             # User gave a quick energy number
             await self._update_daily_plan_energy(ctx, "evening_energy", int(message.strip()))
             return ModuleResponse(
-                text=translate(lang, "review", "energy_quick_response"),
+                text=self._t(lang, "review", "energy_quick_response"),
                 next_state=ReviewStates.REFLECTION,
             )
 
         return ModuleResponse(
-            text=translate(lang, "review", "energy_intro") + "\n\n" + prompt,
+            text=self._t(lang, "review", "energy_intro") + "\n\n" + prompt,
             next_state=ReviewStates.ENERGY,
             metadata={"challenges": message},
         )
@@ -451,12 +463,12 @@ class ReviewModule:
         reflection_prompt = await self._get_segment_prompt(ctx, "reflection")
 
         # Fallback to translation
-        fallback = translate(lang, "review", "reflection_prompt")
+        fallback = self._t(lang, "review", "reflection_prompt")
 
         prompt = reflection_prompt or fallback
 
         return ModuleResponse(
-            text=translate(lang, "review", "reflection_intro") + "\n\n" + prompt,
+            text=self._t(lang, "review", "reflection_intro") + "\n\n" + prompt,
             next_state=ReviewStates.REFLECTION,
             metadata={
                 "energy": message,
@@ -480,8 +492,8 @@ class ReviewModule:
         lang = ctx.language
 
         return ModuleResponse(
-            text=translate(lang, "review", "forward_intro") + "\n\n" +
-                 translate(lang, "review", "forward_prompt"),
+            text=self._t(lang, "review", "forward_intro") + "\n\n" +
+                 self._t(lang, "review", "forward_prompt"),
             next_state=ReviewStates.FORWARD,
             metadata={"reflection": message},
         )
@@ -520,11 +532,12 @@ class ReviewModule:
         daily_plan = result.scalar_one_or_none()
 
         if daily_plan:
-            daily_plan.auto_review_triggered = True
+            # SQLAlchemy ORM: use setattr for Column assignments
+            setattr(daily_plan, 'auto_review_triggered', True)
             await db.commit()
 
         return ModuleResponse.end_flow(
-            translate(lang, "review", "complete").format(
+            self._t(lang, "review", "complete").format(
                 intention=forward_intention
             )
         )
@@ -578,7 +591,7 @@ class ReviewModule:
                 return None
 
             # Trigger the review
-            return translate(ctx.language, "review", "evening_trigger")
+            return self._t(ctx.language, "review", "evening_trigger")
 
         return DailyWorkflowHooks(
             evening_review=evening_review_hook,
@@ -586,7 +599,7 @@ class ReviewModule:
             priority=10,  # Run after other evening hooks
         )
 
-    async def export_user_data(self, user_id: int) -> dict:
+    async def export_user_data(self, user_id: int) -> dict[str, Any]:
         """
         GDPR export for this module's data.
 

@@ -114,7 +114,7 @@ class EncryptedField:
     field_salt: str | None = None
     envelope_nonce: str | None = None
 
-    def to_db_dict(self) -> dict:
+    def to_db_dict(self) -> dict[str, str | int | None]:
         """Serialize for database storage."""
         return {
             "ciphertext": self.ciphertext,
@@ -125,14 +125,28 @@ class EncryptedField:
         }
 
     @classmethod
-    def from_db_dict(cls, data: dict) -> EncryptedField:
+    def from_db_dict(cls, data: dict[str, str | int | None]) -> EncryptedField:
         """Deserialize from database storage."""
+        ciphertext_val = data["ciphertext"]
+        classification_val = data["classification"]
+        version_val = data["version"]
+
+        if not isinstance(ciphertext_val, str):
+            raise ValueError(f"Expected str for ciphertext, got {type(ciphertext_val)}")
+        if not isinstance(classification_val, str):
+            raise ValueError(f"Expected str for classification, got {type(classification_val)}")
+        if not isinstance(version_val, int):
+            raise ValueError(f"Expected int for version, got {type(version_val)}")
+
+        field_salt_val = data.get("field_salt")
+        envelope_nonce_val = data.get("envelope_nonce")
+
         return cls(
-            ciphertext=data["ciphertext"],
-            classification=DataClassification(data["classification"]),
-            version=data["version"],
-            field_salt=data.get("field_salt"),
-            envelope_nonce=data.get("envelope_nonce"),
+            ciphertext=ciphertext_val,
+            classification=DataClassification(classification_val),
+            version=version_val,
+            field_salt=str(field_salt_val) if field_salt_val is not None and not isinstance(field_salt_val, str) else (field_salt_val if isinstance(field_salt_val, str) else None),
+            envelope_nonce=str(envelope_nonce_val) if envelope_nonce_val is not None and not isinstance(envelope_nonce_val, str) else (envelope_nonce_val if isinstance(envelope_nonce_val, str) else None),
         )
 
 
@@ -795,16 +809,16 @@ class HashService:
         Returns:
             Base64-encoded lookup hash
         """
-        lookup_salt = os.environ.get("AURORA_LOOKUP_SALT")
-        if not lookup_salt:
+        lookup_salt_env = os.environ.get("AURORA_LOOKUP_SALT")
+        if not lookup_salt_env:
             # Fall back to main salt with different context
-            lookup_salt = self._salt
+            lookup_salt_bytes = self._salt
             context = b"lookup"
         else:
-            lookup_salt = base64.b64decode(lookup_salt)
+            lookup_salt_bytes = base64.b64decode(lookup_salt_env)
             context = b""
 
-        h = hmac.new(lookup_salt, digestmod=hashlib.sha256)
+        h = hmac.new(lookup_salt_bytes, digestmod=hashlib.sha256)
         if context:
             h.update(context)
         h.update(value.encode("utf-8"))

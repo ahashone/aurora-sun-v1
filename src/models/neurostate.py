@@ -9,8 +9,9 @@ References:
 - ARCHITECTURE.md Section 14 (Data Models)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 
@@ -90,7 +91,7 @@ class SensoryProfile(Base):
     # Last assessment timestamp
     last_assessed = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -100,13 +101,13 @@ class SensoryProfile(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -117,7 +118,7 @@ class SensoryProfile(Base):
     )
 
     @property
-    def modality_loads(self) -> dict:
+    def modality_loads(self) -> dict[str, Any]:
         """
         Get decrypted modality loads.
 
@@ -129,12 +130,14 @@ class SensoryProfile(Base):
             # TODO: Integrate EncryptionService.decrypt_field() when available
             # For now, return parsed JSON (will be fixed in next iteration)
             import json
-            return json.loads(self._modality_loads_plaintext)
+            plaintext = str(self._modality_loads_plaintext)
+            result: dict[str, Any] = json.loads(plaintext)
+            return result
         except Exception:
             return {}
 
     @modality_loads.setter
-    def modality_loads(self, value: dict) -> None:
+    def modality_loads(self, value: dict[str, Any]) -> None:
         """
         Set encrypted modality loads.
 
@@ -143,7 +146,7 @@ class SensoryProfile(Base):
         import json
         # TODO: Integrate EncryptionService.encrypt_field() when available
         # For now, store JSON (will be fixed in next iteration)
-        self._modality_loads_plaintext = json.dumps(value)
+        self._modality_loads_plaintext = json.dumps(value)  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<SensoryProfile(user_id={self.user_id}, overall_load={self.overall_load:.1f})>"
@@ -191,14 +194,14 @@ class MaskingLog(Base):
     # Timestamp
     logged_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -214,13 +217,13 @@ class MaskingLog(Base):
         if self._notes_plaintext is None:
             return None
         # TODO: Integrate EncryptionService.decrypt_field() when available
-        return self._notes_plaintext
+        return str(self._notes_plaintext)
 
     @notes.setter
     def notes(self, value: str | None) -> None:
         """Set encrypted notes."""
         # TODO: Integrate EncryptionService.encrypt_field() when available
-        self._notes_plaintext = value
+        self._notes_plaintext = value  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<MaskingLog(user_id={self.user_id}, context={self.context}, load={self.load_score:.1f})>"
@@ -274,7 +277,7 @@ class BurnoutAssessment(Base):
     # Assessment timestamp
     assessed_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -284,13 +287,13 @@ class BurnoutAssessment(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -302,33 +305,35 @@ class BurnoutAssessment(Base):
     )
 
     @property
-    def energy_trajectory(self) -> list:
+    def energy_trajectory(self) -> list[Any]:
         """Get decrypted energy trajectory."""
         if self._energy_trajectory_plaintext is None:
             return []
         try:
             import json
-            return json.loads(self._energy_trajectory_plaintext)
+            plaintext = str(self._energy_trajectory_plaintext)
+            result: list[Any] = json.loads(plaintext)
+            return result
         except Exception:
             return []
 
     @energy_trajectory.setter
-    def energy_trajectory(self, value: list) -> None:
+    def energy_trajectory(self, value: list[Any]) -> None:
         """Set encrypted energy trajectory."""
         import json
-        self._energy_trajectory_plaintext = json.dumps(value)
+        self._energy_trajectory_plaintext = json.dumps(value)  # type: ignore[assignment]
 
     @property
     def notes(self) -> str | None:
         """Get decrypted notes."""
         if self._notes_plaintext is None:
             return None
-        return self._notes_plaintext
+        return str(self._notes_plaintext)
 
     @notes.setter
     def notes(self, value: str | None) -> None:
         """Set encrypted notes."""
-        self._notes_plaintext = value
+        self._notes_plaintext = value  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<BurnoutAssessment(user_id={self.user_id}, type={self.burnout_type}, severity={self.severity_score:.1f})>"
@@ -371,7 +376,7 @@ class ChannelState(Base):
     # Period start
     period_start = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -381,7 +386,7 @@ class ChannelState(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -443,7 +448,7 @@ class InertiaEvent(Base):
     # Event timestamps
     detected_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     resolved_at = Column(DateTime(timezone=True), nullable=True)
@@ -451,13 +456,13 @@ class InertiaEvent(Base):
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
-        onupdate=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -473,12 +478,12 @@ class InertiaEvent(Base):
         """Get decrypted notes."""
         if self._notes_plaintext is None:
             return None
-        return self._notes_plaintext
+        return str(self._notes_plaintext)
 
     @notes.setter
     def notes(self, value: str | None) -> None:
         """Set encrypted notes."""
-        self._notes_plaintext = value
+        self._notes_plaintext = value  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return f"<InertiaEvent(user_id={self.user_id}, type={self.inertia_type}, severity={self.severity:.1f})>"
@@ -524,14 +529,14 @@ class EnergyLevelRecord(Base):
     # Prediction timestamp
     predicted_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
