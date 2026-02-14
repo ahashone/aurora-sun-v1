@@ -155,44 +155,25 @@ class InputSanitizer:
     @classmethod
     def sanitize_sql(cls, input_text: str) -> str:
         """
-        Sanitize input for SQL injection patterns.
+        SQL injection prevention note.
 
-        WARNING: This is defense-in-depth only. ALWAYS use parameterized
-        queries for database operations. This method helps catch malicious
-        input before it reaches the database layer.
+        FINDING-015: SQL keyword replacement was removed because it changes user
+        meaning (e.g. "I want to SELECT a goal" -> "I want to [SELECT_BLOCKED] a goal").
+        SQL injection MUST be prevented by parameterized queries, not input mangling.
+
+        This method is kept as a no-op for backward compatibility. It only returns
+        the input unchanged. Callers relying on sanitize_all() still get XSS,
+        path traversal, and markdown sanitization.
 
         Args:
             input_text: Raw user input
 
         Returns:
-            Sanitized text with dangerous patterns neutralized
+            The input text unchanged (SQL protection via parameterized queries)
         """
-        if not input_text:
-            return ""
-
-        result = input_text
-
-        # Escape single quotes (for string literals)
-        result = result.replace("'", "''")
-
-        # Neutralize SQL comments
-        result = re.sub(r"--", "-- ", result)
-        result = re.sub(r"#", "# ", result)
-        result = re.sub(r"/\*", "/* ", result)
-
-        # Remove or neutralize dangerous keywords (with word boundaries)
-        dangerous_keywords = ["SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "UNION", "ALTER", "CREATE", "TRUNCATE"]
-        for keyword in dangerous_keywords:
-            # Replace with placeholder (won't execute as SQL)
-            result = re.sub(
-                rf"\b{keyword}\b",
-                f"[{keyword}_BLOCKED]",
-                result,
-                flags=re.IGNORECASE
-            )
-
-        logger.debug("input_sanitized_sql", original_length=len(input_text), result_length=len(result))
-        return result
+        # FINDING-015: No-op. SQL injection prevention is handled by parameterized
+        # queries in the database layer, not by mangling user input.
+        return input_text
 
     @classmethod
     def sanitize_path(cls, input_text: str) -> str:
@@ -278,7 +259,8 @@ class InputSanitizer:
         """
         Apply all sanitization methods in order.
 
-        Order: XSS -> SQL -> Path -> Markdown
+        Order: XSS -> Path -> Markdown
+        (SQL sanitization removed per FINDING-015; use parameterized queries.)
 
         Args:
             input_text: Raw user input
@@ -288,10 +270,123 @@ class InputSanitizer:
         """
         result = input_text
         result = cls.sanitize_xss(result)
-        result = cls.sanitize_sql(result)
         result = cls.sanitize_path(result)
         result = cls.sanitize_markdown(result)
         return result
+
+
+# ============================================
+# LLM Prompt Sanitizer (FINDING-017)
+# ============================================
+
+
+def sanitize_for_llm(text: str, max_length: int = 4000) -> str:
+    """
+    Sanitize user input before it enters the LLM prompt pipeline.
+
+    FINDING-017: Prevents prompt injection by:
+    1. Stripping known prompt injection patterns (system prompt overrides,
+       role switching attempts)
+    2. Truncating to max_length
+    3. Escaping delimiter tokens commonly used in LLM prompts
+
+    This does NOT alter normal user messages -- only strips patterns that
+    attempt to manipulate the LLM system prompt or role.
+
+    Args:
+        text: Raw user message
+        max_length: Maximum allowed character length (default 4000)
+
+    Returns:
+        Sanitized text safe for inclusion in LLM prompts
+    """
+    if not text:
+        return ""
+
+    result = text
+
+    # 1. Strip prompt injection patterns (system prompt overrides, role switches)
+    injection_patterns = [
+        # System prompt overrides
+        re.compile(r"(?:ignore|forget|disregard)\s+(?:all\s+)?(?:previous|prior|above)\s+(?:instructions?|prompts?|rules?|context)", re.IGNORECASE),
+        re.compile(r"(?:you\s+are\s+now|act\s+as|pretend\s+(?:to\s+be|you\s+are)|roleplay\s+as)\s+", re.IGNORECASE),
+        re.compile(r"(?:new\s+)?system\s*(?:prompt|message|instruction)\s*:", re.IGNORECASE),
+        # Role switching
+        re.compile(r"<\|?\s*(?:system|assistant|im_start|im_end)\s*\|?>", re.IGNORECASE),
+        re.compile(r"\[(?:SYSTEM|INST|/INST)\]", re.IGNORECASE),
+        # Delimiter manipulation
+        re.compile(r"```\s*system\b", re.IGNORECASE),
+        re.compile(r"###\s*(?:system|instruction|human|assistant)\s*:", re.IGNORECASE),
+    ]
+
+    for pattern in injection_patterns:
+        result = pattern.sub("[filtered]", result)
+
+    # 2. Escape common delimiter tokens used in structured prompts
+    # These are tokens that could break prompt structure if injected
+    delimiter_tokens = ["<|endoftext|>", "<|im_start|>", "<|im_end|>"]
+    for token in delimiter_tokens:
+        result = result.replace(token, "")
+
+    # 3. Truncate to max length
+    if len(result) > max_length:
+        result = result[:max_length]
+        logger.debug(
+            "llm_input_truncated",
+            original_length=len(text),
+            max_length=max_length,
+        )
+
+    return result
+
+
+def sanitize_for_storage(text: str, max_length: int = 10000) -> tuple[str, bool]:
+    """
+    Sanitize content before storing in Neo4j/Qdrant/database.
+
+    FINDING-018 / FINDING-019: Prevents content injection by:
+    1. Stripping potential injection patterns (Cypher, query language)
+    2. Truncating to max_length
+    3. Returning whether content was modified (for logging)
+
+    Args:
+        text: Raw content to store
+        max_length: Maximum allowed character length (default 10000)
+
+    Returns:
+        Tuple of (sanitized_text, was_modified)
+    """
+    if not text:
+        return "", False
+
+    original = text
+    result = text
+
+    # Strip Cypher injection patterns (for Neo4j safety)
+    cypher_patterns = [
+        re.compile(r"(?:MATCH|CREATE|MERGE|DELETE|DETACH|SET|REMOVE|RETURN|WITH|UNWIND|CALL)\s*\(", re.IGNORECASE),
+        re.compile(r"(?:\/\/|;)\s*(?:MATCH|CREATE|MERGE|DELETE|DROP)", re.IGNORECASE),
+    ]
+
+    for pattern in cypher_patterns:
+        result = pattern.sub("[filtered]", result)
+
+    # Strip null bytes
+    result = result.replace("\x00", "")
+
+    # Truncate to max length
+    if len(result) > max_length:
+        result = result[:max_length]
+
+    was_modified = result != original
+    if was_modified:
+        logger.info(
+            "content_sanitized_for_storage",
+            original_length=len(original),
+            result_length=len(result),
+        )
+
+    return result, was_modified
 
 
 # ============================================
@@ -326,7 +421,8 @@ class RateLimitConfig:
 RATE_LIMIT_CONFIGS: dict[RateLimitTier, RateLimitConfig] = {
     RateLimitTier.CHAT: RateLimitConfig(requests_per_minute=30, requests_per_hour=100),
     RateLimitTier.VOICE: RateLimitConfig(requests_per_minute=10, requests_per_hour=50),
-    RateLimitTier.API: RateLimitConfig(requests_per_minute=100, requests_per_hour=500),
+    # FINDING-039: Reduced from 100 to 30 req/min. Webhook rate limiting handled separately.
+    RateLimitTier.API: RateLimitConfig(requests_per_minute=30, requests_per_hour=300),
     RateLimitTier.ADMIN: RateLimitConfig(requests_per_minute=60, requests_per_hour=300),
 }
 

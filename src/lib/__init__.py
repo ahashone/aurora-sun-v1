@@ -23,6 +23,8 @@ from src.lib.security import (
     MessageSizeValidator,
     RateLimiter,
     SecurityHeaders,
+    sanitize_for_llm,
+    sanitize_for_storage,
 )
 
 __all__ = [
@@ -41,4 +43,6 @@ __all__ = [
     "RateLimiter",
     "MessageSizeValidator",
     "SecurityHeaders",
+    "sanitize_for_llm",
+    "sanitize_for_storage",
 ]

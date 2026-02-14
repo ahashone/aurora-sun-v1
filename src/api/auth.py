@@ -2,23 +2,26 @@
 Authentication and Authorization for Aurora Sun V1 REST API.
 
 Implements:
-- JWT token-based authentication
+- JWT token-based authentication (via PyJWT)
 - User identification via token
 - Rate limiting
 - Request verification
+- Startup secrets validation (FINDING-030)
 
 Reference: ROADMAP 5.4, ARCHITECTURE.md Section 14 (SW-14: REST API)
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import logging
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+import jwt as pyjwt
+
+from src.lib.security import hash_uid
 
 logger = logging.getLogger(__name__)
 
@@ -98,17 +101,55 @@ class AuthService:
     RATE_LIMIT = 1000
     RATE_LIMIT_WINDOW_SECONDS = 3600
 
+    # FINDING-014: Maximum entries in the rate limit dictionary to prevent
+    # unbounded memory growth. When exceeded, oldest 20% are evicted.
+    MAX_RATE_LIMIT_ENTRIES = 10000
+
     def __init__(self, secret_key: str | None = None) -> None:
         """
         Initialize auth service.
 
+        FINDING-002: No hardcoded fallback secret. If AURORA_API_SECRET_KEY
+        is not set and no explicit key is provided, raise RuntimeError.
+
         Args:
             secret_key: Secret key for token signing (from env if not provided)
+
+        Raises:
+            RuntimeError: If no secret key is available
         """
-        self.secret_key: str = secret_key or os.getenv(
-            "AURORA_API_SECRET_KEY", "dev-secret-key-change-in-production"
-        ) or "dev-secret-key-change-in-production"
+        resolved_key = secret_key or os.getenv("AURORA_API_SECRET_KEY")
+        if not resolved_key:
+            raise RuntimeError(
+                "AURORA_API_SECRET_KEY environment variable is required. "
+                "Set it to a cryptographically random string."
+            )
+        self.secret_key: str = resolved_key
         self._rate_limits: dict[int, RateLimitInfo] = {}
+
+    def _evict_stale_rate_limits(self) -> None:
+        """
+        FINDING-014: Evict oldest 20% of rate limit entries when the dict
+        exceeds MAX_RATE_LIMIT_ENTRIES. Entries are sorted by window_start
+        so the oldest (least recently active) are removed first.
+        """
+        if len(self._rate_limits) <= self.MAX_RATE_LIMIT_ENTRIES:
+            return
+
+        # Sort by window_start (oldest first) and remove oldest 20%
+        sorted_entries = sorted(
+            self._rate_limits.items(),
+            key=lambda item: item[1].window_start,
+        )
+        evict_count = len(sorted_entries) // 5  # 20%
+        for user_id, _ in sorted_entries[:evict_count]:
+            del self._rate_limits[user_id]
+
+        logger.info(
+            "Rate limit eviction: removed %d entries, %d remaining",
+            evict_count,
+            len(self._rate_limits),
+        )
 
     def generate_token(self, user_id: int, telegram_id: int) -> AuthToken:
         """
@@ -131,14 +172,12 @@ class AuthService:
             expires_at=expires_at,
         )
 
-        logger.info(f"Generated token for user {user_id}")
+        logger.info("Generated token for user_hash=%s", hash_uid(user_id))
         return token
 
     def encode_token(self, token: AuthToken) -> str:
         """
-        Encode token to JWT string.
-
-        This is a simplified implementation. In production, use PyJWT library.
+        Encode token to JWT string using PyJWT (FINDING-016 Claude).
 
         Args:
             token: Auth token
@@ -146,27 +185,18 @@ class AuthService:
         Returns:
             JWT string
         """
-        # Simplified JWT encoding (use PyJWT in production)
-        import base64
-        import json
-
-        payload = token.to_dict()
-        payload_json = json.dumps(payload, default=str)
-        payload_b64 = base64.urlsafe_b64encode(payload_json.encode()).decode()
-
-        # Sign with HMAC
-        signature = hmac.new(
-            self.secret_key.encode(),
-            payload_b64.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-
-        jwt_token = f"{payload_b64}.{signature}"
-        return jwt_token
+        payload: dict[str, Any] = {
+            "sub": str(token.user_id),
+            "telegram_id": token.telegram_id,
+            "iat": token.issued_at,
+            "exp": token.expires_at,
+            "type": token.token_type,
+        }
+        return pyjwt.encode(payload, self.secret_key, algorithm="HS256")
 
     def decode_token(self, jwt_token: str) -> AuthToken | None:
         """
-        Decode JWT token.
+        Decode JWT token using PyJWT (FINDING-016 Claude).
 
         Args:
             jwt_token: JWT string
@@ -175,49 +205,25 @@ class AuthService:
             Auth token, or None if invalid
         """
         try:
-            # Simplified JWT decoding (use PyJWT in production)
-            import base64
-            import json
-
-            parts = jwt_token.split(".")
-            if len(parts) != 2:
-                logger.warning("Invalid token format")
-                return None
-
-            payload_b64, signature = parts
-
-            # Verify signature
-            expected_signature = hmac.new(
-                self.secret_key.encode(),
-                payload_b64.encode(),
-                hashlib.sha256,
-            ).hexdigest()
-
-            if not hmac.compare_digest(signature, expected_signature):
-                logger.warning("Invalid token signature")
-                return None
-
-            # Decode payload
-            payload_json = base64.urlsafe_b64decode(payload_b64.encode()).decode()
-            payload = json.loads(payload_json)
-
-            token = AuthToken(
-                user_id=payload["user_id"],
-                telegram_id=payload["telegram_id"],
-                issued_at=datetime.fromisoformat(payload["issued_at"]),
-                expires_at=datetime.fromisoformat(payload["expires_at"]),
-                token_type=payload.get("token_type", "Bearer"),
+            payload = pyjwt.decode(
+                jwt_token, self.secret_key, algorithms=["HS256"]
             )
 
-            # Check expiry
-            if token.is_expired():
-                logger.warning(f"Token expired for user {token.user_id}")
-                return None
+            token = AuthToken(
+                user_id=int(payload["sub"]),
+                telegram_id=payload["telegram_id"],
+                issued_at=datetime.fromtimestamp(payload["iat"], tz=UTC),
+                expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
+                token_type=payload.get("type", "Bearer"),
+            )
 
             return token
 
-        except Exception as e:
-            logger.error(f"Token decode error: {e}")
+        except pyjwt.ExpiredSignatureError:
+            logger.warning("Token expired")
+            return None
+        except pyjwt.InvalidTokenError as e:
+            logger.error("Token decode error: %s", e)
             return None
 
     def authenticate_request(self, authorization_header: str | None) -> AuthToken | None:
@@ -252,6 +258,9 @@ class AuthService:
         Returns:
             True if within limit, False if exceeded
         """
+        # FINDING-014: Evict stale entries before adding new ones
+        self._evict_stale_rate_limits()
+
         if user_id not in self._rate_limits:
             self._rate_limits[user_id] = RateLimitInfo(
                 user_id=user_id,
@@ -263,7 +272,7 @@ class AuthService:
 
         rate_limit = self._rate_limits[user_id]
         if rate_limit.is_exceeded():
-            logger.warning(f"Rate limit exceeded for user {user_id}")
+            logger.warning("Rate limit exceeded for user_hash=%s", hash_uid(user_id))
             return False
 
         rate_limit.increment()
@@ -282,8 +291,51 @@ class AuthService:
         return self._rate_limits.get(user_id)
 
 
+def validate_secrets() -> None:
+    """
+    FINDING-030: Validate that required secrets are set at startup.
+
+    Checks AURORA_MASTER_KEY, AURORA_HMAC_SECRET, and AURORA_API_SECRET_KEY
+    are present and non-empty. In dev mode (AURORA_DEV_MODE=1), AURORA_MASTER_KEY
+    is only warned about (it has its own dev fallback in EncryptionService).
+
+    Raises:
+        RuntimeError: If any required secret is missing (outside dev exceptions)
+    """
+    is_dev_mode = os.getenv("AURORA_DEV_MODE") == "1"
+    missing: list[str] = []
+
+    # AURORA_MASTER_KEY: warn-only in dev mode (EncryptionService has its own dev fallback)
+    master_key = os.getenv("AURORA_MASTER_KEY")
+    if not master_key:
+        if is_dev_mode:
+            logger.warning(
+                "AURORA_MASTER_KEY not set. Dev mode fallback will be used. "
+                "DO NOT USE IN PRODUCTION."
+            )
+        else:
+            missing.append("AURORA_MASTER_KEY")
+
+    # AURORA_HMAC_SECRET: always required
+    if not os.getenv("AURORA_HMAC_SECRET"):
+        missing.append("AURORA_HMAC_SECRET")
+
+    # AURORA_API_SECRET_KEY: always required
+    if not os.getenv("AURORA_API_SECRET_KEY"):
+        missing.append("AURORA_API_SECRET_KEY")
+
+    if missing:
+        raise RuntimeError(
+            f"Missing required secrets: {', '.join(missing)}. "
+            "Set these environment variables before starting the application."
+        )
+
+    logger.info("All required secrets validated successfully.")
+
+
 __all__ = [
     "AuthService",
     "AuthToken",
     "RateLimitInfo",
+    "validate_secrets",
 ]

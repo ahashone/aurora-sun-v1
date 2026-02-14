@@ -25,6 +25,8 @@ from enum import Enum
 from functools import wraps
 from typing import Any, TypeVar
 
+from src.lib.security import hash_uid
+
 logger = logging.getLogger(__name__)
 
 
@@ -209,9 +211,51 @@ def has_all_permissions(role: Role, *permissions: Permission) -> bool:
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def _validate_role_from_kwargs(kwargs: dict[str, Any]) -> Role:
+    """
+    FINDING-015: Validate the role from kwargs.
+
+    SECURITY NOTE: In production, `current_user_role` MUST come from the
+    authenticated session/token (e.g., decoded JWT), NOT from caller kwargs
+    or user-supplied input. The decorators below read from kwargs as a
+    convention for internal function calls, but the caller is responsible
+    for setting this from a validated source. Never trust user-supplied role
+    values directly.
+
+    Additionally, Role.ADMIN is rejected unless `_internal_request` is True
+    in kwargs, which should only be set by the authentication middleware
+    after validating an admin session.
+    """
+    role = kwargs.get("current_user_role")
+    if role is None:
+        raise PermissionDeniedError(
+            "current_user_role not provided to permission-protected function"
+        )
+
+    if not isinstance(role, Role):
+        raise ValueError(f"Expected Role, got {type(role)}")
+
+    # FINDING-015: Reject Role.ADMIN unless the request is verified as internal/
+    # authenticated. In production, this flag must be set by auth middleware only.
+    if role == Role.ADMIN and not kwargs.get("_internal_request", False):
+        logger.warning(
+            "Role.ADMIN rejected: _internal_request flag not set. "
+            "Admin role must come from authenticated session."
+        )
+        raise PermissionDeniedError(
+            "Role.ADMIN requires authenticated internal request. "
+            "Set _internal_request=True from auth middleware only."
+        )
+
+    return role
+
+
 def require_permission(permission: Permission) -> Callable[[F], F]:
     """
     Decorator to enforce permission requirements.
+
+    FINDING-015: Role is validated via _validate_role_from_kwargs which
+    rejects unverified ADMIN claims.
 
     Args:
         permission: Required permission
@@ -229,30 +273,13 @@ def require_permission(permission: Permission) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Extract role from kwargs (convention: 'current_user_role')
-            role = kwargs.get("current_user_role")
-            if role is None:
-                raise PermissionDeniedError(
-                    "current_user_role not provided to permission-protected function"
-                )
-
-            if not isinstance(role, Role):
-                raise ValueError(f"Expected Role, got {type(role)}")
-
+            role = _validate_role_from_kwargs(kwargs)
             check_permission(role, permission, raise_on_failure=True)
             return await func(*args, **kwargs)
 
         @wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            role = kwargs.get("current_user_role")
-            if role is None:
-                raise PermissionDeniedError(
-                    "current_user_role not provided to permission-protected function"
-                )
-
-            if not isinstance(role, Role):
-                raise ValueError(f"Expected Role, got {type(role)}")
-
+            role = _validate_role_from_kwargs(kwargs)
             check_permission(role, permission, raise_on_failure=True)
             return func(*args, **kwargs)
 
@@ -289,14 +316,7 @@ def require_any_permission(*permissions: Permission) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            role = kwargs.get("current_user_role")
-            if role is None:
-                raise PermissionDeniedError(
-                    "current_user_role not provided to permission-protected function"
-                )
-
-            if not isinstance(role, Role):
-                raise ValueError(f"Expected Role, got {type(role)}")
+            role = _validate_role_from_kwargs(kwargs)
 
             if not has_any_permission(role, *permissions):
                 perm_names = [p.value for p in permissions]
@@ -308,14 +328,7 @@ def require_any_permission(*permissions: Permission) -> Callable[[F], F]:
 
         @wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            role = kwargs.get("current_user_role")
-            if role is None:
-                raise PermissionDeniedError(
-                    "current_user_role not provided to permission-protected function"
-                )
-
-            if not isinstance(role, Role):
-                raise ValueError(f"Expected Role, got {type(role)}")
+            role = _validate_role_from_kwargs(kwargs)
 
             if not has_any_permission(role, *permissions):
                 perm_names = [p.value for p in permissions]
@@ -335,12 +348,14 @@ def require_any_permission(*permissions: Permission) -> Callable[[F], F]:
     return decorator
 
 
-def require_role(role: Role) -> Callable[[F], F]:
+def require_role(required_role: Role) -> Callable[[F], F]:
     """
     Decorator to enforce specific role requirement.
 
+    FINDING-015: Role is validated via _validate_role_from_kwargs.
+
     Args:
-        role: Required role
+        required_role: Required role
 
     Raises:
         PermissionDeniedError: If user doesn't have the role
@@ -354,36 +369,22 @@ def require_role(role: Role) -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            current_role = kwargs.get("current_user_role")
-            if current_role is None:
-                raise PermissionDeniedError(
-                    "current_user_role not provided to role-protected function"
-                )
+            current_role = _validate_role_from_kwargs(kwargs)
 
-            if not isinstance(current_role, Role):
-                raise ValueError(f"Expected Role, got {type(current_role)}")
-
-            if current_role != role:
+            if current_role != required_role:
                 raise PermissionDeniedError(
-                    f"Requires role '{role.value}', current role is '{current_role.value}'"
+                    f"Requires role '{required_role.value}', current role is '{current_role.value}'"
                 )
 
             return await func(*args, **kwargs)
 
         @wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            current_role = kwargs.get("current_user_role")
-            if current_role is None:
-                raise PermissionDeniedError(
-                    "current_user_role not provided to role-protected function"
-                )
+            current_role = _validate_role_from_kwargs(kwargs)
 
-            if not isinstance(current_role, Role):
-                raise ValueError(f"Expected Role, got {type(current_role)}")
-
-            if current_role != role:
+            if current_role != required_role:
                 raise PermissionDeniedError(
-                    f"Requires role '{role.value}', current role is '{current_role.value}'"
+                    f"Requires role '{required_role.value}', current role is '{current_role.value}'"
                 )
 
             return func(*args, **kwargs)
@@ -445,7 +446,7 @@ def get_user_role(user_id: int, db_session: Any = None) -> Role:
 
         user = db_session.query(User).filter_by(id=user_id).first()
         if user is None:
-            logger.warning(f"User {user_id} not found, defaulting to USER role")
+            logger.warning("User user_hash=%s not found, defaulting to USER role", hash_uid(user_id))
             return Role.USER
 
         # Assuming User model has a 'role' field
@@ -455,7 +456,7 @@ def get_user_role(user_id: int, db_session: Any = None) -> Role:
             return Role.USER
 
     except Exception:
-        logger.exception(f"Error fetching role for user {user_id}")
+        logger.exception("Error fetching role for user_hash=%s", hash_uid(user_id))
         return Role.USER
 
 
@@ -488,11 +489,11 @@ def set_user_role(user_id: int, role: Role, db_session: Any) -> None:
         if hasattr(user, "role"):
             user.role = role.value
             db_session.commit()
-            logger.info(f"Updated role for user {user_id} to {role.value}")
+            logger.info("Updated role for user_hash=%s to %s", hash_uid(user_id), role.value)
         else:
             raise RoleError("User model does not have 'role' field")
 
     except Exception as e:
         db_session.rollback()
-        logger.exception(f"Error setting role for user {user_id}")
+        logger.exception("Error setting role for user_hash=%s", hash_uid(user_id))
         raise RoleError(f"Failed to set role: {e}") from e

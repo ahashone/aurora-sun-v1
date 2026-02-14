@@ -44,7 +44,7 @@ class RedisService:
                     **tls,
                 )
                 # Test connection
-                await self._client.ping()  # type: ignore[misc]
+                await self._client.ping()
             except redis.ConnectionError:
                 # Fall back to None - will use in-memory fallback
                 self._client = None

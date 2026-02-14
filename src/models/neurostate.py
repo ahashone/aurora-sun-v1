@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 
 from src.models.base import Base
 
@@ -137,13 +137,14 @@ class SensoryProfile(Base):
             if isinstance(data, dict):
                 return data
             return {}
-        except Exception:
+        except (json.JSONDecodeError, KeyError, ValueError):
             return {}
 
     @modality_loads.setter
     def modality_loads(self, value: dict[str, Any]) -> None:
         """Set encrypted modality loads. Data Classification: ART_9_SPECIAL"""
         import json
+        import logging
         try:
             from src.lib.encryption import DataClassification, get_encryption_service
             plaintext_json = json.dumps(value)
@@ -151,8 +152,12 @@ class SensoryProfile(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "modality_loads"
             )
             self._modality_loads_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception:
-            self._modality_loads_plaintext = json.dumps(value)  # type: ignore[assignment]
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'modality_loads', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<SensoryProfile(user_id={self.user_id}, overall_load={self.overall_load:.1f})>"
@@ -247,8 +252,13 @@ class MaskingLog(Base):
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
             )
             self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception:
-            self._notes_plaintext = value  # type: ignore[assignment]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'notes', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<MaskingLog(user_id={self.user_id}, context={self.context}, load={self.load_score:.1f})>"
@@ -293,8 +303,8 @@ class BurnoutAssessment(Base):
         nullable=True,
     )
 
-    # Supporting indicators (JSON)
-    indicators = Column(JSON, nullable=True)
+    # Supporting indicators (encrypted JSON) - FINDING-022: ART_9 data must be encrypted
+    _indicators_plaintext = Column("indicators", Text, nullable=True)
 
     # Assessment notes (encrypted)
     _notes_plaintext = Column("notes", Text, nullable=True)
@@ -330,6 +340,49 @@ class BurnoutAssessment(Base):
     )
 
     @property
+    def indicators(self) -> dict[str, Any] | None:
+        """Get decrypted indicators. Data Classification: ART_9_SPECIAL"""
+        if self._indicators_plaintext is None:
+            return None
+        try:
+            import json
+            plaintext = str(self._indicators_plaintext)
+            data = json.loads(plaintext)
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                decrypted = get_encryption_service().decrypt_field(encrypted, int(self.user_id), "indicators")
+                result: dict[str, Any] = json.loads(decrypted)
+                return result
+            if isinstance(data, (dict, list)):
+                return data  # type: ignore[return-value]
+            return None
+        except (json.JSONDecodeError, KeyError, ValueError):
+            return None
+
+    @indicators.setter
+    def indicators(self, value: dict[str, Any] | list[Any] | None) -> None:
+        """Set encrypted indicators. Data Classification: ART_9_SPECIAL"""
+        if value is None:
+            self._indicators_plaintext = None  # type: ignore[assignment]
+            return
+        import json
+        import logging
+        try:
+            from src.lib.encryption import DataClassification, get_encryption_service
+            plaintext_json = json.dumps(value)
+            encrypted = get_encryption_service().encrypt_field(
+                plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "indicators"
+            )
+            self._indicators_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'indicators', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
+
+    @property
     def energy_trajectory(self) -> list[Any]:
         """Get decrypted energy trajectory."""
         if self._energy_trajectory_plaintext is None:
@@ -347,13 +400,14 @@ class BurnoutAssessment(Base):
             if isinstance(data, list):
                 return data
             return []
-        except Exception:
+        except (json.JSONDecodeError, KeyError, ValueError):
             return []
 
     @energy_trajectory.setter
     def energy_trajectory(self, value: list[Any]) -> None:
         """Set encrypted energy trajectory."""
         import json
+        import logging
         try:
             from src.lib.encryption import DataClassification, get_encryption_service
             plaintext_json = json.dumps(value)
@@ -361,8 +415,12 @@ class BurnoutAssessment(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "energy_trajectory"
             )
             self._energy_trajectory_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception:
-            self._energy_trajectory_plaintext = json.dumps(value)  # type: ignore[assignment]
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'energy_trajectory', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     @property
     def notes(self) -> str | None:
@@ -394,8 +452,13 @@ class BurnoutAssessment(Base):
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
             )
             self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception:
-            self._notes_plaintext = value  # type: ignore[assignment]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'notes', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<BurnoutAssessment(user_id={self.user_id}, type={self.burnout_type}, severity={self.severity_score:.1f})>"
@@ -426,14 +489,14 @@ class ChannelState(Base):
     # Dominant channel for this period
     dominant_channel = Column(String(20), nullable=False)  # ChannelType enum values
 
-    # Channel scores (0-100 for each channel)
-    channel_scores = Column(JSON, nullable=False)
+    # Channel scores (0-100 for each channel) - FINDING-022: ART_9 data must be encrypted
+    _channel_scores_plaintext = Column("channel_scores", Text, nullable=False)
 
     # Confidence in dominance detection (0-1)
     confidence = Column(Float, default=0.0, nullable=False)
 
-    # Supporting signals (JSON)
-    supporting_signals = Column(JSON, nullable=True)
+    # Supporting signals - FINDING-022: ART_9 data must be encrypted
+    _supporting_signals_plaintext = Column("supporting_signals", Text, nullable=True)
 
     # Period start
     period_start = Column(
@@ -457,6 +520,89 @@ class ChannelState(Base):
         Index("idx_channel_user_period", "user_id", "period_start"),
         Index("idx_channel_dominant", "dominant_channel"),
     )
+
+    @property
+    def channel_scores(self) -> dict[str, Any]:
+        """Get decrypted channel scores. Data Classification: ART_9_SPECIAL"""
+        if self._channel_scores_plaintext is None:
+            return {}
+        try:
+            import json
+            plaintext = str(self._channel_scores_plaintext)
+            data = json.loads(plaintext)
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                decrypted = get_encryption_service().decrypt_field(encrypted, int(self.user_id), "channel_scores")
+                result: dict[str, Any] = json.loads(decrypted)
+                return result
+            if isinstance(data, dict):
+                return data
+            return {}
+        except (json.JSONDecodeError, KeyError, ValueError):
+            return {}
+
+    @channel_scores.setter
+    def channel_scores(self, value: dict[str, Any]) -> None:
+        """Set encrypted channel scores. Data Classification: ART_9_SPECIAL"""
+        import json
+        import logging
+        try:
+            from src.lib.encryption import DataClassification, get_encryption_service
+            plaintext_json = json.dumps(value)
+            encrypted = get_encryption_service().encrypt_field(
+                plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "channel_scores"
+            )
+            self._channel_scores_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'channel_scores', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
+
+    @property
+    def supporting_signals(self) -> dict[str, Any] | None:
+        """Get decrypted supporting signals. Data Classification: ART_9_SPECIAL"""
+        if self._supporting_signals_plaintext is None:
+            return None
+        try:
+            import json
+            plaintext = str(self._supporting_signals_plaintext)
+            data = json.loads(plaintext)
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                decrypted = get_encryption_service().decrypt_field(encrypted, int(self.user_id), "supporting_signals")
+                result: dict[str, Any] = json.loads(decrypted)
+                return result
+            if isinstance(data, (dict, list)):
+                return data  # type: ignore[return-value]
+            return None
+        except (json.JSONDecodeError, KeyError, ValueError):
+            return None
+
+    @supporting_signals.setter
+    def supporting_signals(self, value: dict[str, Any] | list[Any] | None) -> None:
+        """Set encrypted supporting signals. Data Classification: ART_9_SPECIAL"""
+        if value is None:
+            self._supporting_signals_plaintext = None  # type: ignore[assignment]
+            return
+        import json
+        import logging
+        try:
+            from src.lib.encryption import DataClassification, get_encryption_service
+            plaintext_json = json.dumps(value)
+            encrypted = get_encryption_service().encrypt_field(
+                plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "supporting_signals"
+            )
+            self._supporting_signals_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'supporting_signals', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<ChannelState(user_id={self.user_id}, dominant={self.dominant_channel}, confidence={self.confidence:.2f})>"
@@ -495,8 +641,8 @@ class InertiaEvent(Base):
     # Trigger (what caused the inertia)
     trigger = Column(String(100), nullable=True)
 
-    # Attempted interventions (JSON array)
-    attempted_interventions = Column(JSON, nullable=True)
+    # Attempted interventions - FINDING-022: ART_9 data must be encrypted
+    _attempted_interventions_plaintext = Column("attempted_interventions", Text, nullable=True)
 
     # Outcome ("resolved", "ongoing", "escalated")
     outcome = Column(String(20), nullable=True)
@@ -536,6 +682,49 @@ class InertiaEvent(Base):
     )
 
     @property
+    def attempted_interventions(self) -> list[Any] | None:
+        """Get decrypted attempted interventions. Data Classification: ART_9_SPECIAL"""
+        if self._attempted_interventions_plaintext is None:
+            return None
+        try:
+            import json
+            plaintext = str(self._attempted_interventions_plaintext)
+            data = json.loads(plaintext)
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                decrypted = get_encryption_service().decrypt_field(encrypted, int(self.user_id), "attempted_interventions")
+                result: list[Any] = json.loads(decrypted)
+                return result
+            if isinstance(data, list):
+                return data
+            return None
+        except (json.JSONDecodeError, KeyError, ValueError):
+            return None
+
+    @attempted_interventions.setter
+    def attempted_interventions(self, value: list[Any] | None) -> None:
+        """Set encrypted attempted interventions. Data Classification: ART_9_SPECIAL"""
+        if value is None:
+            self._attempted_interventions_plaintext = None  # type: ignore[assignment]
+            return
+        import json
+        import logging
+        try:
+            from src.lib.encryption import DataClassification, get_encryption_service
+            plaintext_json = json.dumps(value)
+            encrypted = get_encryption_service().encrypt_field(
+                plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "attempted_interventions"
+            )
+            self._attempted_interventions_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'attempted_interventions', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
+
+    @property
     def notes(self) -> str | None:
         """Get decrypted notes."""
         if self._notes_plaintext is None:
@@ -565,8 +754,13 @@ class InertiaEvent(Base):
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
             )
             self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception:
-            self._notes_plaintext = value  # type: ignore[assignment]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'notes', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<InertiaEvent(user_id={self.user_id}, type={self.inertia_type}, severity={self.severity:.1f})>"
@@ -603,8 +797,8 @@ class EnergyLevelRecord(Base):
     # Numeric score (0-100)
     energy_score = Column(Float, default=50.0, nullable=False)
 
-    # Behavioral proxies used (JSON)
-    behavioral_proxies = Column(JSON, nullable=True)
+    # Behavioral proxies used - FINDING-022: ART_9 data must be encrypted
+    _behavioral_proxies_plaintext = Column("behavioral_proxies", Text, nullable=True)
 
     # Session ID (if applicable)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True, index=True)
@@ -628,6 +822,49 @@ class EnergyLevelRecord(Base):
         Index("idx_energy_user_predicted", "user_id", "predicted_at"),
         Index("idx_energy_level", "energy_level"),
     )
+
+    @property
+    def behavioral_proxies(self) -> dict[str, Any] | None:
+        """Get decrypted behavioral proxies. Data Classification: ART_9_SPECIAL"""
+        if self._behavioral_proxies_plaintext is None:
+            return None
+        try:
+            import json
+            plaintext = str(self._behavioral_proxies_plaintext)
+            data = json.loads(plaintext)
+            if isinstance(data, dict) and "ciphertext" in data:
+                from src.lib.encryption import EncryptedField, get_encryption_service
+                encrypted = EncryptedField.from_db_dict(data)
+                decrypted = get_encryption_service().decrypt_field(encrypted, int(self.user_id), "behavioral_proxies")
+                result: dict[str, Any] = json.loads(decrypted)
+                return result
+            if isinstance(data, (dict, list)):
+                return data  # type: ignore[return-value]
+            return None
+        except (json.JSONDecodeError, KeyError, ValueError):
+            return None
+
+    @behavioral_proxies.setter
+    def behavioral_proxies(self, value: dict[str, Any] | list[Any] | None) -> None:
+        """Set encrypted behavioral proxies. Data Classification: ART_9_SPECIAL"""
+        if value is None:
+            self._behavioral_proxies_plaintext = None  # type: ignore[assignment]
+            return
+        import json
+        import logging
+        try:
+            from src.lib.encryption import DataClassification, get_encryption_service
+            plaintext_json = json.dumps(value)
+            encrypted = get_encryption_service().encrypt_field(
+                plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "behavioral_proxies"
+            )
+            self._behavioral_proxies_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'behavioral_proxies', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<EnergyLevelRecord(user_id={self.user_id}, level={self.energy_level}, score={self.energy_score:.1f})>"

@@ -8,12 +8,16 @@ References:
 - ARCHITECTURE.md Section 10 (Security & Privacy Architecture)
 """
 
+import json
+import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, Index, Integer, String
+from sqlalchemy import Column, DateTime, Index, Integer, String, event
 from sqlalchemy.orm import relationship
 
 from src.models.base import Base
+
+logger = logging.getLogger(__name__)
 
 
 class User(Base):
@@ -97,7 +101,6 @@ class User(Base):
         if self._name_plaintext is None:
             return None
         try:
-            import json
             data = json.loads(str(self._name_plaintext))
             if isinstance(data, dict) and "ciphertext" in data:
                 from src.lib.encryption import EncryptedField, get_encryption_service
@@ -119,15 +122,17 @@ class User(Base):
             setattr(self, '_name_plaintext', value)
             return
         try:
-            import json
-
             from src.lib.encryption import DataClassification, get_encryption_service
             encrypted = get_encryption_service().encrypt_field(
                 value, int(self.id), DataClassification.SENSITIVE, "name"
             )
             setattr(self, '_name_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, '_name_plaintext', value)
+        except Exception as e:
+            logger.error(
+                "Encryption failed for field 'name', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     @property
     def segment_display_name(self) -> str:
@@ -142,6 +147,58 @@ class User(Base):
         # working_style_code is a Column[str] at class definition, but str | None at runtime
         code = str(self.working_style_code) if self.working_style_code else None
         return SEGMENT_DISPLAY_NAMES.get(code, "Neurotypical") if code else "Neurotypical"
+
+
+# =============================================================================
+# FINDING-005: Re-encrypt name after INSERT when ID is assigned
+# =============================================================================
+@event.listens_for(User, "after_insert")
+def _re_encrypt_name_after_insert(
+    mapper: object, connection: object, target: User
+) -> None:
+    """
+    Re-encrypt the name field after INSERT when the user ID is now available.
+
+    When a new User is created, the name setter cannot encrypt because self.id
+    is None (auto-increment not yet assigned). After INSERT, the ID exists, so
+    we re-encrypt the plaintext name and update the row.
+    """
+    raw_name = target._name_plaintext
+    if raw_name is None or target.id is None:
+        return
+
+    # Check if the stored value is already encrypted (JSON with "ciphertext")
+    try:
+        data = json.loads(str(raw_name))
+        if isinstance(data, dict) and "ciphertext" in data:
+            return  # Already encrypted, nothing to do
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+
+    # The name is plaintext -- encrypt it now that we have the ID
+    try:
+        from src.lib.encryption import DataClassification, get_encryption_service
+        encrypted = get_encryption_service().encrypt_field(
+            str(raw_name), int(target.id), DataClassification.SENSITIVE, "name"
+        )
+        encrypted_json = json.dumps(encrypted.to_db_dict())
+
+        # Use the connection to update the row directly (avoid re-triggering ORM events)
+        from sqlalchemy import text as sa_text
+        connection.execute(  # type: ignore[attr-defined]
+            sa_text("UPDATE users SET name = :name WHERE id = :id"),
+            {"name": encrypted_json, "id": target.id},
+        )
+        # Update the in-memory attribute to match
+        target._name_plaintext = encrypted_json  # type: ignore[assignment]
+        logger.debug("Re-encrypted name for user %s after INSERT", target.id)
+    except Exception:
+        logger.critical(
+            "SECURITY: Failed to re-encrypt name after INSERT for user %s. "
+            "Plaintext name may remain in database. Manual remediation required.",
+            target.id,
+            exc_info=True,
+        )
 
 
 __all__ = ["User"]

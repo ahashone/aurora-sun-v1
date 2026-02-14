@@ -29,6 +29,7 @@ from enum import Enum
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from src.lib.security import hash_uid
 from src.models.base import Base
 
 logger = logging.getLogger(__name__)
@@ -270,11 +271,13 @@ class CCPAService:
         Returns:
             Verification challenge
         """
-        import random
+        import secrets
         import uuid
 
         challenge_id = str(uuid.uuid4())
-        verification_code = f"{random.randint(100000, 999999)}"
+        # FINDING-024: Use cryptographically secure random for verification codes.
+        # secrets.randbelow() provides CSPRNG instead of random.randint().
+        verification_code = f"{secrets.randbelow(900000) + 100000}"
         now = datetime.now(UTC)
         expires_at = now + timedelta(minutes=self.VERIFICATION_EXPIRY_MINUTES)
 
@@ -289,7 +292,7 @@ class CCPAService:
 
         self._verification_challenges[challenge_id] = challenge
 
-        logger.info(f"Created verification challenge {challenge_id} for user {user_id}")
+        logger.info("Created verification challenge %s for user_hash=%s", challenge_id, hash_uid(user_id))
         return challenge
 
     def verify_challenge(
@@ -364,7 +367,7 @@ class CCPAService:
         self.db.add(request)
         self.db.commit()
 
-        logger.info(f"Created Right to Know request for user {user_id}")
+        logger.info("Created Right to Know request for user_hash=%s", hash_uid(user_id))
         return request
 
     def submit_right_to_delete_request(
@@ -403,7 +406,7 @@ class CCPAService:
         self.db.add(request)
         self.db.commit()
 
-        logger.info(f"Created Right to Delete request for user {user_id}")
+        logger.info("Created Right to Delete request for user_hash=%s", hash_uid(user_id))
         return request
 
     def opt_out_of_sale(
@@ -448,7 +451,7 @@ class CCPAService:
 
         self.db.commit()
 
-        logger.info(f"User {user_id} opted out of sale")
+        logger.info("User user_hash=%s opted out of sale", hash_uid(user_id))
         return pref
 
     def get_pending_requests(

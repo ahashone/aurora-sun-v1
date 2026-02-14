@@ -416,9 +416,10 @@ class TestGDPRServiceExport:
         # Failing module should not be in modules
         assert "failing" not in result["modules"]
 
-        # Errors should be reported in metadata
-        assert result["export_metadata"]["errors"] is not None
-        assert any("failing" in err for err in result["export_metadata"]["errors"])
+        # FINDING-041: Export tracks completeness via `complete` and `failed_modules`
+        assert result["export_metadata"]["complete"] is False
+        assert len(result["export_metadata"]["failed_modules"]) > 0
+        assert any("failing" in err for err in result["export_metadata"]["failed_modules"])
 
     @pytest.mark.asyncio
     async def test_export_total_records_count(self, service_with_modules):
@@ -438,12 +439,14 @@ class TestGDPRServiceExport:
         assert result["export_metadata"]["total_records"] == 0
 
     @pytest.mark.asyncio
-    async def test_export_errors_none_when_no_errors(self, service_with_modules):
-        """Export metadata errors is None when all modules succeed."""
+    async def test_export_complete_when_no_errors(self, service_with_modules):
+        """Export metadata shows complete=True and empty failed_modules when all succeed."""
         service, _, _ = service_with_modules
         result = await service.export_user_data(user_id=42)
 
-        assert result["export_metadata"]["errors"] is None
+        # FINDING-041: Uses `complete` and `failed_modules` instead of `errors`
+        assert result["export_metadata"]["complete"] is True
+        assert result["export_metadata"]["failed_modules"] == []
 
 
 class TestGDPRServiceDelete:
@@ -485,8 +488,12 @@ class TestGDPRServiceDelete:
         result = await service.delete_user_data(user_id=42)
 
         assert result["overall_status"] == "success"
-        for comp in result["components"].values():
-            assert comp["status"] == "deleted"
+        for comp_name, comp in result["components"].items():
+            # FINDING-010: encryption_keys component uses "destroyed" status
+            if comp_name == "encryption_keys":
+                assert comp["status"] == "destroyed"
+            else:
+                assert comp["status"] == "deleted"
 
     @pytest.mark.asyncio
     async def test_delete_partial_on_module_error(self):
@@ -506,12 +513,14 @@ class TestGDPRServiceDelete:
 
     @pytest.mark.asyncio
     async def test_delete_no_modules(self):
-        """Delete with no modules returns success (vacuously true)."""
+        """Delete with no modules returns success (includes encryption key destruction)."""
         service = GDPRService()
         result = await service.delete_user_data(user_id=1)
 
         assert result["overall_status"] == "success"
-        assert result["components"] == {}
+        # FINDING-010: Encryption key destruction always runs
+        assert "encryption_keys" in result["components"]
+        assert result["components"]["encryption_keys"]["status"] == "destroyed"
 
 
 class TestGDPRServiceFreeze:

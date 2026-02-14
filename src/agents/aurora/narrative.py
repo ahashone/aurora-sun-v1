@@ -16,11 +16,16 @@ Reference: ARCHITECTURE.md Section 5 (Aurora Agent - Narrative Engine)
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
+
+from src.lib.security import sanitize_for_storage
+
+logger = logging.getLogger(__name__)
 
 
 class ChapterTheme(StrEnum):
@@ -250,11 +255,20 @@ class NarrativeEngine:
         if date is None:
             date = datetime.now(UTC).strftime("%Y-%m-%d")
 
+        # FINDING-019: Sanitize narrative content before storing
+        sanitized_content, was_modified = sanitize_for_storage(content, max_length=10000)
+        if was_modified:
+            logger.info(
+                "narrative_content_sanitized user_id=%d note_type=%s",
+                user_id,
+                note_type.value,
+            )
+
         note = DailyNote(
             user_id=user_id,
             date=date,
             note_type=note_type,
-            content=content,
+            content=sanitized_content,
             tags=tags or [],
             energy_level=energy_level,
         )

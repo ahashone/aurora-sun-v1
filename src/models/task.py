@@ -131,8 +131,13 @@ class Task(Base):
                 value, int(self.user_id), DataClassification.SENSITIVE, "title"
             )
             setattr(self, '_title_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, '_title_plaintext', value)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'title', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<Task(id={self.id}, user_id={self.user_id}, status={self.status}, priority={self.priority})>"

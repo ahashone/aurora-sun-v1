@@ -331,6 +331,10 @@ class EffectivenessService:
         """Initialize with database session."""
         self.session = session
 
+    # FINDING-025: Maximum confidence for user-reported outcomes.
+    # Only system-verified outcomes can reach 1.0.
+    MAX_USER_REPORTED_CONFIDENCE = 0.9
+
     async def log_intervention(
         self,
         user_id: int,
@@ -406,14 +410,21 @@ class EffectivenessService:
         intervention_instance_id: str,
         outcome: InterventionOutcome,
         behavioral_signals: InterventionOutcomeData | None = None,
+        user_id: int | None = None,
+        system_verified: bool = False,
     ) -> None:
         """
         Log outcome after 48h window.
+
+        FINDING-025: Validates that the intervention belongs to the claiming user
+        and applies a confidence ceiling for user-reported outcomes.
 
         Args:
             intervention_instance_id: The instance ID returned from log_intervention
             outcome: The measured outcome
             behavioral_signals: Optional behavioral signals collected during window
+            user_id: The user reporting the outcome (required for ownership validation)
+            system_verified: If True, outcome is system-verified (no confidence ceiling)
         """
         # Fetch the intervention instance
         stmt = select(InterventionInstance).where(
@@ -424,6 +435,27 @@ class EffectivenessService:
 
         if not instance:
             raise ValueError(f"Intervention instance not found: {intervention_instance_id}")
+
+        # FINDING-025: Validate that TASK_COMPLETED outcomes require a corresponding
+        # intervention that belongs to the reporting user.
+        if user_id is not None and instance.user_id != user_id:
+            raise ValueError(
+                f"Intervention {intervention_instance_id} does not belong to user {user_id}"
+            )
+
+        # FINDING-025: Apply confidence ceiling for user-reported outcomes.
+        # Only system-verified outcomes can have confidence up to 1.0.
+        if behavioral_signals and not system_verified:
+            if behavioral_signals.task_completion_after is not None:
+                behavioral_signals.task_completion_after = min(
+                    behavioral_signals.task_completion_after,
+                    self.MAX_USER_REPORTED_CONFIDENCE,
+                )
+            if behavioral_signals.task_completion_before is not None:
+                behavioral_signals.task_completion_before = min(
+                    behavioral_signals.task_completion_before,
+                    self.MAX_USER_REPORTED_CONFIDENCE,
+                )
 
         # Calculate latency
         now = datetime.now(UTC)

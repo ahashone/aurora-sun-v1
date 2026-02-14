@@ -22,6 +22,7 @@ from enum import StrEnum
 from typing import Any
 
 from src.lib.encryption import DataClassification
+from src.lib.security import hash_uid
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +310,7 @@ class LettaService:
                 )
             )
 
-        logger.info("Recalled %d memories for user %d", len(memories), user_id)
+        logger.info("Recalled %d memories for user_hash=%s", len(memories), hash_uid(user_id))
         return memories
 
     async def get_session_context(
@@ -415,7 +416,7 @@ class LettaService:
                 "metadata": item.get("metadata", {}),
             })
 
-        logger.info("Exported %d memories for user %d", len(memories_data), user_id)
+        logger.info("Exported %d memories for user_hash=%s", len(memories_data), hash_uid(user_id))
         return MemoryExport(user_id=user_id, memories=memories_data)
 
     async def delete_user_memories(self, user_id: int) -> int:
@@ -446,7 +447,7 @@ class LettaService:
             user_id=str(user_id),
         )
         count: int = result.get("deleted_count", 0) if isinstance(result, dict) else 0
-        logger.info("Deleted %d memories for user %d", count, user_id)
+        logger.info("Deleted %d memories for user_hash=%s", count, hash_uid(user_id))
         return count
 
 

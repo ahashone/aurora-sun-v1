@@ -55,6 +55,10 @@ class CycleSeverity(StrEnum):
     SEVERE = "severe"        # entrenched pattern, high concern
 
 
+# FINDING-026: Maximum evidence items per detection cycle to prevent data flooding.
+MAX_EVIDENCE_PER_CYCLE = 50
+
+
 @dataclass
 class DetectedCycle:
     """A detected destructive cycle in user behavior."""
@@ -66,6 +70,16 @@ class DetectedCycle:
     trend: str = "stable"               # "improving", "stable", "worsening"
     first_detected: str | None = None  # ISO date string
     last_detected: str | None = None   # ISO date string
+
+    def __post_init__(self) -> None:
+        """FINDING-026: Validate confidence and evidence bounds."""
+        # Validate confidence is between 0.0 and 1.0
+        if not 0.0 <= self.confidence <= 1.0:
+            self.confidence = max(0.0, min(1.0, self.confidence))
+
+        # Cap evidence count to prevent data flooding
+        if len(self.evidence) > MAX_EVIDENCE_PER_CYCLE:
+            self.evidence = self.evidence[:MAX_EVIDENCE_PER_CYCLE]
 
 
 # ============================================================================
@@ -566,6 +580,8 @@ class PatternDetectionService:
         Analyzes behavioral patterns to identify which cycles are active
         and at what severity level.
 
+        FINDING-026: Validates user_id and confidence scores.
+
         Args:
             user_id: The user's unique identifier
             recent_data: Dictionary containing recent user data points:
@@ -585,7 +601,14 @@ class PatternDetectionService:
         Returns:
             List of DetectedCycle objects, one for each of the 5 core cycles.
             Severity will be NONE if the cycle is not detected.
+
+        Raises:
+            ValueError: If user_id is invalid
         """
+        # FINDING-026: Validate user_id
+        if not isinstance(user_id, int) or user_id <= 0:
+            raise ValueError(f"Invalid user_id: {user_id}. Must be a positive integer.")
+
         detected_cycles: list[DetectedCycle] = []
 
         # Extract relevant data points with defaults

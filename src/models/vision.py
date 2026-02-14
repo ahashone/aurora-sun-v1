@@ -109,8 +109,13 @@ class Vision(Base):
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "content"
             )
             setattr(self, '_content_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, '_content_plaintext', value)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'content', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<Vision(id={self.id}, user_id={self.user_id}, type={self.type})>"

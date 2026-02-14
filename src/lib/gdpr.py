@@ -21,8 +21,14 @@ from enum import Enum
 from typing import Any, Protocol
 
 from src.lib.encryption import DataClassification
+from src.lib.security import hash_uid
 
 logger = logging.getLogger(__name__)
+
+# FINDING-046: Named constant for indefinite retention.
+# -1 means the data has no retention limit and is kept indefinitely
+# (e.g., anonymized analytics or public data that does not contain PII).
+RETENTION_INDEFINITE: int = -1
 
 
 class ProcessingRestriction(Enum):
@@ -61,24 +67,24 @@ class RetentionPolicyConfig:
     - PUBLIC: No retention limit
     """
     retention_days: dict[DataClassification, int] = field(default_factory=lambda: {
-        DataClassification.PUBLIC: -1,           # Indefinite (no retention needed)
-        DataClassification.INTERNAL: -1,          # Indefinite (anonymized)
-        DataClassification.SENSITIVE: 0,          # Delete while active
-        DataClassification.ART_9_SPECIAL: 0,       # Delete while active
-        DataClassification.FINANCIAL: 0,          # Delete while active
+        DataClassification.PUBLIC: RETENTION_INDEFINITE,       # No retention needed
+        DataClassification.INTERNAL: RETENTION_INDEFINITE,     # Anonymized
+        DataClassification.SENSITIVE: 0,                       # Delete while active
+        DataClassification.ART_9_SPECIAL: 0,                   # Delete while active
+        DataClassification.FINANCIAL: 0,                       # Delete while active
     })
 
     # Consent records have special retention: 5 years after withdrawal
     CONSENT_RETENTION_DAYS: int = 1825  # 5 years
 
     def get_retention_days(self, classification: DataClassification) -> int:
-        """Get retention days for a classification. -1 means indefinite."""
+        """Get retention days for a classification. RETENTION_INDEFINITE (-1) means indefinite."""
         return self.retention_days.get(classification, 0)
 
     def is_expired(self, classification: DataClassification, created_at: datetime) -> bool:
         """Check if a record has exceeded its retention period."""
         retention = self.get_retention_days(classification)
-        if retention == -1:
+        if retention == RETENTION_INDEFINITE:
             return False  # Indefinite retention
         if retention == 0:
             return True  # Delete while active (not stored)
@@ -218,7 +224,7 @@ class GDPRService:
             module: Module implementing GDPRModuleInterface
         """
         self._modules[name] = module
-        logger.info(f"Registered module '{name}' for GDPR operations")
+        logger.info("Registered module '%s' for GDPR operations", name)
 
     async def export_user_data(self, user_id: int) -> dict[str, Any]:
         """
@@ -249,7 +255,7 @@ class GDPRService:
                     data=data,
                 ))
             except Exception as e:
-                logger.error(f"Module '{module_name}' export failed: {e}")
+                logger.error("Module '%s' export failed for user_hash=%s: %s", module_name, hash_uid(user_id), e)
                 errors.append(f"{module_name}: export failed")
 
         # Export from direct database connections
@@ -263,7 +269,7 @@ class GDPRService:
                         data=pg_data,
                     ))
         except Exception as e:
-            logger.error(f"PostgreSQL export failed: {e}")
+            logger.error("PostgreSQL export failed for user_hash=%s: %s", hash_uid(user_id), e)
             errors.append("postgres: export failed")
 
         try:
@@ -276,7 +282,7 @@ class GDPRService:
                         data=redis_data,
                     ))
         except Exception as e:
-            logger.error(f"Redis export failed: {e}")
+            logger.error("Redis export failed for user_hash=%s: %s", hash_uid(user_id), e)
             errors.append("redis: export failed")
 
         try:
@@ -289,7 +295,7 @@ class GDPRService:
                         data=neo4j_data,
                     ))
         except Exception as e:
-            logger.error(f"Neo4j export failed: {e}")
+            logger.error("Neo4j export failed for user_hash=%s: %s", hash_uid(user_id), e)
             errors.append("neo4j: export failed")
 
         try:
@@ -302,7 +308,7 @@ class GDPRService:
                         data=qdrant_data,
                     ))
         except Exception as e:
-            logger.error(f"Qdrant export failed: {e}")
+            logger.error("Qdrant export failed for user_hash=%s: %s", hash_uid(user_id), e)
             errors.append("qdrant: export failed")
 
         try:
@@ -315,17 +321,23 @@ class GDPRService:
                         data=letta_data,
                     ))
         except Exception as e:
-            logger.error(f"Letta export failed: {e}")
+            logger.error("Letta export failed for user_hash=%s: %s", hash_uid(user_id), e)
             errors.append("letta: export failed")
 
-        # Build export package
+        # Build export package (FINDING-041: track completeness)
+        is_complete = len(errors) == 0
         export_package = {
             "export_metadata": {
                 "user_id": user_id,
                 "exported_at": datetime.now(UTC).isoformat(),
                 "aurora_version": "v1",
                 "total_records": len(exports),
-                "errors": errors if errors else None,
+                "complete": is_complete,
+                "failed_modules": errors if errors else [],
+                "completeness_warning": (
+                    "Data export may be incomplete. Some modules failed during export."
+                    if not is_complete else None
+                ),
             },
             "modules": {
                 record.module_name: {
@@ -336,7 +348,10 @@ class GDPRService:
             },
         }
 
-        logger.info(f"GDPR export completed for user {user_id}: {len(exports)} modules, {len(errors)} errors")
+        logger.info(
+            "GDPR export completed for user_hash=%s: %d modules, %d errors, complete=%s",
+            hash_uid(user_id), len(exports), len(errors), is_complete,
+        )
         return export_package
 
     async def delete_user_data(self, user_id: int) -> dict[str, Any]:
@@ -362,41 +377,51 @@ class GDPRService:
             "components": {},
         }
 
+        # FINDING-010: Track critical database failures separately
+        critical_failures: list[str] = []
+        succeeded_components: list[str] = []
+
         # Delete from each registered module
         for module_name, module in self._modules.items():
             try:
                 await module.delete_user_data(user_id)
                 deletion_report["components"][module_name] = {"status": "deleted"}
-                logger.info(f"Module '{module_name}' data deleted for user {user_id}")
+                succeeded_components.append(module_name)
+                logger.info("Module '%s' data deleted for user_hash=%s", module_name, hash_uid(user_id))
             except Exception as e:
-                logger.error(f"Module '{module_name}' deletion failed: {e}")
+                logger.error("Module '%s' deletion failed for user_hash=%s: %s", module_name, hash_uid(user_id), e)
                 deletion_report["components"][module_name] = {"status": "error", "error": "deletion failed"}
 
-        # Delete from PostgreSQL
+        # Delete from PostgreSQL (CRITICAL)
         try:
             if self.db:
                 await self._delete_postgres(user_id)
                 deletion_report["components"]["postgres"] = {"status": "deleted"}
+                succeeded_components.append("postgres")
         except Exception as e:
-            logger.error(f"PostgreSQL deletion failed: {e}")
+            logger.error("PostgreSQL deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             deletion_report["components"]["postgres"] = {"status": "error", "error": "operation failed"}
+            critical_failures.append("postgres")
 
-        # Delete from Redis
+        # Delete from Redis (CRITICAL)
         try:
             if self.redis:
                 await self._delete_redis(user_id)
                 deletion_report["components"]["redis"] = {"status": "deleted"}
+                succeeded_components.append("redis")
         except Exception as e:
-            logger.error(f"Redis deletion failed: {e}")
+            logger.error("Redis deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             deletion_report["components"]["redis"] = {"status": "error", "error": "operation failed"}
+            critical_failures.append("redis")
 
         # Delete from Neo4j
         try:
             if self.neo4j:
                 await self._delete_neo4j(user_id)
                 deletion_report["components"]["neo4j"] = {"status": "deleted"}
+                succeeded_components.append("neo4j")
         except Exception as e:
-            logger.error(f"Neo4j deletion failed: {e}")
+            logger.error("Neo4j deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             deletion_report["components"]["neo4j"] = {"status": "error", "error": "operation failed"}
 
         # Delete from Qdrant
@@ -404,8 +429,9 @@ class GDPRService:
             if self.qdrant:
                 await self._delete_qdrant(user_id)
                 deletion_report["components"]["qdrant"] = {"status": "deleted"}
+                succeeded_components.append("qdrant")
         except Exception as e:
-            logger.error(f"Qdrant deletion failed: {e}")
+            logger.error("Qdrant deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             deletion_report["components"]["qdrant"] = {"status": "error", "error": "operation failed"}
 
         # Delete from Letta
@@ -413,20 +439,48 @@ class GDPRService:
             if self.letta:
                 await self._delete_letta(user_id)
                 deletion_report["components"]["letta"] = {"status": "deleted"}
+                succeeded_components.append("letta")
         except Exception as e:
-            logger.error(f"Letta deletion failed: {e}")
+            logger.error("Letta deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             deletion_report["components"]["letta"] = {"status": "error", "error": "operation failed"}
 
-        # Note: Encryption key destruction would be handled by EncryptionService
-        # This is logged but not executed here (handled separately for security)
+        # FINDING-010: Destroy encryption keys (not just a comment)
+        try:
+            from src.lib.encryption import get_encryption_service
+            encryption_service = get_encryption_service()
+            encryption_service.destroy_keys(user_id)
+            deletion_report["components"]["encryption_keys"] = {"status": "destroyed"}
+            succeeded_components.append("encryption_keys")
+            logger.info("Encryption keys destroyed for user_hash=%s", hash_uid(user_id))
+        except Exception as e:
+            logger.error("Encryption key destruction failed for user_hash=%s: %s", hash_uid(user_id), e)
+            deletion_report["components"]["encryption_keys"] = {"status": "error", "error": "key destruction failed"}
+            critical_failures.append("encryption_keys")
 
-        success = all(
-            comp.get("status") == "deleted"
+        # FINDING-010: If ANY critical database fails (PostgreSQL, Redis),
+        # mark entire operation as FAILED, not "partial"
+        all_success = all(
+            comp.get("status") in ("deleted", "destroyed")
             for comp in deletion_report["components"].values()
         )
-        deletion_report["overall_status"] = "success" if success else "partial"
+        if all_success:
+            deletion_report["overall_status"] = "success"
+        elif critical_failures:
+            deletion_report["overall_status"] = "failed"
+            deletion_report["critical_failures"] = critical_failures
+            deletion_report["succeeded_components"] = succeeded_components
+            logger.error(
+                "GDPR deletion FAILED for user_hash=%s: critical databases failed: %s (succeeded: %s)",
+                hash_uid(user_id), critical_failures, succeeded_components,
+            )
+        else:
+            deletion_report["overall_status"] = "partial"
+            deletion_report["succeeded_components"] = succeeded_components
 
-        logger.info(f"GDPR deletion completed for user {user_id}: {deletion_report['overall_status']}")
+        logger.info(
+            "GDPR deletion completed for user_hash=%s: %s",
+            hash_uid(user_id), deletion_report["overall_status"],
+        )
         return deletion_report
 
     async def freeze_user_data(self, user_id: int) -> dict[str, Any]:
@@ -454,9 +508,9 @@ class GDPRService:
             try:
                 await module.freeze_user_data(user_id)
                 freeze_report["components"][module_name] = {"status": "restricted"}
-                logger.info(f"Module '{module_name}' restricted for user {user_id}")
+                logger.info("Module '%s' restricted for user_hash=%s", module_name, hash_uid(user_id))
             except Exception as e:
-                logger.error(f"Module '{module_name}' freeze failed: {e}")
+                logger.error("Module '%s' freeze failed for user_hash=%s: %s", module_name, hash_uid(user_id), e)
                 freeze_report["components"][module_name] = {"status": "error", "error": "operation failed"}
 
         # Set restriction flag in PostgreSQL
@@ -465,13 +519,13 @@ class GDPRService:
                 await self._set_restriction_flag(user_id, ProcessingRestriction.RESTRICTED)
                 freeze_report["components"]["postgres"] = {"status": "restricted"}
         except Exception as e:
-            logger.error(f"PostgreSQL restriction failed: {e}")
+            logger.error("PostgreSQL restriction failed for user_hash=%s: %s", hash_uid(user_id), e)
             freeze_report["components"]["postgres"] = {"status": "error", "error": "operation failed"}
 
         # Note: Active processing should be stopped by individual modules
         # The freeze_report indicates that processing is now restricted
 
-        logger.info(f"GDPR freeze completed for user {user_id}")
+        logger.info("GDPR freeze completed for user_hash=%s", hash_uid(user_id))
         return freeze_report
 
     async def unfreeze_user_data(self, user_id: int) -> dict[str, Any]:
@@ -499,9 +553,9 @@ class GDPRService:
             try:
                 await module.unfreeze_user_data(user_id)
                 unfreeze_report["components"][module_name] = {"status": "active"}
-                logger.info(f"Module '{module_name}' activated for user {user_id}")
+                logger.info("Module '%s' activated for user_hash=%s", module_name, hash_uid(user_id))
             except Exception as e:
-                logger.error(f"Module '{module_name}' unfreeze failed: {e}")
+                logger.error("Module '%s' unfreeze failed for user_hash=%s: %s", module_name, hash_uid(user_id), e)
                 unfreeze_report["components"][module_name] = {"status": "error", "error": "operation failed"}
 
         # Remove restriction flag in PostgreSQL
@@ -510,10 +564,10 @@ class GDPRService:
                 await self._set_restriction_flag(user_id, ProcessingRestriction.ACTIVE)
                 unfreeze_report["components"]["postgres"] = {"status": "active"}
         except Exception as e:
-            logger.error(f"PostgreSQL unrestriction failed: {e}")
+            logger.error("PostgreSQL unrestriction failed for user_hash=%s: %s", hash_uid(user_id), e)
             unfreeze_report["components"]["postgres"] = {"status": "error", "error": "operation failed"}
 
-        logger.info(f"GDPR unfreeze completed for user {user_id}")
+        logger.info("GDPR unfreeze completed for user_hash=%s", hash_uid(user_id))
         return unfreeze_report
 
     async def check_retention(self) -> list[RecordsToDelete]:
@@ -536,7 +590,7 @@ class GDPRService:
         # Implementation depends on specific table structures
         # Placeholder implementation - actual query would depend on schema
 
-        logger.info(f"Retention check found {len(records_to_delete)} records to delete")
+        logger.info("Retention check found %d records to delete", len(records_to_delete))
         return records_to_delete
 
     # =========================================================================
@@ -614,8 +668,8 @@ class GDPRService:
                 export_data["consent_records"] = [dict(row._mapping) for row in consent.fetchall()]
 
         except Exception as e:
-            logger.error(f"PostgreSQL export failed for user {user_id}: {e}")
-            return {"error": str(e)}
+            logger.error("PostgreSQL export failed for user_hash=%s: %s", hash_uid(user_id), e)
+            return {"error": "export failed"}
 
         return export_data
 
@@ -623,7 +677,8 @@ class GDPRService:
         """
         Export user data from Redis.
 
-        Scans for all keys matching user:{user_id}:* pattern and exports their values.
+        Scans for user:{user_id}:* and aurora:*:{user_id}:* patterns
+        and exports their values.
         """
         if not self.redis:
             return {}
@@ -631,16 +686,20 @@ class GDPRService:
         export_data: dict[str, Any] = {}
 
         try:
-            # Scan for user-specific keys
-            pattern = f"user:{user_id}:*"
-            cursor = 0
-            keys = []
+            # Scan for user-specific keys (both prefixes)
+            patterns = [
+                f"user:{user_id}:*",
+                f"aurora:*:{user_id}:*",
+            ]
+            keys: list[Any] = []
 
-            while True:
-                cursor, partial_keys = await self.redis.scan(cursor, match=pattern, count=100)
-                keys.extend(partial_keys)
-                if cursor == 0:
-                    break
+            for pattern in patterns:
+                cursor = 0
+                while True:
+                    cursor, partial_keys = await self.redis.scan(cursor, match=pattern, count=100)
+                    keys.extend(partial_keys)
+                    if cursor == 0:
+                        break
 
             # Export each key's value
             for key in keys:
@@ -658,8 +717,8 @@ class GDPRService:
                     export_data[key.decode()] = await self.redis.zrange(key, 0, -1, withscores=True)
 
         except Exception as e:
-            logger.error(f"Redis export failed for user {user_id}: {e}")
-            return {"error": str(e)}
+            logger.error("Redis export failed for user_hash=%s: %s", hash_uid(user_id), e)
+            return {"error": "export failed"}
 
         return export_data
 
@@ -690,8 +749,8 @@ class GDPRService:
             }
 
         except Exception as e:
-            logger.error(f"Neo4j export failed for user {user_id}: {e}")
-            return {"error": str(e)}
+            logger.error("Neo4j export failed for user_hash=%s: %s", hash_uid(user_id), e)
+            return {"error": "export failed"}
 
     async def _export_qdrant(self, user_id: int) -> dict[str, Any]:
         """
@@ -718,8 +777,8 @@ class GDPRService:
             }
 
         except Exception as e:
-            logger.error(f"Qdrant export failed for user {user_id}: {e}")
-            return {"error": str(e)}
+            logger.error("Qdrant export failed for user_hash=%s: %s", hash_uid(user_id), e)
+            return {"error": "export failed"}
 
     async def _export_letta(self, user_id: int) -> dict[str, Any]:
         """
@@ -749,8 +808,8 @@ class GDPRService:
             }
 
         except Exception as e:
-            logger.error(f"Letta export failed for user {user_id}: {e}")
-            return {"error": str(e)}
+            logger.error("Letta export failed for user_hash=%s: %s", hash_uid(user_id), e)
+            return {"error": "export failed"}
 
     async def _delete_postgres(self, user_id: int) -> None:
         """
@@ -775,36 +834,41 @@ class GDPRService:
                 # - neurostate records, effectiveness data, etc.
 
         except Exception as e:
-            logger.error(f"PostgreSQL deletion failed for user {user_id}: {e}")
+            logger.error("PostgreSQL deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             raise
 
     async def _delete_redis(self, user_id: int) -> None:
         """
         Delete all user keys from Redis.
 
-        Scans for user:{user_id}:* pattern and deletes all matching keys.
+        Scans for user:{user_id}:* and aurora:*:{user_id}:* patterns
+        and deletes all matching keys.
         """
         if not self.redis:
             return
 
         try:
-            # Scan for user-specific keys
-            pattern = f"user:{user_id}:*"
-            cursor = 0
-            keys = []
+            # FINDING-010: Scan for both user-prefixed and aurora-prefixed keys
+            patterns = [
+                f"user:{user_id}:*",
+                f"aurora:*:{user_id}:*",
+            ]
+            keys: list[Any] = []
 
-            while True:
-                cursor, partial_keys = await self.redis.scan(cursor, match=pattern, count=100)
-                keys.extend(partial_keys)
-                if cursor == 0:
-                    break
+            for pattern in patterns:
+                cursor = 0
+                while True:
+                    cursor, partial_keys = await self.redis.scan(cursor, match=pattern, count=100)
+                    keys.extend(partial_keys)
+                    if cursor == 0:
+                        break
 
             # Delete all keys in batch
             if keys:
                 await self.redis.delete(*keys)
 
         except Exception as e:
-            logger.error(f"Redis deletion failed for user {user_id}: {e}")
+            logger.error("Redis deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             raise
 
     async def _delete_neo4j(self, user_id: int) -> None:
@@ -824,7 +888,7 @@ class GDPRService:
             await neo4j_service.delete_user_subgraph(user_id)
 
         except Exception as e:
-            logger.error(f"Neo4j deletion failed for user {user_id}: {e}")
+            logger.error("Neo4j deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             raise
 
     async def _delete_qdrant(self, user_id: int) -> None:
@@ -844,7 +908,7 @@ class GDPRService:
             await qdrant_service.delete_user_vectors(user_id)
 
         except Exception as e:
-            logger.error(f"Qdrant deletion failed for user {user_id}: {e}")
+            logger.error("Qdrant deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             raise
 
     async def _delete_letta(self, user_id: int) -> None:
@@ -868,7 +932,7 @@ class GDPRService:
             await letta_service.delete_user_memories(user_id)
 
         except Exception as e:
-            logger.error(f"Letta deletion failed for user {user_id}: {e}")
+            logger.error("Letta deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             raise
 
     async def _set_restriction_flag(
@@ -892,5 +956,5 @@ class GDPRService:
                 )
 
         except Exception as e:
-            logger.error(f"Set restriction flag failed for user {user_id}: {e}")
+            logger.error("Set restriction flag failed for user_hash=%s: %s", hash_uid(user_id), e)
             raise

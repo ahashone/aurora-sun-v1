@@ -116,8 +116,10 @@ jobs:
       - name: Install Bandit
         run: pip install bandit[toml]
 
+      # FINDING-044: Bandit failures now break the build (|| true removed).
+      # Only HIGH severity findings cause failure.
       - name: Run Bandit security scan
-        run: bandit -r src/ -f json -o bandit-report.json || true
+        run: bandit -r src/ --severity-level high -f json -o bandit-report.json
 
       - name: Upload Bandit report
         uses: actions/upload-artifact@v4

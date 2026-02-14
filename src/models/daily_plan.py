@@ -133,8 +133,13 @@ class DailyPlan(Base):
                 value, int(self.user_id), DataClassification.SENSITIVE, "reflection_text"
             )
             setattr(self, '_reflection_text_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, '_reflection_text_plaintext', value)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'reflection_text', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<DailyPlan(id={self.id}, user_id={self.user_id}, date={self.date})>"

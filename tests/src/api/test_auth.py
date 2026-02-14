@@ -19,7 +19,7 @@ class TestAuthService:
 
     def test_generate_token(self) -> None:
         """Test generating an auth token."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         token = service.generate_token(user_id=1, telegram_id=12345)
 
         assert token.user_id == 1
@@ -30,7 +30,7 @@ class TestAuthService:
 
     def test_token_expiry_calculation(self) -> None:
         """Test token expiry is 30 days from issue."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         token = service.generate_token(user_id=1, telegram_id=12345)
 
         expected_expiry = token.issued_at + timedelta(days=30)
@@ -38,7 +38,7 @@ class TestAuthService:
 
     def test_encode_and_decode_token(self) -> None:
         """Test encoding and decoding a token."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         original_token = service.generate_token(user_id=1, telegram_id=12345)
         encoded = service.encode_token(original_token)
 
@@ -53,7 +53,7 @@ class TestAuthService:
 
     def test_decode_invalid_token(self) -> None:
         """Test decoding an invalid token."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         decoded = service.decode_token("invalid_token")
         assert decoded is None
 
@@ -91,7 +91,7 @@ class TestAuthService:
 
     def test_decode_expired_token(self) -> None:
         """Test decoding an expired token returns None."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         token = AuthToken(
             user_id=1,
             telegram_id=12345,
@@ -104,7 +104,7 @@ class TestAuthService:
 
     def test_authenticate_request_valid(self) -> None:
         """Test authenticating a valid request."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         token = service.generate_token(user_id=1, telegram_id=12345)
         encoded = service.encode_token(token)
         auth_header = f"Bearer {encoded}"
@@ -116,13 +116,13 @@ class TestAuthService:
 
     def test_authenticate_request_no_header(self) -> None:
         """Test authenticating with no Authorization header."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         authenticated = service.authenticate_request(None)
         assert authenticated is None
 
     def test_authenticate_request_invalid_format(self) -> None:
         """Test authenticating with invalid header format."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
         authenticated = service.authenticate_request("invalid_format")
         assert authenticated is None
 
@@ -131,7 +131,7 @@ class TestAuthService:
 
     def test_check_rate_limit_within_limit(self) -> None:
         """Test rate limiting within allowed limit."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
 
         # Make 10 requests (well under limit of 1000)
         for _ in range(10):
@@ -140,7 +140,7 @@ class TestAuthService:
 
     def test_check_rate_limit_exceeded(self) -> None:
         """Test rate limiting when exceeded."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
 
         # Manually set rate limit to exceeded
         info = service.get_rate_limit_info(1)
@@ -159,7 +159,7 @@ class TestAuthService:
 
     def test_get_rate_limit_info(self) -> None:
         """Test getting rate limit info."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
 
         # No info initially
         info = service.get_rate_limit_info(user_id=1)
@@ -176,7 +176,7 @@ class TestAuthService:
 
     def test_rate_limit_resets_after_window(self) -> None:
         """Test rate limit resets after window expires."""
-        service = AuthService()
+        service = AuthService(secret_key="test-secret-key-for-unit-tests")
 
         # Make a request
         service.check_rate_limit(user_id=1)

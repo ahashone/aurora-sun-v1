@@ -26,6 +26,7 @@ from enum import StrEnum
 from typing import Any
 
 from src.core.segment_context import SegmentContext
+from src.lib.security import sanitize_for_llm
 
 
 class CoachingStep(StrEnum):
@@ -363,10 +364,13 @@ class FullCoachingEngine:
         Returns:
             CoachingResult with the coaching response
         """
+        # FINDING-017: Sanitize user message before it enters the LLM pipeline
+        sanitized_message = sanitize_for_llm(message)
+
         # Build context
         context = CoachingContext(
             user_id=user_id,
-            message=message,
+            message=sanitized_message,
             segment_ctx=segment_ctx,
             energy_level=energy_level,
             recent_patterns=recent_patterns or [],

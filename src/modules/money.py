@@ -41,6 +41,7 @@ from src.lib.encryption import (
     EncryptionServiceError,
     get_encryption_service,
 )
+from src.lib.security import hash_uid
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -1428,7 +1429,7 @@ class MoneyModule:
         try:
             self._encryption.destroy_keys(user_id)
         except EncryptionServiceError:
-            logger.warning("money_key_destruction_failed user_id=%d", user_id)
+            logger.warning("money_key_destruction_failed user_hash=%s", hash_uid(user_id))
 
     async def freeze_user_data(self, user_id: int) -> None:
         """GDPR Art. 18: Restrict processing.

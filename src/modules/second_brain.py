@@ -25,6 +25,7 @@ from sqlalchemy.orm import relationship
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
+from src.lib.security import sanitize_for_storage
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -334,11 +335,24 @@ class SecondBrainModule:
         # Classify content type
         classification = await self._classify_content(message)
 
+        # FINDING-018: Sanitize content before storing in Neo4j/Qdrant
+        sanitized_content, was_modified = sanitize_for_storage(
+            classification["content"], max_length=10000
+        )
+        if was_modified:
+            import logging
+            logging.getLogger(__name__).info(
+                "second_brain_content_sanitized user_id=%s content_type=%s",
+                ctx.user_id if hasattr(ctx, "user_id") else "unknown",
+                classification["type"],
+            )
+        classification["content"] = sanitized_content
+
         # Create captured item
         captured = CapturedItem(
             original_message=message,
             content_type=classification["type"],
-            content=classification["content"],
+            content=sanitized_content,
             extracted_entities=classification.get("entities", {}),
         )
 

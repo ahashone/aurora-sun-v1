@@ -6,14 +6,15 @@ the Natural Language Interface (NLI) pipeline.
 
 Flow:
     1. Receive Update from Telegram
-    2. Extract message/user info
-    3. Sanitize input (FINDING-006)
-    4. Rate limit check (FINDING-009)
-    5. Crisis detection (priority over all workflows)
+    2. Private-chat gate (FINDING-016)
+    3. Extract message/user info
+    4. Crisis detection FIRST (FINDING-013: must never be blocked)
+    5. Rate limit check (FINDING-009)
     6. Check consent gate (GDPR)
-    7. Pass to NLI (Intent Router)
-    8. Route to appropriate module
-    9. Return response
+    7. Sanitize input (FINDING-006)
+    8. Pass to NLI (Intent Router)
+    9. Route to appropriate module
+    10. Return response
 
 Security fixes applied (Security Audit):
     - FINDING-001: Consent gate wired to ConsentService
@@ -29,6 +30,7 @@ References:
     - ARCHITECTURE.md Section 13 (SW-13, SW-15)
 """
 
+import ipaddress
 import logging
 import os
 from typing import Any
@@ -51,6 +53,65 @@ from src.models.consent import ConsentStatus, ConsentValidationResult
 from src.services.crisis_service import CrisisLevel, check_and_handle_crisis
 
 logger = logging.getLogger(__name__)
+
+# FINDING-001: Telegram IP allowlist for webhook validation
+# See https://core.telegram.org/bots/webhooks#the-short-version
+TELEGRAM_IP_RANGES = [
+    ipaddress.ip_network("149.154.160.0/20"),
+    ipaddress.ip_network("91.108.4.0/22"),
+]
+
+
+def is_telegram_ip(ip_str: str) -> bool:
+    """
+    Check if an IP address belongs to Telegram's known ranges.
+
+    Args:
+        ip_str: IP address string to check
+
+    Returns:
+        True if the IP is in Telegram's known ranges
+    """
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        return any(addr in network for network in TELEGRAM_IP_RANGES)
+    except ValueError:
+        logger.warning("Invalid IP address for allowlist check: %s", ip_str)
+        return False
+
+
+def validate_webhook_request(
+    secret_header: str | None,
+    client_ip: str | None = None,
+) -> bool:
+    """
+    Validate an incoming webhook request (FINDING-001).
+
+    Call this in the web framework (Starlette/FastAPI) BEFORE parsing the
+    Update object. Checks X-Telegram-Bot-Api-Secret-Token header and
+    optionally the client IP against Telegram's known ranges.
+
+    Args:
+        secret_header: Value of X-Telegram-Bot-Api-Secret-Token header
+        client_ip: Client IP address (optional, for allowlist check)
+
+    Returns:
+        True if the request is valid
+    """
+    import hmac
+
+    expected_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    if expected_secret:
+        if not secret_header or not hmac.compare_digest(secret_header, expected_secret):
+            logger.warning("Webhook request failed secret validation")
+            return False
+
+    if client_ip and not is_telegram_ip(client_ip):
+        logger.warning("Webhook request from non-Telegram IP: %s", client_ip)
+        # Log but don't block — IP ranges may change, and proxies complicate this
+        # For strict enforcement, return False here
+
+    return True
 
 
 class TelegramWebhookHandler:
@@ -88,38 +149,61 @@ class TelegramWebhookHandler:
         Main entry point for handling Telegram updates.
 
         This is the core handler that:
-        1. Extracts message and user info
-        2. Rate limits (FINDING-009)
-        3. Sanitizes input (FINDING-006)
-        4. Checks for crisis signals (SW-11)
-        5. Validates consent (SW-15)
+        1. Private-chat gate (FINDING-016)
+        2. Extract user info
+        3. FINDING-013: Crisis detection FIRST (must NEVER be blocked)
+        4. Rate limits (FINDING-009)
+        5. Consent gate (SW-15)
         6. Routes through NLI
         7. Returns response
 
         Args:
             update: Telegram Update object
         """
+        # =============================================================================
+        # FINDING-016 (Codex): Private chat only gate
+        # Silently ignore all non-private chats to prevent data leakage in groups.
+        # This check runs BEFORE any processing, including crisis detection.
+        # =============================================================================
+        if update.effective_chat and update.effective_chat.type != "private":
+            return
+
         if not update.message and not update.callback_query:
             logger.warning("Received update without message or callback_query")
             return
 
+        # Extract user info
+        user = update.effective_user
+        if not user:
+            logger.warning("Update has no effective_user")
+            return
+
+        # =============================================================================
+        # FINDING-013: Crisis detection BEFORE rate limiting and consent gate.
+        # A suicidal user must NEVER be blocked by rate limits or missing consent.
+        # This is the FIRST thing after receiving a valid message (after private-chat
+        # check). Uses user.id directly -- no DB lookup needed for crisis check.
+        # =============================================================================
+        message_text = update.message.text if update.message else ""
+        if message_text:
+            crisis_response = await check_and_handle_crisis(user.id, message_text)
+            if crisis_response is not None:
+                if update.message:
+                    await update.message.reply_text(crisis_response.message)
+                if crisis_response.level == CrisisLevel.CRISIS:
+                    # Crisis takes absolute priority - skip everything else
+                    return
+
         # =============================================================================
         # FINDING-009: Rate limiting - Use RateLimiter classmethod (no instantiation)
         # =============================================================================
-        user = update.effective_user
-        if user:
-            # Check message rate limit (30/min, 100/hour)
-            if not await RateLimiter.check_rate_limit(user.id, RateLimitTier.CHAT):
-                logger.warning("rate_limit_exceeded user_hash=%s", hash_uid(user.id))
-                if update.message:
-                    await update.message.reply_text(
-                        "You're sending messages too quickly. Please wait a moment."
-                    )
-                return
-
-        # Extract user info
-        if not user:
-            logger.warning("Update has no effective_user")
+        # Check message rate limit (30/min, 100/hour)
+        if not await RateLimiter.check_rate_limit(user.id, RateLimitTier.CHAT):
+            logger.warning("rate_limit_exceeded user_hash=%s", hash_uid(user.id))
+            if update.message:
+                await update.message.reply_text(
+                    "You're sending messages too quickly. Please wait a moment."
+                )
             return
 
         telegram_id = str(user.id)
@@ -142,20 +226,6 @@ class TelegramWebhookHandler:
             # Block processing until valid consent
             await self._request_consent(update, user_record)
             return
-
-        # =============================================================================
-        # SW-11: Crisis detection - BEFORE NLI routing (highest priority)
-        # Crisis signals must NEVER be rate-limited or blocked.
-        # =============================================================================
-        message_text = update.message.text if update.message else ""
-        if message_text:
-            crisis_response = await check_and_handle_crisis(user_record.id, message_text)
-            if crisis_response is not None:
-                if update.message:
-                    await update.message.reply_text(crisis_response.message)
-                if crisis_response.level == CrisisLevel.CRISIS:
-                    # Crisis takes absolute priority - skip NLI
-                    return
 
         # Route through NLI with error handling
         try:
@@ -321,14 +391,17 @@ def create_app() -> Application[Any, Any, Any, Any, Any, Any]:
     if not bot_token:
         raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
 
-    # FINDING-003: Get optional webhook secret for X-Telegram-Bot-Api-Secret-Token
+    # FINDING-001: Webhook secret for X-Telegram-Bot-Api-Secret-Token validation.
+    # The secret is validated at the web framework level (Starlette/FastAPI middleware)
+    # via validate_webhook_request() before the update reaches this Application.
     webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    if not webhook_secret:
+        logger.warning(
+            "TELEGRAM_WEBHOOK_SECRET not set. "
+            "Webhook requests will not be validated with a secret token."
+        )
 
-    # Create application with optional secret token
-    builder = Application.builder().token(bot_token)
-    if webhook_secret:
-        logger.info("Webhook secret token configured for request validation")
-    application = builder.build()
+    application = Application.builder().token(bot_token).build()
 
     # Add handlers
     application.add_handler(
@@ -372,4 +445,6 @@ __all__ = [
     "webhook_handler",
     "create_app",
     "process_telegram_update",
+    "is_telegram_ip",
+    "TELEGRAM_IP_RANGES",
 ]

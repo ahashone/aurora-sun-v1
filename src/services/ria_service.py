@@ -15,6 +15,9 @@ Reference: ROADMAP.md 3.9 (RIA Service)
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -118,6 +121,10 @@ class RIACycleLog(Base):
     Log of RIA daily cycles.
 
     Data Classification: INTERNAL
+
+    FINDING-047: Each log entry includes an HMAC integrity hash computed
+    over the immutable fields (cycle_id, cycle_date, phase, metrics,
+    started_at). This allows tamper detection on audit review.
     """
     __tablename__ = "ria_cycle_logs"
 
@@ -138,6 +145,9 @@ class RIACycleLog(Base):
     started_at = Column(DateTime(timezone=True), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     duration_seconds = Column(Float, nullable=True)
+
+    # FINDING-047: HMAC integrity hash for tamper detection
+    integrity_hash = Column(String(64), nullable=True)
 
 
 class RIAFinding(Base):
@@ -260,6 +270,67 @@ class RIAReport:
 # =============================================================================
 
 
+def _compute_cycle_log_hmac(log: RIACycleLog) -> str:
+    """
+    FINDING-047: Compute HMAC-SHA256 integrity hash for a RIA cycle log entry.
+
+    The HMAC is computed over the immutable fields of the log entry:
+    cycle_id, cycle_date, phase, findings_ingested, patterns_analyzed,
+    proposals_generated, started_at.
+
+    The HMAC key is derived from AURORA_MASTER_KEY env var. If not set,
+    falls back to a static key (development only -- logs a warning).
+
+    Args:
+        log: The RIACycleLog entry to compute the hash for.
+
+    Returns:
+        Hex-encoded HMAC-SHA256 digest (64 characters).
+    """
+    import logging as _logging
+
+    key_material = os.environ.get("AURORA_MASTER_KEY", "")
+    if not key_material:
+        _logging.getLogger(__name__).warning(
+            "AURORA_MASTER_KEY not set; using insecure fallback for cycle log HMAC"
+        )
+        key_material = "dev-only-insecure-key"
+
+    # Build the message from immutable fields
+    message_parts = [
+        str(log.cycle_id),
+        str(log.cycle_date.isoformat()) if log.cycle_date else "",
+        str(log.phase),
+        str(log.findings_ingested),
+        str(log.patterns_analyzed),
+        str(log.proposals_generated),
+        str(log.started_at.isoformat()) if log.started_at else "",
+    ]
+    message = "|".join(message_parts).encode("utf-8")
+
+    return hmac.new(
+        key_material.encode("utf-8"),
+        message,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def verify_cycle_log_integrity(log: RIACycleLog) -> bool:
+    """
+    FINDING-047: Verify the HMAC integrity of a RIA cycle log entry.
+
+    Args:
+        log: The RIACycleLog entry to verify.
+
+    Returns:
+        True if the integrity hash matches, False if tampered or missing.
+    """
+    if not log.integrity_hash:
+        return False
+    expected = _compute_cycle_log_hmac(log)
+    return hmac.compare_digest(str(log.integrity_hash), expected)
+
+
 class RIAService:
     """
     Research-Informed Adaptation (RIA) Service.
@@ -358,6 +429,9 @@ class RIAService:
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
 
+        # FINDING-047: Compute HMAC integrity hash before persisting
+        log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
+
         self.session.add(log)
         await self.session.commit()
 
@@ -395,6 +469,9 @@ class RIAService:
 
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
+
+        # FINDING-047: Compute HMAC integrity hash before persisting
+        log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
 
         self.session.add(log)
         await self.session.commit()
@@ -435,6 +512,9 @@ class RIAService:
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
 
+        # FINDING-047: Compute HMAC integrity hash before persisting
+        log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
+
         self.session.add(log)
         await self.session.commit()
 
@@ -470,6 +550,9 @@ class RIAService:
 
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
+
+        # FINDING-047: Compute HMAC integrity hash before persisting
+        log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
 
         self.session.add(log)
         await self.session.commit()

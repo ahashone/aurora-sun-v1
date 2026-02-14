@@ -28,8 +28,10 @@ References:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -37,6 +39,116 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# FINDING-037: Allowed hostnames for internal service connections.
+# Only these hosts are permitted for health check and backup HTTP calls.
+ALLOWED_INTERNAL_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "postgres",
+    "redis",
+    "neo4j",
+    "qdrant",
+    "letta",
+    "aurora-sun-app",
+}
+
+
+def _validate_internal_url(url: str) -> None:
+    """
+    FINDING-037: Validate that a URL points to an allowed internal host.
+    Prevents SSRF by rejecting any URL not on the allowlist.
+
+    Args:
+        url: The URL to validate
+
+    Raises:
+        ValueError: If the URL host is not in ALLOWED_INTERNAL_HOSTS
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    hostname = parsed.hostname or ""
+    if hostname not in ALLOWED_INTERNAL_HOSTS:
+        raise ValueError(
+            f"SSRF protection: host '{hostname}' not in allowed internal hosts. "
+            f"Allowed: {ALLOWED_INTERNAL_HOSTS}"
+        )
+
+
+def _sanitize_backup_name(backup_name: str, backup_dir: Path) -> Path:
+    """
+    FINDING-038: Sanitize backup filenames to prevent path traversal.
+
+    Args:
+        backup_name: The requested backup filename
+        backup_dir: The backup directory
+
+    Returns:
+        Safe resolved path within backup_dir
+
+    Raises:
+        ValueError: If the name contains path traversal attempts
+    """
+    # Strip path separators
+    clean_name = backup_name.replace("/", "").replace("\\", "").replace(os.sep, "")
+
+    # Reject names containing ..
+    if ".." in clean_name:
+        raise ValueError(f"Invalid backup name (contains '..'): {backup_name}")
+
+    # Reject empty names
+    if not clean_name:
+        raise ValueError("Backup name cannot be empty after sanitization")
+
+    # Resolve and verify the path is within backup_dir
+    resolved = (backup_dir / clean_name).resolve()
+    if not str(resolved).startswith(str(backup_dir.resolve())):
+        raise ValueError(
+            f"Path traversal detected: resolved path '{resolved}' "
+            f"is outside backup directory '{backup_dir}'"
+        )
+
+    return resolved
+
+
+def _encrypt_backup_file(file_path: Path, master_key: bytes) -> Path:
+    """
+    FINDING-036: Encrypt a backup file using AES-256-GCM with the master key.
+
+    Reads the backup file, encrypts its contents, writes to a .enc file,
+    and removes the original unencrypted file.
+
+    Args:
+        file_path: Path to the unencrypted backup file
+        master_key: 32-byte master encryption key
+
+    Returns:
+        Path to the encrypted backup file (.enc extension)
+    """
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    except ImportError:
+        logger.warning("cryptography not available, skipping backup encryption")
+        return file_path
+
+    # Read the backup file
+    plaintext = file_path.read_bytes()
+
+    # Encrypt with AES-256-GCM
+    nonce = os.urandom(12)  # 96-bit nonce for GCM
+    aesgcm = AESGCM(master_key)
+    ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+
+    # Write encrypted file: nonce (12 bytes) + ciphertext
+    enc_path = file_path.with_suffix(file_path.suffix + ".enc")
+    enc_path.write_bytes(nonce + ciphertext)
+
+    # Remove the original unencrypted file
+    file_path.unlink()
+
+    logger.info("Backup encrypted: %s -> %s", file_path.name, enc_path.name)
+    return enc_path
 
 
 class BackupStatus(Enum):
@@ -123,6 +235,16 @@ class BackupService:
         self.encrypt_backups = encrypt_backups
         self.compression_level = compression_level
 
+        # FINDING-036: Load master key for backup encryption
+        self._master_key: bytes | None = None
+        if encrypt_backups:
+            env_key = os.environ.get("AURORA_MASTER_KEY")
+            if env_key:
+                try:
+                    self._master_key = base64.b64decode(env_key)
+                except Exception:
+                    logger.warning("Failed to decode AURORA_MASTER_KEY for backup encryption")
+
         # Create backup directory if it doesn't exist
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -148,7 +270,8 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"postgresql_{timestamp}.sql.gz"
-        backup_path = self.backup_dir / backup_filename
+        # FINDING-038: Sanitize backup filename
+        backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
             # Build pg_dump command
@@ -181,6 +304,10 @@ class BackupService:
                     message="Backup failed",
                     error=error_msg,
                 )
+
+            # FINDING-036: Encrypt backup file if enabled
+            if self.encrypt_backups and self._master_key:
+                backup_path = _encrypt_backup_file(backup_path, self._master_key)
 
             # Get backup size
             size_bytes = backup_path.stat().st_size
@@ -227,7 +354,8 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"redis_{timestamp}.rdb"
-        backup_path = self.backup_dir / backup_filename
+        # FINDING-038: Sanitize backup filename
+        backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
             import redis.asyncio as redis
@@ -253,6 +381,10 @@ class BackupService:
             shutil.copy2(rdb_path, backup_path)
 
             await client.close()
+
+            # FINDING-036: Encrypt backup file if enabled
+            if self.encrypt_backups and self._master_key:
+                backup_path = _encrypt_backup_file(backup_path, self._master_key)
 
             # Get backup size
             size_bytes = backup_path.stat().st_size
@@ -297,7 +429,8 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"neo4j_{timestamp}"
-        backup_path = self.backup_dir / backup_filename
+        # FINDING-038: Sanitize backup filename
+        backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
             # Build neo4j-admin backup command
@@ -375,9 +508,13 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"qdrant_{timestamp}.json"
-        backup_path = self.backup_dir / backup_filename
+        # FINDING-038: Sanitize backup filename
+        backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
+            # FINDING-037: Validate URL against allowlist
+            _validate_internal_url(qdrant_url)
+
             import httpx
 
             async with httpx.AsyncClient() as client:

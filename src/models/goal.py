@@ -129,8 +129,13 @@ class Goal(Base):
                 value, int(self.user_id), DataClassification.SENSITIVE, "title"
             )
             setattr(self, '_title_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, '_title_plaintext', value)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'title', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     @property
     def key_results(self) -> str | None:
@@ -162,8 +167,13 @@ class Goal(Base):
                 value, int(self.user_id), DataClassification.SENSITIVE, "key_results"
             )
             setattr(self, '_key_results_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, '_key_results_plaintext', value)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "Encryption failed for field 'key_results', refusing to store plaintext",
+                extra={"error": type(e).__name__},
+            )
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def __repr__(self) -> str:
         return f"<Goal(id={self.id}, user_id={self.user_id}, type={self.type}, status={self.status})>"

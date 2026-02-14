@@ -181,25 +181,31 @@ class TestInputSanitizerXSS:
 # =============================================================================
 
 class TestInputSanitizerSQL:
-    """Test SQL injection sanitization with real attack payloads."""
+    """Test SQL sanitization is a no-op (FINDING-015).
+
+    SQL injection prevention is handled by parameterized queries, not input
+    mangling. sanitize_sql() returns the input unchanged for backward
+    compatibility.
+    """
 
     def test_empty_input_returns_empty_string(self):
         """Empty input returns empty string."""
         assert InputSanitizer.sanitize_sql("") == ""
 
-    def test_none_input_returns_empty_string(self):
-        """None input returns empty string."""
-        assert InputSanitizer.sanitize_sql(None) == ""
+    def test_none_input_returns_none(self):
+        """None input returns None (no-op passthrough)."""
+        assert InputSanitizer.sanitize_sql(None) is None
 
     def test_safe_text_passes_through(self):
-        """Safe text without SQL keywords passes through."""
+        """Safe text passes through unchanged."""
         result = InputSanitizer.sanitize_sql("Hello, this is a normal message!")
         assert "Hello, this is a normal message!" == result
 
-    def test_escapes_single_quotes(self):
-        """Single quotes are escaped by doubling them."""
-        result = InputSanitizer.sanitize_sql("it's a test")
-        assert "''" in result
+    def test_sql_keywords_pass_through_unchanged(self):
+        """SQL keywords are NOT blocked -- sanitize_sql is a no-op (FINDING-015)."""
+        payload = "'; DROP TABLE users; --"
+        result = InputSanitizer.sanitize_sql(payload)
+        assert result == payload
 
     @pytest.mark.parametrize(
         "payload,description",
@@ -226,56 +232,48 @@ class TestInputSanitizerSQL:
             "truncate_table",
         ],
     )
-    def test_blocks_dangerous_keywords(self, payload, description):
-        """Dangerous SQL keywords are replaced with [KEYWORD_BLOCKED]."""
+    def test_returns_input_unchanged(self, payload, description):
+        """sanitize_sql returns input unchanged (FINDING-015: no-op)."""
         result = InputSanitizer.sanitize_sql(payload)
-        # Verify all dangerous keywords are blocked
-        for keyword in ["SELECT", "INSERT", "UPDATE", "DELETE", "DROP",
-                        "UNION", "ALTER", "CREATE", "TRUNCATE"]:
-            if keyword.lower() in payload.lower():
-                assert f"[{keyword}_BLOCKED]" in result
+        assert result == payload
 
-    def test_neutralizes_sql_comments_double_dash(self):
-        """Double-dash SQL comments are neutralized."""
-        result = InputSanitizer.sanitize_sql("1 OR 1=1 --")
-        # Double dash should have space added
-        assert "--" in result  # still present but neutralized with space
+    def test_sql_comments_pass_through_unchanged(self):
+        """SQL comments pass through unchanged (no-op)."""
+        assert InputSanitizer.sanitize_sql("1 OR 1=1 --") == "1 OR 1=1 --"
 
-    def test_neutralizes_sql_comments_hash(self):
-        """Hash SQL comments are neutralized."""
-        result = InputSanitizer.sanitize_sql("1 OR 1=1 #")
-        assert "# " in result
+    def test_hash_comments_pass_through_unchanged(self):
+        """Hash comments pass through unchanged (no-op)."""
+        assert InputSanitizer.sanitize_sql("1 OR 1=1 #") == "1 OR 1=1 #"
 
-    def test_neutralizes_sql_comments_block(self):
-        """Block comments are neutralized."""
-        result = InputSanitizer.sanitize_sql("1 OR 1=1 /* comment */")
-        assert "/* " in result
+    def test_block_comments_pass_through_unchanged(self):
+        """Block comments pass through unchanged (no-op)."""
+        payload = "1 OR 1=1 /* comment */"
+        assert InputSanitizer.sanitize_sql(payload) == payload
 
     def test_or_1_equals_1(self):
-        """Classic OR 1=1 injection is handled."""
+        """Classic OR 1=1 injection passes through unchanged (no-op)."""
         payload = "1 OR 1=1"
         result = InputSanitizer.sanitize_sql(payload)
-        # The single quotes are escaped and keywords blocked
-        assert result is not None
+        assert result == payload
 
     def test_preserves_normal_apostrophe_usage(self):
-        """Normal text with apostrophes is handled (escaped)."""
-        result = InputSanitizer.sanitize_sql("I can't believe it's working")
-        assert "can''t" in result
-        assert "it''s" in result
+        """Normal text with apostrophes passes through unchanged (no-op)."""
+        payload = "I can't believe it's working"
+        result = InputSanitizer.sanitize_sql(payload)
+        assert result == payload
 
-    def test_case_insensitive_keyword_blocking(self):
-        """SQL keyword blocking is case-insensitive."""
+    def test_case_variants_pass_through_unchanged(self):
+        """All case variants of SQL keywords pass through unchanged (no-op)."""
         for variant in ["select", "SELECT", "Select", "sElEcT"]:
-            result = InputSanitizer.sanitize_sql(f"{variant} * FROM users")
-            assert "[SELECT_BLOCKED]" in result
+            payload = f"{variant} * FROM users"
+            result = InputSanitizer.sanitize_sql(payload)
+            assert result == payload
 
-    def test_multiple_injections_in_single_input(self):
-        """Multiple SQL injection attempts in a single input are all caught."""
+    def test_multiple_injections_pass_through_unchanged(self):
+        """Multiple SQL injection attempts pass through unchanged (no-op)."""
         payload = "'; DROP TABLE users; SELECT * FROM passwords; --"
         result = InputSanitizer.sanitize_sql(payload)
-        assert "[DROP_BLOCKED]" in result
-        assert "[SELECT_BLOCKED]" in result
+        assert result == payload
 
 
 # =============================================================================
@@ -426,7 +424,11 @@ class TestInputSanitizerAll:
     """Test combined sanitization (sanitize_all)."""
 
     def test_applies_all_sanitizers_in_order(self):
-        """sanitize_all applies XSS, SQL, Path, and Markdown sanitization in order."""
+        """sanitize_all applies XSS, Path, and Markdown sanitization in order.
+
+        Note: SQL sanitization is a no-op per FINDING-015 -- SQL injection
+        prevention is handled by parameterized queries.
+        """
         # Payload containing multiple attack vectors
         payload = (
             "<script>alert('xss')</script>"
@@ -438,8 +440,8 @@ class TestInputSanitizerAll:
 
         # XSS should be cleaned
         assert "<script" not in result.lower()
-        # SQL keywords should be blocked
-        assert "[DROP_BLOCKED]" in result
+        # SQL keywords pass through unchanged (FINDING-015: no-op)
+        assert "DROP" in result
         # Path traversal should be removed
         assert "../" not in result
         # JavaScript link should be neutralized
@@ -452,11 +454,15 @@ class TestInputSanitizerAll:
         assert result == safe_text
 
     def test_combined_xss_and_sqli(self):
-        """Combined XSS and SQL injection is fully sanitized."""
+        """Combined XSS and SQL injection: XSS is sanitized, SQL passes through.
+
+        SQL sanitization is a no-op per FINDING-015.
+        """
         payload = "<img onerror=\"'; DROP TABLE users; --\">"
         result = InputSanitizer.sanitize_all(payload)
         assert "onerror=" not in result.lower()
-        assert "[DROP_BLOCKED]" in result
+        # SQL keywords pass through (FINDING-015: no-op)
+        assert "DROP" in result
 
     def test_empty_input(self):
         """Empty input to sanitize_all returns empty string."""
@@ -899,11 +905,10 @@ class TestSecurityEdgeCases:
         assert "<script" not in result.lower()
 
     def test_sanitize_sql_with_multiline_injection(self):
-        """SQL sanitization works with multiline injection."""
+        """SQL sanitization is a no-op -- multiline input passes through unchanged."""
         payload = "value'\nUNION\nSELECT\n*\nFROM\nusers"
         result = InputSanitizer.sanitize_sql(payload)
-        assert "[UNION_BLOCKED]" in result
-        assert "[SELECT_BLOCKED]" in result
+        assert result == payload
 
     def test_rate_limiter_rapid_requests(self):
         """Rate limiter handles rapid successive requests correctly."""
@@ -994,9 +999,12 @@ class TestSecurityEdgeCases:
         ],
     )
     def test_advanced_sqli_payloads(self, payload):
-        """Advanced SQL injection payloads are neutralized by sanitize_all."""
+        """SQL payloads pass through sanitize_all (FINDING-015: SQL is no-op).
+
+        SQL injection prevention is handled by parameterized queries.
+        sanitize_all still applies XSS, path, and markdown sanitization.
+        """
         result = InputSanitizer.sanitize_all(payload)
-        # SQL keywords should be blocked
-        for keyword in ["SELECT", "UNION"]:
-            if keyword.lower() in payload.lower():
-                assert f"[{keyword}_BLOCKED]" in result
+        # SQL keywords pass through unchanged (FINDING-015)
+        # Only XSS/path/markdown sanitization is applied
+        assert result is not None

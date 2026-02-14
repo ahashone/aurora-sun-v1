@@ -307,6 +307,12 @@ class CrisisService:
         "text": "See website for text options",
     }
 
+    # FINDING-027: Per-user crisis alert rate limiting to prevent alert fatigue.
+    # Max 5 crisis alerts per hour per user. After the limit, still log the event
+    # and respond to the user with crisis resources, but suppress admin notifications.
+    CRISIS_ALERT_MAX_PER_HOUR = 5
+    CRISIS_ALERT_WINDOW_SECONDS = 3600  # 1 hour
+
     def __init__(self, encryption_service: EncryptionService | None = None):
         """
         Initialize the Crisis Service.
@@ -317,6 +323,8 @@ class CrisisService:
         self._encryption = encryption_service or get_encryption_service()
         # In-memory crisis event log (encrypted at rest)
         self._crisis_log: dict[int, list[dict[str, str | int | None]]] = {}
+        # FINDING-027: Per-user crisis alert timestamps for rate limiting
+        self._crisis_alert_timestamps: dict[int, list[float]] = {}
 
     async def detect_crisis(self, message: str) -> CrisisLevel:
         """
@@ -457,6 +465,45 @@ class CrisisService:
 
         return context
 
+    def _check_crisis_alert_rate(self, user_id: int) -> bool:
+        """
+        Check if admin notifications should be sent for this user.
+
+        FINDING-027: Limits admin notifications to CRISIS_ALERT_MAX_PER_HOUR
+        per user per hour. Always still responds to the user with crisis
+        resources regardless of this limit.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            True if admin notification is allowed, False if rate-limited
+        """
+        import time
+
+        now = time.time()
+        cutoff = now - self.CRISIS_ALERT_WINDOW_SECONDS
+
+        if user_id not in self._crisis_alert_timestamps:
+            self._crisis_alert_timestamps[user_id] = []
+
+        # Remove expired timestamps
+        self._crisis_alert_timestamps[user_id] = [
+            ts for ts in self._crisis_alert_timestamps[user_id] if ts > cutoff
+        ]
+
+        if len(self._crisis_alert_timestamps[user_id]) >= self.CRISIS_ALERT_MAX_PER_HOUR:
+            logger.warning(
+                "crisis_alert_rate_limited user_hash=%s alerts_in_window=%d",
+                _hash_uid(user_id),
+                len(self._crisis_alert_timestamps[user_id]),
+            )
+            return False
+
+        # Record this alert
+        self._crisis_alert_timestamps[user_id].append(now)
+        return True
+
     async def handle_crisis(
         self,
         user_id: int,
@@ -470,7 +517,10 @@ class CrisisService:
         - Empathetic acknowledgment
         - Crisis resources (hotlines)
         - Workflow pause flag
-        - Admin notification flag
+        - Admin notification flag (FINDING-027: rate-limited per user)
+
+        The user ALWAYS receives crisis resources regardless of rate limiting.
+        Only admin notifications are suppressed after the rate limit is reached.
 
         Args:
             user_id: User identifier
@@ -484,11 +534,18 @@ class CrisisService:
             This method ALWAYS returns a response, never raises.
             Even if crisis detection fails, user gets supportive message.
         """
-        # Log crisis event (encrypted in production)
+        # Log crisis event (encrypted in production) -- always logged
         await self._log_crisis_event(user_id, level, signal)
 
+        # FINDING-027: Check per-user crisis alert rate limit
+        admin_notify_allowed = self._check_crisis_alert_rate(user_id)
+
         if level == CrisisLevel.CRISIS:
-            return await self._handle_crisis_level(user_id, signal)
+            response = await self._handle_crisis_level(user_id, signal)
+            # Suppress admin notification if rate-limited, but always provide resources
+            if not admin_notify_allowed:
+                response.should_notify_admin = False
+            return response
         elif level == CrisisLevel.WARNING:
             return await self._handle_warning_level(user_id, signal)
         else:

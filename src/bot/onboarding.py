@@ -52,6 +52,24 @@ class OnboardingStates(StrEnum):
     COMPLETED = "completed"        # User is onboarded
 
 
+# FINDING-033: Valid state transitions. Each state maps to its allowed next states.
+VALID_TRANSITIONS: dict[OnboardingStates, set[OnboardingStates]] = {
+    OnboardingStates.LANGUAGE: {OnboardingStates.NAME},
+    OnboardingStates.NAME: {OnboardingStates.WORKING_STYLE},
+    OnboardingStates.WORKING_STYLE: {OnboardingStates.CONSENT},
+    OnboardingStates.CONSENT: {OnboardingStates.CONFIRMATION, OnboardingStates.COMPLETED},
+    OnboardingStates.CONFIRMATION: {OnboardingStates.COMPLETED},
+    OnboardingStates.COMPLETED: set(),  # Terminal state
+}
+
+# FINDING-032: Exact set of allowed callback values. No startswith() parsing.
+ALLOWED_CALLBACKS: set[str] = {
+    "lang_en", "lang_de", "lang_sr", "lang_el",
+    "segment_AD", "segment_AU", "segment_AH", "segment_NT", "segment_CU",
+    "consent_accept", "consent_reject",
+}
+
+
 # Segment display names (user-facing)
 SEGMENT_DISPLAY_NAMES = {
     "AD": "ADHD",
@@ -384,27 +402,38 @@ class OnboardingFlow:
         callback_data = update.callback_query.data
         user_data = await self._get_data(user_hash)
 
-        # F-009: Strict allowlists for callback validation
-        VALID_LANGUAGES = {"en", "de", "sr", "el"}
-        VALID_SEGMENTS = {"AD", "AU", "AH", "NT", "CU"}
+        # FINDING-032: Reject any callback not in the exact allowlist.
+        if callback_data not in ALLOWED_CALLBACKS:
+            logger.warning(
+                "Rejected invalid callback data: %s for state %s",
+                callback_data[:50],
+                step.state,
+            )
+            await update.callback_query.answer()
+            return
+
+        # FINDING-032: Use exact string matching with a lookup dict instead of startswith().
+        LANG_MAP: dict[str, str] = {
+            "lang_en": "en", "lang_de": "de", "lang_sr": "sr", "lang_el": "el",
+        }
+        SEGMENT_MAP: dict[str, str] = {
+            "segment_AD": "AD", "segment_AU": "AU", "segment_AH": "AH",
+            "segment_NT": "NT", "segment_CU": "CU",
+        }
 
         if step.state == OnboardingStates.LANGUAGE:
-            # Language selection - strict validation
-            if callback_data.startswith("lang_"):
-                language = callback_data.replace("lang_", "")
-                if language in VALID_LANGUAGES:
-                    user_data["language"] = language
-                    await self._set_data(user_hash, user_data)
-                    await self._advance_state(update, user_hash)
+            # Language selection - exact match lookup
+            if callback_data in LANG_MAP:
+                user_data["language"] = LANG_MAP[callback_data]
+                await self._set_data(user_hash, user_data)
+                await self._advance_state(update, user_hash)
 
         elif step.state == OnboardingStates.WORKING_STYLE:
-            # Segment selection - strict validation
-            if callback_data.startswith("segment_"):
-                segment = callback_data.replace("segment_", "")
-                if segment in VALID_SEGMENTS:
-                    user_data["segment"] = segment
-                    await self._set_data(user_hash, user_data)
-                    await self._advance_state(update, user_hash)
+            # Segment selection - exact match lookup
+            if callback_data in SEGMENT_MAP:
+                user_data["segment"] = SEGMENT_MAP[callback_data]
+                await self._set_data(user_hash, user_data)
+                await self._advance_state(update, user_hash)
 
         elif step.state == OnboardingStates.CONSENT:
             # Consent response - exact match only
@@ -465,6 +494,17 @@ class OnboardingFlow:
                 break
 
         if next_state:
+            # FINDING-033: Validate the state transition is allowed.
+            if current_state is not None:
+                allowed_next = VALID_TRANSITIONS.get(current_state, set())
+                if next_state not in allowed_next:
+                    logger.error(
+                        "Invalid state transition rejected: %s -> %s",
+                        current_state,
+                        next_state,
+                    )
+                    return
+
             await self._set_state(user_hash, next_state)
             await self._send_prompt(update, user_hash)
 

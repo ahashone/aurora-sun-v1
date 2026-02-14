@@ -151,6 +151,10 @@ class ConsentRecord(Base):
     ip_hash = Column(String(64), nullable=True)  # HMAC-SHA256
     consent_text_hash = Column(String(64), nullable=False)  # SHA256
 
+    # FINDING-040: Store version identifier and truncated preview for human verification
+    consent_text_version_id = Column(String(20), nullable=True)  # e.g., "v1.0", "v1.1"
+    consent_text_preview = Column(String(100), nullable=True)  # First 100 chars of consent text
+
     # Metadata
     created_at = Column(
         DateTime(timezone=True),
@@ -310,10 +314,14 @@ class ConsentService:
             setattr(existing, 'ip_hash', self._hash_ip(ip))
             setattr(existing, 'consent_text_hash', self._hash_consent_text(consent_text))
             setattr(existing, 'consent_withdrawn_at', None)
+            # FINDING-040: Update version ID and preview
+            setattr(existing, 'consent_text_version_id', f"v{version}")
+            setattr(existing, 'consent_text_preview', consent_text[:100] if consent_text else None)
             self._session.commit()
             return existing
 
         # Create new consent record
+        # FINDING-040: Store version ID and truncated preview for human verification
         record = ConsentRecord(
             user_id=user_id,
             consent_version=version,
@@ -322,6 +330,8 @@ class ConsentService:
             consent_withdrawn_at=None,
             ip_hash=self._hash_ip(ip),
             consent_text_hash=self._hash_consent_text(consent_text),
+            consent_text_version_id=f"v{version}",
+            consent_text_preview=consent_text[:100] if consent_text else None,
         )
 
         self._session.add(record)

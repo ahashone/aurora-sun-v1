@@ -140,10 +140,11 @@ def test_require_permission_decorator_sync_success() -> None:
     """Test require_permission decorator on sync function (success)."""
 
     @require_permission(Permission.MANAGE_USERS)
-    def test_func(current_user_role: Role) -> str:
+    def test_func(current_user_role: Role, **kwargs: Any) -> str:
         return "success"
 
-    result = test_func(current_user_role=Role.ADMIN)
+    # FINDING-015: Role.ADMIN requires _internal_request=True
+    result = test_func(current_user_role=Role.ADMIN, _internal_request=True)
     assert result == "success"
 
 
@@ -163,10 +164,11 @@ async def test_require_any_permission_decorator_success() -> None:
     """Test require_any_permission decorator (success)."""
 
     @require_any_permission(Permission.MANAGE_USERS, Permission.VIEW_AGGREGATED_DATA)
-    async def test_func(current_user_role: Role) -> str:
+    async def test_func(current_user_role: Role, **kwargs: Any) -> str:
         return "success"
 
-    result = await test_func(current_user_role=Role.ADMIN)
+    # FINDING-015: Role.ADMIN requires _internal_request=True
+    result = await test_func(current_user_role=Role.ADMIN, _internal_request=True)
     assert result == "success"
 
 
@@ -187,10 +189,11 @@ async def test_require_role_decorator_success() -> None:
     """Test require_role decorator (success)."""
 
     @require_role(Role.ADMIN)
-    async def test_func(current_user_role: Role) -> str:
+    async def test_func(current_user_role: Role, **kwargs: Any) -> str:
         return "admin only"
 
-    result = await test_func(current_user_role=Role.ADMIN)
+    # FINDING-015: Role.ADMIN requires _internal_request=True
+    result = await test_func(current_user_role=Role.ADMIN, _internal_request=True)
     assert result == "admin only"
 
 

@@ -33,6 +33,7 @@ from enum import StrEnum
 from typing import Any, TypedDict
 
 from src.core.segment_context import WorkingStyleCode
+from src.lib.security import hash_uid
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ async def morning_activate_node(state: DailyGraphState) -> dict[str, Any]:
     user_id = state["user_id"]
     state["segment_code"]
 
-    logger.info(f"Node: morning_activate for user {user_id}")
+    logger.info("Node: morning_activate for user_hash=%s", hash_uid(user_id))
 
     # TODO: Build morning message
     # - Get vision
@@ -309,7 +310,7 @@ async def neurostate_preflight_node(state: DailyGraphState) -> dict[str, Any]:
     previous_energy = state.get("energy_level")
     consecutive_red_days = state.get("consecutive_red_days", 0)
 
-    logger.info(f"Node: neurostate_preflight for user {user_id}")
+    logger.info("Node: neurostate_preflight for user_hash=%s", hash_uid(user_id))
 
     # Determine tier based on conditions
     tier = 1
@@ -366,7 +367,7 @@ async def gentle_redirect_node(state: DailyGraphState) -> dict[str, Any]:
     """
     user_id = state["user_id"]
 
-    logger.info(f"Node: gentle_redirect for user {user_id}")
+    logger.info("Node: gentle_redirect for user_hash=%s", hash_uid(user_id))
 
     # Recovery message (segment-adaptive)
     message = (
@@ -398,7 +399,7 @@ async def vision_display_node(state: DailyGraphState) -> dict[str, Any]:
     """
     user_id = state["user_id"]
 
-    logger.info(f"Node: vision_display for user {user_id}")
+    logger.info("Node: vision_display for user_hash=%s", hash_uid(user_id))
 
     # TODO: Load vision and goals from database
     # visions = await get_visions(user_id)
@@ -427,7 +428,7 @@ async def planning_node(state: DailyGraphState) -> dict[str, Any]:
     user_id = state["user_id"]
     state["segment_code"]
 
-    logger.info(f"Node: planning for user {user_id}")
+    logger.info("Node: planning for user_hash=%s", hash_uid(user_id))
 
     # TODO: Invoke Planning Module
     # - Create module context
@@ -458,7 +459,7 @@ async def during_day_node(state: DailyGraphState) -> dict[str, Any]:
     user_id = state["user_id"]
     state["segment_code"]
 
-    logger.info(f"Node: during_day for user {user_id}")
+    logger.info("Node: during_day for user_hash=%s", hash_uid(user_id))
 
     # TODO: Set up CheckinScheduler
     # - Get segment-adaptive timing
@@ -488,7 +489,7 @@ async def evening_review_node(state: DailyGraphState) -> dict[str, Any]:
     """
     user_id = state["user_id"]
 
-    logger.info(f"Node: evening_review for user {user_id}")
+    logger.info("Node: evening_review for user_hash=%s", hash_uid(user_id))
 
     # TODO: Invoke Review Module
     # - Trigger at segment-adaptive time
@@ -518,7 +519,7 @@ async def reflect_node(state: DailyGraphState) -> dict[str, Any]:
     """
     user_id = state["user_id"]
 
-    logger.info(f"Node: reflect for user {user_id}")
+    logger.info("Node: reflect for user_hash=%s", hash_uid(user_id))
 
     # TODO: Prompt for reflection
     # This would be handled by the bot interface
@@ -546,7 +547,7 @@ async def end_node(state: DailyGraphState) -> dict[str, Any]:
     user_id = state["user_id"]
     state["date"]
 
-    logger.info(f"Node: end for user {user_id}")
+    logger.info("Node: end for user_hash=%s", hash_uid(user_id))
 
     # TODO: Save DailyPlan to database
     # await save_daily_plan(state)
@@ -624,7 +625,7 @@ async def run_daily_graph(
     # Run the graph
     result: dict[str, Any] = await graph.ainvoke(initial_state)
 
-    logger.info(f"Daily graph completed for user {user_id}")
+    logger.info("Daily graph completed for user_hash=%s", hash_uid(user_id))
     return result
 
 

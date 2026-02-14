@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from src.lib.security import hash_uid
+
 logger = logging.getLogger(__name__)
 
 
@@ -202,7 +204,7 @@ class QdrantService:
         payload: dict[str, Any],
     ) -> None:
         """Store embedding in live Qdrant."""
-        from qdrant_client.models import PointStruct  # type: ignore[import-not-found]
+        from qdrant_client.models import PointStruct  # type: ignore[import-not-found,unused-ignore]
 
         point = PointStruct(
             id=point_id,
@@ -334,18 +336,18 @@ class QdrantService:
             must_conditions.append(
                 FieldCondition(
                     key="created_at",
-                    range=Range(gte=time_after.isoformat()),
+                    range=Range(gte=time_after.isoformat()),  # type: ignore[arg-type]
                 )
             )
         if time_before:
             must_conditions.append(
                 FieldCondition(
                     key="created_at",
-                    range=Range(lte=time_before.isoformat()),
+                    range=Range(lte=time_before.isoformat()),  # type: ignore[arg-type]
                 )
             )
 
-        search_filter = Filter(must=must_conditions)
+        search_filter = Filter(must=must_conditions)  # type: ignore[arg-type]
 
         hits = await self._client.search(  # type: ignore[union-attr]
             collection_name=str(collection),
@@ -366,7 +368,7 @@ class QdrantService:
                 )
             )
 
-        logger.info("Search in %s for user %d returned %d results", collection, user_id, len(results))
+        logger.info("Search in %s for user_hash=%s returned %d results", collection, hash_uid(user_id), len(results))
         return results
 
     async def delete_user_vectors(self, user_id: int) -> int:
@@ -417,7 +419,7 @@ class QdrantService:
             # Qdrant delete returns operation info; we count approximate
             total_deleted += 1  # Approximate count per collection
 
-        logger.info("Deleted vectors for user %d across all collections", user_id)
+        logger.info("Deleted vectors for user_hash=%s across all collections", hash_uid(user_id))
         return total_deleted
 
     async def export_user_vectors(self, user_id: int) -> VectorExport:
@@ -480,7 +482,7 @@ class QdrantService:
                     "payload": point.payload or {},
                 })
 
-        logger.info("Exported %d vectors for user %d", len(vectors), user_id)
+        logger.info("Exported %d vectors for user_hash=%s", len(vectors), hash_uid(user_id))
         return vectors
 
 

@@ -24,7 +24,81 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from src.lib.security import hash_uid
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Allowed Values Whitelist (FINDING-008: Cypher injection prevention)
+# =============================================================================
+
+# Only these node type labels are allowed in Cypher queries.
+# Any value not in this set will be rejected before query execution.
+ALLOWED_NODE_LABELS: frozenset[str] = frozenset({
+    "Vision", "Goal", "Task", "Habit",
+    "Belief",
+    "Pattern", "Cycle",
+    "Neurostate",
+    "StoryArc", "Chapter",
+    "User",
+})
+
+# Only these relationship types are allowed in Cypher queries.
+ALLOWED_RELATIONSHIP_TYPES: frozenset[str] = frozenset({
+    "CONTAINS", "PARENT_OF", "CHILD_OF",
+    "BLOCKS", "SUPPORTS",
+    "CORRELATES_WITH", "TRIGGERS", "PRECEDES",
+    "TRANSITIONS_TO",
+    "HAS_ARC", "HAS_CHAPTER", "NEXT_CHAPTER",
+    "OWNS", "BELONGS_TO",
+})
+
+
+def _validate_node_label(label: str) -> str:
+    """Validate a node label against the whitelist.
+
+    FINDING-008: Prevents Cypher injection via f-string interpolation
+    by ensuring only known labels are used in queries.
+
+    Args:
+        label: The node label to validate.
+
+    Returns:
+        The validated label string.
+
+    Raises:
+        ValueError: If the label is not in the whitelist.
+    """
+    if label not in ALLOWED_NODE_LABELS:
+        raise ValueError(
+            f"Invalid node label '{label}'. "
+            f"Allowed labels: {sorted(ALLOWED_NODE_LABELS)}"
+        )
+    return label
+
+
+def _validate_relationship_type(rel_type: str) -> str:
+    """Validate a relationship type against the whitelist.
+
+    FINDING-008: Prevents Cypher injection via f-string interpolation
+    by ensuring only known relationship types are used in queries.
+
+    Args:
+        rel_type: The relationship type to validate.
+
+    Returns:
+        The validated relationship type string.
+
+    Raises:
+        ValueError: If the relationship type is not in the whitelist.
+    """
+    if rel_type not in ALLOWED_RELATIONSHIP_TYPES:
+        raise ValueError(
+            f"Invalid relationship type '{rel_type}'. "
+            f"Allowed types: {sorted(ALLOWED_RELATIONSHIP_TYPES)}"
+        )
+    return rel_type
 
 
 # =============================================================================
@@ -222,8 +296,10 @@ class Neo4jService:
 
     async def _create_node_live(self, node: GraphNode) -> None:
         """Create a node in the live Neo4j database."""
+        # FINDING-008: Validate node type against whitelist before interpolation
+        validated_label = _validate_node_label(str(node.node_type))
         query = (
-            f"CREATE (n:{node.node_type} $props) "
+            f"CREATE (n:{validated_label} $props) "
             "SET n.node_id = $node_id, n.user_id = $user_id, "
             "n.created_at = $created_at, n.updated_at = $updated_at"
         )
@@ -292,9 +368,11 @@ class Neo4jService:
 
     async def _create_relationship_live(self, rel: GraphRelationship) -> None:
         """Create a relationship in the live Neo4j database."""
+        # FINDING-008: Validate relationship type against whitelist before interpolation
+        validated_rel_type = _validate_relationship_type(str(rel.relationship_type))
         query = (
             "MATCH (a {node_id: $source_id}), (b {node_id: $target_id}) "
-            f"CREATE (a)-[r:{rel.relationship_type} $props]->(b) "
+            f"CREATE (a)-[r:{validated_rel_type} $props]->(b) "
             "SET r.relationship_id = $rel_id, r.created_at = $created_at"
         )
         params = {
@@ -360,18 +438,22 @@ class Neo4jService:
         max_depth: int,
     ) -> list[GraphNode]:
         """Query subgraph from live Neo4j."""
-        # Build Cypher query with optional type filters
+        # FINDING-008: Validate all node type labels against whitelist
         type_filter = ""
         if node_types:
-            labels = ":".join(str(nt) for nt in node_types)
+            validated_labels = [_validate_node_label(str(nt)) for nt in node_types]
+            labels = ":".join(validated_labels)
             type_filter = f":{labels}"
+
+        # FINDING-008: Explicitly cast max_depth to int to prevent injection
+        safe_limit = int(max_depth) * 100
 
         query = (
             f"MATCH (n{type_filter} {{user_id: $user_id}}) "
             "RETURN n.node_id AS node_id, labels(n)[0] AS node_type, "
             "n.user_id AS user_id, properties(n) AS props, "
             "n.created_at AS created_at, n.updated_at AS updated_at "
-            f"LIMIT {max_depth * 100}"
+            f"LIMIT {safe_limit}"
         )
 
         results: list[GraphNode] = []
@@ -387,7 +469,7 @@ class Neo4jService:
                 )
                 results.append(node)
 
-        logger.info("Queried subgraph for user %d, found %d nodes", user_id, len(results))
+        logger.info("Queried subgraph for user_hash=%s, found %d nodes", hash_uid(user_id), len(results))
         return results
 
     async def export_user_subgraph(self, user_id: int) -> SubgraphExport:
@@ -532,7 +614,7 @@ class Neo4jService:
             record = await result.single()
             count: int = record["deleted_count"] if record else 0
 
-        logger.info("Deleted subgraph for user %d (%d nodes)", user_id, count)
+        logger.info("Deleted subgraph for user_hash=%s (%d nodes)", hash_uid(user_id), count)
         return count
 
 

@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.module_response import ModuleResponse
 from src.core.segment_context import WorkingStyleCode
+from src.lib.security import hash_uid
 
 if TYPE_CHECKING:
     from src.models.daily_plan import DailyPlan
@@ -266,7 +267,7 @@ class DailyWorkflow:
             hooks: DailyWorkflowHooks from the module
         """
         self._hooks[module_name] = hooks
-        logger.debug(f"Registered daily workflow hooks from module: {module_name}")
+        logger.debug("Registered daily workflow hooks from module: %s", module_name)
 
     def get_timing_config(self, segment_code: WorkingStyleCode) -> SegmentTimingConfig:
         """Get segment-adaptive timing configuration.
@@ -406,7 +407,7 @@ class DailyWorkflow:
             final_message="Daily workflow completed",
         )
 
-        logger.info(f"Daily workflow completed for user {user_id}: {result.completed_stages}")
+        logger.info("Daily workflow completed for user_hash=%s: %s", hash_uid(user_id), result.completed_stages)
         return result
 
     async def run_morning_activation(
@@ -447,7 +448,7 @@ class DailyWorkflow:
         message = "\n".join(messages) if messages else "Good morning! Let's start your day."
 
         # F-010: Log metadata only, not message content
-        logger.info(f"Morning activation for user {user_id}: message_len={len(message)}, interventions={len(interventions)}")
+        logger.info("Morning activation for user_hash=%s: message_len=%d, interventions=%d", hash_uid(user_id), len(message), len(interventions))
         return message, interventions
 
     async def run_neurostate_preflight(
@@ -510,7 +511,7 @@ class DailyWorkflow:
         # Determine if overload is detected
         overload_detected = snapshot.get("burnout_risk", 0) > 0.8 if snapshot.get("burnout_risk") else False
 
-        logger.info(f"Neurostate pre-flight for user {user_id}: tier={tier}, overload={overload_detected}")
+        logger.info("Neurostate pre-flight for user_hash=%s: tier=%d, overload=%s", hash_uid(user_id), tier, overload_detected)
         return snapshot, overload_detected
 
     async def checkin_scheduler(
@@ -564,7 +565,7 @@ class DailyWorkflow:
             "I'll check in with you later. Take care of yourself."
         )
 
-        logger.info(f"Gentle redirect for user {user_id}: {reason}")
+        logger.info("Gentle redirect for user_hash=%s: %s", hash_uid(user_id), reason)
 
         return ModuleResponse(
             text=message,
@@ -596,7 +597,7 @@ class DailyWorkflow:
         visions: list[str] = []
         goals: list[Goal] = []
 
-        logger.info(f"Vision display for user {user_id}")
+        logger.info("Vision display for user_hash=%s", hash_uid(user_id))
         return visions, goals
 
     async def run_evening_review(
@@ -621,7 +622,7 @@ class DailyWorkflow:
         # For now, return a placeholder
         message = "It's evening! Let's review your day."
 
-        logger.info(f"Evening review triggered for user {user_id}")
+        logger.info("Evening review triggered for user_hash=%s", hash_uid(user_id))
 
         return ModuleResponse(
             text=message,
@@ -654,7 +655,7 @@ class DailyWorkflow:
         # TODO: Prompt user for reflection
         # This would be handled by the bot interface
 
-        logger.info(f"Reflection completed for user {user_id}")
+        logger.info("Reflection completed for user_hash=%s", hash_uid(user_id))
         return 0, "", ""
 
     async def save_daily_plan(
@@ -677,7 +678,7 @@ class DailyWorkflow:
         # TODO: Save to database using SQLAlchemy
         # This requires a database session
 
-        logger.info(f"Saving daily plan for user {user_id} on {date}")
+        logger.info("Saving daily plan for user_hash=%s on %s", hash_uid(user_id), date)
         raise NotImplementedError("Database session not yet implemented")
 
     def get_hooks_for_stage(self, stage: str) -> list[tuple[str, DailyWorkflowHooks]]:

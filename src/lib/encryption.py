@@ -251,12 +251,25 @@ class EncryptionService:
         Raises:
             EncryptionServiceError: If no valid key can be loaded
         """
+        import logging as _logging
+        _logger = _logging.getLogger(__name__)
+
         # Try environment variable first
         env_key = os.environ.get("AURORA_MASTER_KEY")
         if env_key:
             try:
-                return base64.b64decode(env_key)
+                decoded = base64.b64decode(env_key)
+                # FINDING-024: Validate master key is exactly 32 bytes (256 bits)
+                if len(decoded) != 32:
+                    raise ValueError(
+                        f"AURORA_MASTER_KEY must be exactly 32 bytes (256 bits) "
+                        f"when base64-decoded, got {len(decoded)} bytes. "
+                        f"Generate with: python -c \"import os,base64; print(base64.b64encode(os.urandom(32)).decode())\""
+                    )
+                return decoded
             except ValueError:
+                raise  # Re-raise ValueError (including our length check)
+            except Exception:
                 pass  # Invalid encoding, try next method
 
         # Try keyring
@@ -277,11 +290,18 @@ class EncryptionService:
         # Last resort: deterministic dev key (development only)
         # SECURITY: This key is NOT secret. Data encrypted with it is recoverable
         # across restarts, but offers zero security. Never use in production.
+        # FINDING-006: Block dev key in production environment
         if os.environ.get("AURORA_DEV_MODE") == "1":
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "AURORA_DEV_MODE: Using deterministic dev key. "
-                "DO NOT USE IN PRODUCTION — data is not securely encrypted."
+            if os.environ.get("AURORA_ENVIRONMENT") == "production":
+                raise RuntimeError(
+                    "FATAL: AURORA_DEV_MODE=1 is set but AURORA_ENVIRONMENT=production. "
+                    "Refusing to use deterministic dev key in production. "
+                    "Set AURORA_MASTER_KEY to a secure random 32-byte base64-encoded key."
+                )
+            _logger.warning(
+                "SECURITY WARNING: Using deterministic dev key. "
+                "Data is NOT securely encrypted. "
+                "DO NOT USE IN PRODUCTION. Set AURORA_MASTER_KEY for real encryption."
             )
             return hashlib.sha256(b"aurora-sun-dev-key-DO-NOT-USE-IN-PRODUCTION").digest()
 
@@ -297,25 +317,56 @@ class EncryptionService:
         The salt is derived from the user_id and stored persistently.
         This ensures the same user always gets the same key.
 
+        FINDING-023: Uses keyring with file-based fallback. Never silently
+        generates a new salt if an existing one cannot be read.
+
         Args:
             user_id: The user's unique identifier
 
         Returns:
             16-byte salt unique to this user
+
+        Raises:
+            EncryptionServiceError: If salt cannot be retrieved or stored reliably
         """
-        # Use keyring to store/retrieve user salt
+        import logging as _logging
+        _logger = _logging.getLogger(__name__)
+
         salt_key = f"user_salt_{user_id}"
 
+        # Fallback directory for salt files when keyring is unavailable
+        salt_dir = os.environ.get("AURORA_SALT_DIR", os.path.join(os.path.expanduser("~"), ".aurora-sun", "salts"))
+        salt_file = os.path.join(salt_dir, f"{salt_key}.salt")
+
+        # Try keyring first
         if KEYRING_AVAILABLE:
             try:
                 stored_salt = keyring.get_password(self._keyring_service, salt_key)
                 if stored_salt:
                     return base64.b64decode(stored_salt)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.warning(
+                    "Keyring read failed for user salt, trying file fallback",
+                    extra={"user_id": user_id, "error": type(e).__name__},
+                )
 
-        # Generate new salt
+        # Try file-based fallback
+        if os.path.exists(salt_file):
+            try:
+                with open(salt_file) as f:
+                    stored_salt = f.read().strip()
+                if stored_salt:
+                    return base64.b64decode(stored_salt)
+            except Exception as e:
+                _logger.warning(
+                    "File-based salt read failed",
+                    extra={"user_id": user_id, "error": type(e).__name__},
+                )
+
+        # Generate new salt (only if no existing salt was found in any store)
         salt = os.urandom(self.SALT_SIZE)
+        salt_b64 = base64.b64encode(salt).decode()
+        stored = False
 
         # Store in keyring
         if KEYRING_AVAILABLE:
@@ -323,10 +374,34 @@ class EncryptionService:
                 keyring.set_password(
                     self._keyring_service,
                     salt_key,
-                    base64.b64encode(salt).decode(),
+                    salt_b64,
                 )
-            except Exception:
-                pass  # Best effort
+                stored = True
+            except Exception as e:
+                _logger.warning(
+                    "Keyring write failed for user salt, using file fallback",
+                    extra={"user_id": user_id, "error": type(e).__name__},
+                )
+
+        # Always store in file fallback for redundancy
+        try:
+            os.makedirs(salt_dir, mode=0o700, exist_ok=True)
+            with open(salt_file, "w") as f:
+                f.write(salt_b64)
+            os.chmod(salt_file, 0o600)
+            stored = True
+        except Exception as e:
+            _logger.warning(
+                "File-based salt write failed",
+                extra={"user_id": user_id, "error": type(e).__name__},
+            )
+
+        if not stored:
+            raise EncryptionServiceError(
+                f"Cannot persist user salt for user_id={user_id}. "
+                f"Neither keyring nor file fallback ({salt_dir}) is available. "
+                f"Set AURORA_SALT_DIR to a writable directory."
+            )
 
         return salt
 
@@ -384,8 +459,13 @@ class EncryptionService:
         user_key = self._derive_user_key(user_id)
 
         if field_salt is None:
-            # Derive salt from field name
-            field_salt = hashlib.sha256(field_name.encode()).digest()[:self.SALT_SIZE]
+            # FINDING-043: Mix field name with a per-deployment secret to avoid
+            # deterministic field salts. Uses AURORA_HASH_SALT (or master key as
+            # fallback) so salt varies per deployment.
+            deployment_secret = os.environ.get("AURORA_HASH_SALT", "").encode() or self._master_key
+            field_salt = hashlib.sha256(
+                field_name.encode() + deployment_secret
+            ).digest()[:self.SALT_SIZE]
 
         # Combine user key with field salt
         combined = user_key + field_salt
@@ -655,6 +735,35 @@ class EncryptionService:
 
         return plaintext.decode("utf-8")
 
+    @staticmethod
+    def needs_re_encryption(encrypted_data: EncryptedField, current_version: int | None = None) -> bool:
+        """
+        FINDING-035: Check if data was encrypted with an old key version
+        and needs re-encryption.
+
+        Args:
+            encrypted_data: The encrypted field to check
+            current_version: The current key version to compare against.
+                If None, uses the default version (1).
+
+        Returns:
+            True if the data was encrypted with an older version and should
+            be re-encrypted with the current key.
+
+        Note:
+            This is a detection helper only. Bulk re-encryption should be
+            implemented as a database migration that:
+            1. Queries all encrypted fields where version < current_version
+            2. Decrypts with the old key
+            3. Re-encrypts with the current key
+            4. Updates the version field
+
+        TODO: Implement bulk re-encryption migration (future task).
+            See ARCHITECTURE.md Section 10 for key rotation strategy.
+        """
+        check_version = current_version if current_version is not None else 1
+        return encrypted_data.version < check_version
+
     def rotate_key(self, user_id: int) -> None:
         """
         Rotate a user's encryption key.
@@ -662,6 +771,9 @@ class EncryptionService:
         This generates a new user salt, re-derives the key,
         and increments the version. Existing encrypted data
         remains decryptable with the old version.
+
+        FINDING-035: Use needs_re_encryption() to check if existing data
+        needs re-encryption after key rotation.
 
         For full key rotation, you must re-encrypt all user data
         with the new key. This method prepares the service for
@@ -765,10 +877,18 @@ class HashService:
             if env_salt:
                 self._salt = base64.b64decode(env_salt)
             elif os.environ.get("AURORA_DEV_MODE") == "1":
+                # FINDING-007: Block dev hash salt in production environment
+                if os.environ.get("AURORA_ENVIRONMENT") == "production":
+                    raise RuntimeError(
+                        "FATAL: AURORA_DEV_MODE=1 is set but AURORA_ENVIRONMENT=production. "
+                        "Refusing to use deterministic hash salt in production. "
+                        "Set AURORA_HASH_SALT to a secure random base64-encoded value."
+                    )
                 import logging as _logging
                 _logging.getLogger(__name__).warning(
-                    "AURORA_DEV_MODE: Using deterministic hash salt. "
-                    "DO NOT USE IN PRODUCTION."
+                    "SECURITY WARNING: Using deterministic hash salt. "
+                    "Hashes are NOT secure. "
+                    "DO NOT USE IN PRODUCTION. Set AURORA_HASH_SALT for real hashing."
                 )
                 self._salt = hashlib.sha256(b"aurora-sun-dev-salt-DO-NOT-USE-IN-PRODUCTION").digest()
             else:

@@ -26,8 +26,42 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# FINDING-037: Allowed hostnames for internal service health checks.
+# Only these hosts are permitted for HTTP-based health checks.
+ALLOWED_HEALTH_CHECK_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "postgres",
+    "redis",
+    "neo4j",
+    "qdrant",
+    "letta",
+    "aurora-sun-app",
+}
+
+
+def _validate_health_check_url(url: str) -> None:
+    """
+    FINDING-037: Validate that a URL points to an allowed internal host.
+    Prevents SSRF by rejecting any URL not on the allowlist.
+
+    Args:
+        url: The URL to validate
+
+    Raises:
+        ValueError: If the URL host is not in ALLOWED_HEALTH_CHECK_HOSTS
+    """
+    parsed = urlparse(url)
+    hostname = parsed.hostname or ""
+    if hostname not in ALLOWED_HEALTH_CHECK_HOSTS:
+        raise ValueError(
+            f"SSRF protection: host '{hostname}' not in allowed health check hosts. "
+            f"Allowed: {ALLOWED_HEALTH_CHECK_HOSTS}"
+        )
 
 
 class ServiceStatus(Enum):
@@ -186,13 +220,13 @@ class HealthCheckService:
                 timestamp=datetime.utcnow(),
             )
 
-        except Exception as e:
+        except Exception:
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("PostgreSQL health check failed")
             return HealthCheckResult(
                 service_name="postgresql",
                 status=ServiceStatus.UNHEALTHY,
-                message=f"Health check failed: {e}",
+                message="Health check failed",
                 response_time_ms=response_time,
                 timestamp=datetime.utcnow(),
             )
@@ -257,13 +291,13 @@ class HealthCheckService:
                 timestamp=datetime.utcnow(),
             )
 
-        except Exception as e:
+        except Exception:
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Redis health check failed")
             return HealthCheckResult(
                 service_name="redis",
                 status=ServiceStatus.UNHEALTHY,
-                message=f"Health check failed: {e}",
+                message="Health check failed",
                 response_time_ms=response_time,
                 timestamp=datetime.utcnow(),
             )
@@ -330,13 +364,13 @@ class HealthCheckService:
                 timestamp=datetime.utcnow(),
             )
 
-        except Exception as e:
+        except Exception:
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Neo4j health check failed")
             return HealthCheckResult(
                 service_name="neo4j",
                 status=ServiceStatus.UNHEALTHY,
-                message=f"Health check failed: {e}",
+                message="Health check failed",
                 response_time_ms=response_time,
                 timestamp=datetime.utcnow(),
             )
@@ -365,6 +399,9 @@ class HealthCheckService:
             )
 
         try:
+            # FINDING-037: Validate URL against allowlist before making HTTP request
+            _validate_health_check_url(self.qdrant_url)
+
             import httpx
 
             async with httpx.AsyncClient() as client:
@@ -396,13 +433,13 @@ class HealthCheckService:
                 timestamp=datetime.utcnow(),
             )
 
-        except Exception as e:
+        except Exception:
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Qdrant health check failed")
             return HealthCheckResult(
                 service_name="qdrant",
                 status=ServiceStatus.UNHEALTHY,
-                message=f"Health check failed: {e}",
+                message="Health check failed",
                 response_time_ms=response_time,
                 timestamp=datetime.utcnow(),
             )
@@ -431,6 +468,9 @@ class HealthCheckService:
             )
 
         try:
+            # FINDING-037: Validate URL against allowlist before making HTTP request
+            _validate_health_check_url(self.letta_url)
+
             import httpx
 
             async with httpx.AsyncClient() as client:
@@ -462,13 +502,13 @@ class HealthCheckService:
                 timestamp=datetime.utcnow(),
             )
 
-        except Exception as e:
+        except Exception:
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Letta health check failed")
             return HealthCheckResult(
                 service_name="letta",
                 status=ServiceStatus.UNHEALTHY,
-                message=f"Health check failed: {e}",
+                message="Health check failed",
                 response_time_ms=response_time,
                 timestamp=datetime.utcnow(),
             )
