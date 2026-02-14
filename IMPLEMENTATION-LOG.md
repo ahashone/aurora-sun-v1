@@ -35,3 +35,10 @@
 | 2026-02-14 | Hybrid Quality Upgrade Plan: 6-step Phase 2.5 (rewrites, inspections, mypy strict) | docs/HYBRID-QUALITY-UPGRADE-PLAN.md |
 | 2026-02-14 | Phase 2.5 Step 1: Rewrite 6 critical files (state_store, tension_engine, energy_system, pattern_detection, coaching_engine, effectiveness) | src/services/ |
 | 2026-02-14 | Phase 2.5 Step 2: Inspect bot/infra (webhook ConsentValidationResult type fix, onboarding Redis persistence verified, module_registry clean) | src/bot/webhook.py |
+| 2026-02-14 | Phase 2.5 Step 2: Inspect modules (planning, review, capture, future_letter — state machines, GDPR, async patterns fixed) | src/modules/ |
+| 2026-02-14 | Phase 2.5 Step 2: Inspect supporting files (redis_service connection handling, revenue_tracker encryption) | src/services/redis_service.py, src/services/revenue_tracker.py |
+| 2026-02-14 | Phase 2.5 Step 3: Neurostate inspection (energy segment-aware assessment, channel dominance, sensory cumulative load, masking exponential) | src/services/neurostate/ |
+| 2026-02-14 | Phase 2.5 Step 4: Workflows inspection (daily_graph SegmentContext fix, daily_workflow tiered pre-flight) | src/workflows/ |
+| 2026-02-14 | Phase 2.5 Step 5: mypy --strict compliance (171 → 0 errors across 37 files — type annotations, Column casts, datetime.UTC, generic params) | 37 src/ files |
+| 2026-02-14 | Phase 2.5 Step 6: Final verification passed (689 tests, 0 ruff errors, 0 mypy errors, 0 segment code checks in modules, 0 threading.Lock) | — |
+| 2026-02-14 | Phase 2.5 COMPLETE: Hybrid Quality Upgrade finished. All ROADMAP 2.5.0–2.5.6 checkboxes checked. Production-quality Phase 1+2 code. | ROADMAP.md, TODO.md |
