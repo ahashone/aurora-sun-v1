@@ -190,6 +190,8 @@ services:
         max-file: "3"
 
   # Prometheus Monitoring
+  # NOTE: Port 9090 is not exposed to host for production security.
+  # Access via Tailscale/SSH tunnel if needed. Internal TLS recommended for production.
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: aurora-prometheus
@@ -198,8 +200,9 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=30d'
-    ports:
-      - "9090:9090"
+    # Internal-only access. Not exposed to host.
+    expose:
+      - "9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -212,6 +215,8 @@ services:
         max-file: "2"
 
   # Grafana Dashboards
+  # NOTE: Port 3000 is not exposed to host for production security.
+  # Access via Tailscale/SSH tunnel if needed. Internal TLS recommended for production.
   grafana:
     image: grafana/grafana:10.4.0
     container_name: aurora-grafana
@@ -219,8 +224,9 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
-    ports:
-      - "3000:3000"
+    # Internal-only access. Not exposed to host.
+    expose:
+      - "3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
@@ -236,6 +242,8 @@ services:
         max-file: "2"
 
   # Alertmanager
+  # NOTE: Port 9093 is not exposed to host for production security.
+  # Access via Tailscale/SSH tunnel if needed. Internal TLS recommended for production.
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: aurora-alertmanager
@@ -243,8 +251,9 @@ services:
     command:
       - '--config.file=/etc/alertmanager/config.yml'
       - '--storage.path=/alertmanager'
-    ports:
-      - "9093:9093"
+    # Internal-only access. Not exposed to host.
+    expose:
+      - "9093"
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/config.yml:ro
       - alertmanager-data:/alertmanager
@@ -257,12 +266,15 @@ services:
         max-file: "2"
 
   # cAdvisor (Container Metrics)
+  # NOTE: Port 8080 is not exposed to host for production security.
+  # Access via Tailscale/SSH tunnel if needed. Internal TLS recommended for production.
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: aurora-cadvisor
     restart: unless-stopped
-    ports:
-      - "8081:8080"
+    # Internal-only access. Not exposed to host.
+    expose:
+      - "8080"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -277,14 +289,17 @@ services:
         max-file: "2"
 
   # Node Exporter (Host Metrics)
+  # NOTE: Port 9100 is not exposed to host for production security.
+  # Access via Tailscale/SSH tunnel if needed. Internal TLS recommended for production.
   node-exporter:
     image: prom/node-exporter:v1.7.0
     container_name: aurora-node-exporter
     restart: unless-stopped
     command:
       - '--path.rootfs=/host'
-    ports:
-      - "9100:9100"
+    # Internal-only access. Not exposed to host.
+    expose:
+      - "9100"
     volumes:
       - /:/host:ro,rslave
     networks:
@@ -296,6 +311,8 @@ services:
         max-file: "2"
 
   # Redis Exporter
+  # NOTE: Port 9121 is not exposed to host for production security.
+  # Access via Tailscale/SSH tunnel if needed. Internal TLS recommended for production.
   redis-exporter:
     image: oliver006/redis_exporter:v1.58.0
     container_name: aurora-redis-exporter
@@ -303,8 +320,9 @@ services:
     environment:
       - REDIS_ADDR=redis://redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
-    ports:
-      - "9121:9121"
+    # Internal-only access. Not exposed to host.
+    expose:
+      - "9121"
     depends_on:
       - redis
     networks:
@@ -316,14 +334,17 @@ services:
         max-file: "2"
 
   # PostgreSQL Exporter
+  # NOTE: Port 9187 is not exposed to host for production security.
+  # Access via Tailscale/SSH tunnel if needed. Internal TLS recommended for production.
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: aurora-postgres-exporter
     restart: unless-stopped
     environment:
       - DATA_SOURCE_NAME=postgresql://aurora:${POSTGRES_PASSWORD}@postgres:5432/aurora_sun?sslmode=disable
-    ports:
-      - "9187:9187"
+    # Internal-only access. Not exposed to host.
+    expose:
+      - "9187"
     depends_on:
       - postgres
     networks:

@@ -40,8 +40,8 @@ def _insert_test_user(session: Session, telegram_id: str, language: str = "en") 
     """Insert a test user via raw SQL and return the user ID."""
     result = session.execute(
         text(
-            "INSERT INTO users (telegram_id, language, timezone, created_at, updated_at) "
-            "VALUES (:tid, :lang, 'UTC', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            "INSERT INTO users (telegram_id, language, timezone, processing_restriction, created_at, updated_at) "
+            "VALUES (:tid, :lang, 'UTC', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         ),
         {"tid": telegram_id, "lang": language},
     )

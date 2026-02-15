@@ -655,6 +655,7 @@ class DailyWorkflow:
         user_id: int,
         date: date,
         state: DailyWorkflowState,
+        db: Any | None = None,
     ) -> DailyPlan:
         """
         Save the daily plan record.
@@ -663,15 +664,62 @@ class DailyWorkflow:
             user_id: The user ID
             date: The date for this plan
             state: The workflow state
+            db: SQLAlchemy database session (required)
 
         Returns:
-            Created DailyPlan record
+            Created or updated DailyPlan record
         """
-        # TODO: Save to database using SQLAlchemy
-        # This requires a database session
+        if db is None:
+            raise ValueError("Database session is required to save daily plan")
 
-        logger.info("Saving daily plan for user_hash=%s on %s", hash_uid(user_id), date)
-        raise NotImplementedError("Database session not yet implemented")
+        from sqlalchemy.orm import Session
+        from src.models.daily_plan import DailyPlan as DailyPlanModel
+
+        # Cast db to Session for type safety
+        session: Session = db
+
+        # Check if a plan already exists for this user and date
+        existing_plan = session.query(DailyPlanModel).filter(
+            DailyPlanModel.user_id == user_id,
+            DailyPlanModel.date == date,
+        ).first()
+
+        if existing_plan:
+            # Update existing plan
+            existing_plan.vision_displayed = state.vision_displayed
+            existing_plan.goals_reviewed = state.goals_reviewed
+            existing_plan.planning_completed = state.planning_completed
+            existing_plan.morning_energy = state.energy_level
+            existing_plan.evening_energy = state.energy_level if state.evening_completed else None
+            existing_plan.auto_review_triggered = state.evening_completed
+            if state.reflection_text:
+                existing_plan.reflection_text = state.reflection_text
+
+            session.commit()
+            session.refresh(existing_plan)
+            logger.info("Updated daily plan for user_hash=%s on %s", hash_uid(user_id), date)
+            return existing_plan
+        else:
+            # Create new plan
+            new_plan = DailyPlanModel(
+                user_id=user_id,
+                date=date,
+                vision_displayed=state.vision_displayed,
+                goals_reviewed=state.goals_reviewed,
+                priorities_selected=False,  # Will be set by Planning Module
+                tasks_committed=state.planning_completed,
+                morning_energy=state.energy_level,
+                evening_energy=state.energy_level if state.evening_completed else None,
+                auto_review_triggered=state.evening_completed,
+            )
+            if state.reflection_text:
+                new_plan.reflection_text = state.reflection_text
+
+            session.add(new_plan)
+            session.commit()
+            session.refresh(new_plan)
+            logger.info("Created daily plan for user_hash=%s on %s", hash_uid(user_id), date)
+            return new_plan
 
     def get_hooks_for_stage(self, stage: str) -> list[tuple[str, DailyWorkflowHooks]]:
         """Get all hooks for a specific workflow stage.

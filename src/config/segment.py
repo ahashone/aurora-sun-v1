@@ -18,18 +18,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-# Internal codes -> User-facing display names
-# NEVER show internal codes to users
-SEGMENT_DISPLAY_NAMES: dict[str, str] = {
-    "AD": "ADHD",
-    "AU": "Autism",
-    "AH": "AuDHD",
-    "NT": "Neurotypical",
-    "CU": "Custom"
-}
+# MED-20: Single source of truth for segment config is src/core/segment_context.py
+# Re-export from there to avoid duplication
+from src.core.segment_context import SEGMENT_DISPLAY_NAMES, WorkingStyleCode
 
-# Segment codes (internal use only)
-SegmentCode = Literal["AD", "AU", "AH", "NT", "CU"]
+# Alias for backward compatibility
+SegmentCode = WorkingStyleCode
 
 # Supported segment codes
 VALID_SEGMENTS: set[SegmentCode] = {"AD", "AU", "AH", "NT", "CU"}

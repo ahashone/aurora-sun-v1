@@ -136,6 +136,7 @@ class TelegramWebhookHandler:
         self,
         nli_service: Any = None,
         db_session: Any = None,
+        module_registry: Any = None,
     ):
         """
         Initialize the webhook handler.
@@ -143,9 +144,11 @@ class TelegramWebhookHandler:
         Args:
             nli_service: NLI service for intent routing (optional, lazy loaded)
             db_session: Database session for user lookups (optional, lazy loaded)
+            module_registry: Module registry for intent routing (optional, lazy loaded)
         """
         self._nli_service = nli_service
         self._db_session = db_session
+        self._module_registry = module_registry
         self._onboarding_flow = OnboardingFlow()
 
     async def handle_update(self, update: Update) -> None:
@@ -335,6 +338,8 @@ class TelegramWebhookHandler:
         """
         Get user by hashed Telegram ID (no raw PII stored in DB).
 
+        Supports both sync and async SQLAlchemy sessions.
+
         Args:
             telegram_id_hash: HMAC-SHA256 hashed Telegram ID
 
@@ -346,7 +351,26 @@ class TelegramWebhookHandler:
             return None
         try:
             from src.models.user import User
-            return self._db_session.query(User).filter_by(telegram_id=telegram_id_hash).first()
+
+            # Check if this is an async session by checking for AsyncSession type
+            # Use duck typing: async sessions have 'execute' method that's async
+            try:
+                from sqlalchemy.ext.asyncio import AsyncSession
+                is_async = isinstance(self._db_session, AsyncSession)
+            except ImportError:
+                # Fallback: check if execute is a coroutine
+                is_async = False
+
+            if is_async:
+                # Async session (SQLAlchemy 1.4+)
+                from sqlalchemy import select
+                result = await self._db_session.execute(
+                    select(User).where(User.telegram_id == telegram_id_hash)
+                )
+                return result.scalar_one_or_none()
+            else:
+                # Sync session (for tests and SQLAlchemy < 1.4)
+                return self._db_session.query(User).filter_by(telegram_id=telegram_id_hash).first()
         except Exception:
             logger.exception("Failed to query user by telegram_id hash")
             return None
@@ -440,12 +464,96 @@ class TelegramWebhookHandler:
         # Sanitize all user input before LLM/storage processing
         message_text = InputSanitizer.sanitize_all(message_text)
 
-        # TODO: Implement actual NLI routing
-        # For now, just echo back (scaffold)
-        response_text = f"Echo: {message_text}"
+        # Get the module registry
+        if self._module_registry is None:
+            # Lazy load the module registry if not injected
+            from src.core.module_registry import get_registry
+            self._module_registry = get_registry()
+
+        # For now, we use a simple keyword-based intent detection
+        # In Phase 2+, this will be replaced with LLM-based intent classification
+        intent = self._detect_intent(message_text)
+
+        if intent:
+            # Route to the appropriate module
+            module = self._module_registry.route(intent)
+            if module:
+                try:
+                    # Build module context
+                    from src.core.module_context import ModuleContext
+                    from src.core.segment_context import SegmentContext
+
+                    # Get user record to build context
+                    from src.lib.encryption import hash_telegram_id
+                    telegram_id_hash = hash_telegram_id(str(user.id))
+                    user_record = await self._get_user_by_telegram_hash(telegram_id_hash)
+
+                    if user_record is None:
+                        # Shouldn't happen (checked in handle_update), but be defensive
+                        logger.warning("User record not found during NLI routing for user_hash=%s", telegram_id_hash[:8])
+                        if update.message:
+                            await update.message.reply_text("Something went wrong. Please try /start")
+                        return
+
+                    # Build segment context
+                    segment_ctx = SegmentContext.from_user(user_record)
+
+                    # Build module context
+                    ctx = ModuleContext(
+                        user_id=user_record.id,
+                        language=user_record.language or "en",
+                        segment_context=segment_ctx,
+                        state=None,  # Will be loaded from state store in Phase 2
+                        metadata={"db_session": self._db_session} if self._db_session else {},
+                    )
+
+                    # Call module handler
+                    response = await module.handle(message_text, ctx)
+
+                    # Send response
+                    if update.message and response and response.text:
+                        await update.message.reply_text(response.text)
+
+                except Exception:
+                    logger.exception("Error routing to module '%s'", module.name if module else "unknown")
+                    if update.message:
+                        await update.message.reply_text("Something went wrong. Please try again.")
+                return
+
+        # No intent matched - fall back to echo (scaffold)
+        response_text = f"I received: {message_text}\n\n(Intent routing not fully implemented yet)"
 
         if update.message:
             await update.message.reply_text(response_text)
+
+    def _detect_intent(self, message_text: str) -> str | None:
+        """
+        Detect intent from message text (simple keyword-based for Phase 1).
+
+        In Phase 2+, this will be replaced with LLM-based intent classification.
+
+        Args:
+            message_text: Sanitized message text
+
+        Returns:
+            Intent string (e.g., "review.start") or None
+        """
+        message_lower = message_text.lower().strip()
+
+        # Simple keyword mapping (will be replaced with LLM in Phase 2)
+        if any(word in message_lower for word in ["review", "reflection", "daily review"]):
+            return "review.start"
+        elif any(word in message_lower for word in ["plan", "planning", "daily plan"]):
+            return "planning.start"
+        elif any(word in message_lower for word in ["habit", "habits", "routine"]):
+            return "habit.list"
+        elif any(word in message_lower for word in ["capture", "save this", "remember"]):
+            return "capture.start"
+        elif any(word in message_lower for word in ["goal", "goals", "vision"]):
+            return "goal.list"
+
+        # No intent detected
+        return None
 
 # =============================================================================
 # Webhook Setup

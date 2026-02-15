@@ -40,6 +40,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.segment_context import WorkingStyleCode
 from src.models.base import Base
 
+import logging
+
+_logger = logging.getLogger(__name__)
+
 # =============================================================================
 # Enums
 # =============================================================================
@@ -374,6 +378,11 @@ class RIAService:
         cycle_id = str(uuid.uuid4())
         now = datetime.now(UTC)
 
+        _logger.info(
+            "Starting RIA cycle %s (all phases are stubs — HIGH-7)",
+            cycle_id,
+        )
+
         # Phase 1: INGEST
         ingest_log = await self._run_ingest_phase(cycle_id, now)
 
@@ -425,11 +434,13 @@ class RIAService:
             started_at=datetime.now(UTC),
         )
 
-        # TODO: Implement finding ingestion
+        # STUB: Finding ingestion not yet implemented (HIGH-7)
+        # Production implementation will:
         # - Parse knowledge/research/meta-synthesis-*.json
         # - Check ADHD contamination for Autism findings
         # - Store in RIAFinding table
         # - Create Neo4j nodes + Qdrant embeddings
+        _logger.warning("RIA INGEST phase is a stub — no findings ingested (cycle=%s)", cycle_id)
 
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
@@ -466,11 +477,13 @@ class RIAService:
             started_at=datetime.now(UTC),
         )
 
-        # TODO: Implement analysis
+        # STUB: Analysis not yet implemented (HIGH-7)
+        # Production implementation will:
         # - Load EffectivenessService data
         # - Load PatternDetection signals
         # - Load FeedbackService aggregations
         # - Identify gaps and opportunities
+        _logger.warning("RIA ANALYZE phase is a stub — no patterns analyzed (cycle=%s)", cycle_id)
 
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
@@ -508,11 +521,13 @@ class RIAService:
             started_at=datetime.now(UTC),
         )
 
-        # TODO: Implement proposal generation
+        # STUB: Proposal generation not yet implemented (HIGH-7)
+        # Production implementation will:
         # - Match findings to observed patterns
         # - Generate segment-specific hypotheses
         # - Create proposals (NEW_INTERVENTION, MODIFY_INTERVENTION, etc.)
         # - DM admin for approval
+        _logger.warning("RIA PROPOSE phase is a stub — no proposals generated (cycle=%s)", cycle_id)
 
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
@@ -548,10 +563,12 @@ class RIAService:
             started_at=datetime.now(UTC),
         )
 
-        # TODO: Implement reflection
+        # STUB: Reflection not yet implemented (HIGH-7)
+        # Production implementation will:
         # - Update confidence scores
         # - Identify gaps in research coverage
         # - Log insights
+        _logger.warning("RIA REFLECT phase is a stub — no reflection performed (cycle=%s)", cycle_id)
 
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()

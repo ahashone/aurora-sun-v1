@@ -101,6 +101,7 @@ def test_webhook_handler_initialization(handler: TelegramWebhookHandler):
     assert handler is not None
     assert handler._nli_service is None
     assert handler._db_session is None
+    assert handler._module_registry is None
     assert handler._onboarding_flow is not None
 
 
@@ -108,9 +109,11 @@ def test_webhook_handler_initialization_with_dependencies():
     """Test TelegramWebhookHandler with injected dependencies."""
     mock_nli = MagicMock()
     mock_db = MagicMock()
-    handler = TelegramWebhookHandler(nli_service=mock_nli, db_session=mock_db)
+    mock_registry = MagicMock()
+    handler = TelegramWebhookHandler(nli_service=mock_nli, db_session=mock_db, module_registry=mock_registry)
     assert handler._nli_service is mock_nli
     assert handler._db_session is mock_db
+    assert handler._module_registry is mock_registry
 
 
 # =============================================================================
@@ -354,15 +357,18 @@ async def test_route_through_nli_sanitizes_input(mock_sanitize, mock_check_rate,
 
 @pytest.mark.asyncio
 async def test_route_through_nli_echoes_message(handler: TelegramWebhookHandler, mock_update):
-    """Test that _route_through_nli echoes message (scaffold implementation)."""
+    """Test that _route_through_nli echoes message when no intent is detected."""
     user = MagicMock()
     user.id = 12345
 
     with patch('src.bot.webhook.InputSanitizer.sanitize_all', return_value="Test"):
-        await handler._route_through_nli(mock_update, user)
+        with patch.object(handler, '_detect_intent', return_value=None):
+            await handler._route_through_nli(mock_update, user)
 
-        # Should reply with echo
-        mock_update.message.reply_text.assert_called_once()
+            # Should reply with fallback message
+            mock_update.message.reply_text.assert_called_once()
+            call_args = mock_update.message.reply_text.call_args[0][0]
+            assert "received" in call_args.lower() or "intent" in call_args.lower()
 
 
 @pytest.mark.asyncio

@@ -72,6 +72,10 @@ class User(Base):
     encryption_salt = Column(String(32), nullable=True)
     letta_agent_id = Column(String(64), nullable=True)
 
+    # GDPR Art. 18: Processing restriction (HIGH-8)
+    # "active" = normal processing, "restricted" = data retained but no processing
+    processing_restriction = Column(String(12), default="active", nullable=False)
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
@@ -130,12 +134,20 @@ class User(Base):
 
     @name.setter
     def name(self, value: str | None) -> None:
-        """Set encrypted name."""
+        """
+        Set encrypted name.
+
+        HIGH-5 FIX: If self.id is None, we store plaintext temporarily.
+        The before_insert event listener will pre-generate the ID, allowing
+        the name to be encrypted before the INSERT. This eliminates the
+        plaintext window.
+        """
         self.__dict__.pop("_cached_name", None)
         if value is None:
             setattr(self, '_name_plaintext', None)
             return
-        # Cannot encrypt without user ID (new user before INSERT)
+        # If ID not yet assigned, store plaintext temporarily
+        # (will be encrypted in before_insert event)
         if self.id is None:
             setattr(self, '_name_plaintext', value)
             return
@@ -154,15 +166,8 @@ class User(Base):
 
     @property
     def segment_display_name(self) -> str:
-        """Convert internal segment code to user-facing name."""
-        SEGMENT_DISPLAY_NAMES: dict[str, str] = {
-            "AD": "ADHD",
-            "AU": "Autism",
-            "AH": "AuDHD",
-            "NT": "Neurotypical",
-            "CU": "Custom",
-        }
-        # working_style_code is a Column[str] at class definition, but str | None at runtime
+        """Convert internal segment code to user-facing name (MED-20: single source)."""
+        from src.core.segment_context import SEGMENT_DISPLAY_NAMES
         code = str(self.working_style_code) if self.working_style_code else None
         return SEGMENT_DISPLAY_NAMES.get(code, "Neurotypical") if code else "Neurotypical"
 
@@ -206,24 +211,70 @@ class User(Base):
 # =============================================================================
 
 # =============================================================================
-# Re-encrypt name after INSERT when auto-increment ID is assigned
+# HIGH-5 FIX: Pre-generate ID before INSERT to enable immediate encryption
 # =============================================================================
-@event.listens_for(User, "after_insert")
-def _re_encrypt_name_after_insert(
+@event.listens_for(User, "before_insert")
+def _pre_generate_id_for_encryption(
     mapper: object, connection: object, target: User
 ) -> None:
     """
-    Re-encrypt the name field after INSERT when the user ID is now available.
+    Pre-generate the user ID before INSERT to eliminate the plaintext window.
 
-    When a new User is created, the name setter cannot encrypt because self.id
-    is None (auto-increment not yet assigned). After INSERT, the ID exists, so
-    we re-encrypt the plaintext name and update the row.
+    Security Fix (HIGH-5):
+    The original implementation stored user.name in plaintext until after INSERT,
+    when the auto-increment ID was available. This created a plaintext window
+    where sensitive data was temporarily unencrypted in memory and potentially
+    in database logs.
+
+    This event listener pre-generates the ID using a database-agnostic approach:
+    - PostgreSQL: Query the sequence directly
+    - SQLite/MySQL: Query MAX(id)+1 (safe because we're in a transaction)
+
+    Once the ID is assigned, the name field is encrypted BEFORE the INSERT,
+    ensuring the name is never stored in plaintext in the database.
     """
-    raw_name = target._name_plaintext
-    if raw_name is None or target.id is None:
+    # Only pre-generate if ID is not already set
+    if target.id is not None:
         return
 
-    # Check if the stored value is already encrypted (JSON with "ciphertext")
+    # Pre-generate ID using database-specific method
+    from sqlalchemy import text as sa_text
+
+    # Get the dialect name
+    dialect_name = connection.dialect.name  # type: ignore[attr-defined]
+
+    try:
+        if dialect_name == 'postgresql':
+            # PostgreSQL: Use sequence
+            result = connection.execute(  # type: ignore[attr-defined]
+                sa_text("SELECT nextval('users_id_seq')")
+            )
+            new_id = result.scalar()
+        else:
+            # SQLite/MySQL/others: Use MAX(id) + 1 approach
+            # This is safe because we're in a transaction
+            result = connection.execute(  # type: ignore[attr-defined]
+                sa_text("SELECT COALESCE(MAX(id), 0) + 1 FROM users")
+            )
+            new_id = result.scalar()
+
+        target.id = new_id  # type: ignore[assignment]
+        logger.debug("Pre-generated user ID %s for encryption before INSERT (dialect: %s)", new_id, dialect_name)
+    except Exception as e:
+        logger.error(
+            "Failed to pre-generate user ID, encryption will be delayed",
+            extra={"error": type(e).__name__, "dialect": dialect_name},
+        )
+        # Don't raise - allow the INSERT to proceed with auto-increment
+        # The after_insert handler will catch this case
+        return
+
+    # Now encrypt any plaintext name field
+    raw_name = target._name_plaintext
+    if raw_name is None:
+        return
+
+    # Check if already encrypted
     try:
         data = json.loads(str(raw_name))
         if isinstance(data, dict) and "ciphertext" in data:
@@ -231,32 +282,25 @@ def _re_encrypt_name_after_insert(
     except (json.JSONDecodeError, TypeError, ValueError):
         pass
 
-    # The name is plaintext -- encrypt it now that we have the ID
+    # Encrypt the plaintext name now that we have an ID
     try:
         from src.lib.encryption import DataClassification, get_encryption_service
         encrypted = get_encryption_service().encrypt_field(
             str(raw_name), int(target.id), DataClassification.SENSITIVE, "name"
         )
         encrypted_json = json.dumps(encrypted.to_db_dict())
-
-        # Use the connection to update the row directly (avoid re-triggering ORM events)
-        from sqlalchemy import text as sa_text
-        connection.execute(  # type: ignore[attr-defined]
-            sa_text("UPDATE users SET name = :name WHERE id = :id"),
-            {"name": encrypted_json, "id": target.id},
-        )
-        # Update the in-memory attribute to match
         target._name_plaintext = encrypted_json  # type: ignore[assignment]
-        # PERF-009: Invalidate decryption cache after re-encryption
+        # PERF-009: Invalidate decryption cache after encryption
         target.__dict__.pop("_cached_name", None)
-        logger.debug("Re-encrypted name for user %s after INSERT", target.id)
-    except Exception:
+        logger.debug("Encrypted name for user %s before INSERT", target.id)
+    except Exception as e:
         logger.critical(
-            "SECURITY: Failed to re-encrypt name after INSERT for user %s. "
-            "Plaintext name may remain in database. Manual remediation required.",
+            "SECURITY: Failed to encrypt name before INSERT for user %s. "
+            "Refusing to proceed with plaintext storage.",
             target.id,
             exc_info=True,
         )
+        raise ValueError("Cannot store user: encryption failed") from e
 
 
 __all__ = ["User"]

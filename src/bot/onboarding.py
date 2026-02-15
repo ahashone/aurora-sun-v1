@@ -70,14 +70,8 @@ ALLOWED_CALLBACKS: set[str] = {
 }
 
 
-# Segment display names (user-facing)
-SEGMENT_DISPLAY_NAMES = {
-    "AD": "ADHD",
-    "AU": "Autism",
-    "AH": "AuDHD",
-    "NT": "Neurotypical",
-    "CU": "Custom",
-}
+# MED-20: Single source of truth for segment names is src/core/segment_context.py
+from src.core.segment_context import SEGMENT_DISPLAY_NAMES
 
 SEGMENT_CODES = list(SEGMENT_DISPLAY_NAMES.keys())
 

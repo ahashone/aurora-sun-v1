@@ -1029,8 +1029,9 @@ def create_security_middleware(
         app = FastAPI()
         create_security_middleware(app)
     """
-    from fastapi import Request
+    from fastapi import Request, Response
     from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
     # Add security headers middleware
     class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -1039,5 +1040,72 @@ def create_security_middleware(
             return SecurityHeaders.apply_to_response(response, csp)
 
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # Add rate limiting middleware if enabled
+    if enable_rate_limiting:
+        class RateLimitMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request: Request, call_next: Any) -> Any:
+                # Extract user_id from request (try multiple sources)
+                user_id = None
+
+                # Try to get from request state (set by auth middleware)
+                if hasattr(request.state, "user_id"):
+                    user_id = request.state.user_id
+
+                # Try to get from headers (for API requests)
+                elif "X-User-ID" in request.headers:
+                    try:
+                        user_id = int(request.headers["X-User-ID"])
+                    except (ValueError, TypeError):
+                        pass
+
+                # Try to get from query params (for webhook/callback endpoints)
+                elif "user_id" in request.query_params:
+                    try:
+                        user_id = int(request.query_params["user_id"])
+                    except (ValueError, TypeError):
+                        pass
+
+                # If user_id found, check rate limit
+                if user_id:
+                    # Determine action based on endpoint
+                    path = request.url.path
+                    if "/api/" in path:
+                        action = "api"
+                    elif "/admin/" in path:
+                        action = "admin"
+                    elif "/voice" in path:
+                        action = "voice"
+                    else:
+                        action = "chat"
+
+                    # Check rate limit
+                    allowed = await RateLimiter.check_rate_limit(
+                        user_id=user_id,
+                        action=action,
+                        fail_closed=False  # Fail open for general endpoints
+                    )
+
+                    if not allowed:
+                        logger.warning(
+                            "rate_limit_blocked_request",
+                            user_hash=hash_uid(user_id),
+                            action=action,
+                            path=path
+                        )
+                        return Response(
+                            content="Rate limit exceeded. Please try again later.",
+                            status_code=HTTP_429_TOO_MANY_REQUESTS,
+                            headers={
+                                "Retry-After": "60",
+                                "X-RateLimit-Limit": "30",
+                                "X-RateLimit-Remaining": "0",
+                            }
+                        )
+
+                # Proceed with request
+                return await call_next(request)
+
+        app.add_middleware(RateLimitMiddleware)
 
     logger.info("security_middleware_initialized", csp=csp, rate_limiting=enable_rate_limiting)

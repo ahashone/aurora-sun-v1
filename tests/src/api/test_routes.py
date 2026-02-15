@@ -103,15 +103,21 @@ class TestAPIRoutes:
 
     @pytest.mark.asyncio
     async def test_auth_token_endpoint(self) -> None:
-        """Test auth token endpoint returns NOT_IMPLEMENTED error envelope."""
+        """Test auth token endpoint returns JWT token envelope."""
         routes = router.get_routes()
         auth_handler = routes["POST /auth/token"]["handler"]
         result = await auth_handler(telegram_id=12345)
 
-        # Verify error envelope structure
-        assert result["success"] is False
-        assert result["error"]["code"] == "NOT_IMPLEMENTED"
-        assert result["data"] is None
+        # Verify success envelope structure with token data
+        assert result["success"] is True
+        assert result["error"] is None
+        assert result["data"] is not None
+        assert "access_token" in result["data"]
+        assert "token_type" in result["data"]
+        assert result["data"]["token_type"] == "Bearer"
+        assert "expires_in" in result["data"]
+        assert isinstance(result["data"]["expires_in"], int)
+        assert result["data"]["expires_in"] > 0
 
     def test_all_routes_have_handlers(self) -> None:
         """Test that all routes have handler functions."""

@@ -39,7 +39,6 @@ from src.api.dependencies import (
     require_admin,
 )
 from src.api.schemas import error_response, success_response
-from src.lib.errors import NOT_IMPLEMENTED
 from src.lib.security import hash_uid, sanitize_for_storage
 
 logger = logging.getLogger(__name__)
@@ -178,26 +177,41 @@ async def health_check_detailed(
 @router.post("/auth/token")
 async def get_auth_token(
     telegram_id: int,
-    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()), # Add rate limiter
 ) -> dict[str, Any]:
     """
     Get authentication token for a Telegram user.
 
-    This endpoint is disabled until proper authentication is
-    implemented. Returns NOT_IMPLEMENTED error.
+    This is a simplified Phase 1 implementation that generates a JWT token
+    for any provided Telegram ID without database validation.
+    Full user validation and database integration will be added in Phase 2.
 
     Args:
         telegram_id: Telegram user ID
-        rate_limiter: Rate limiting dependency
 
     Returns:
-        Envelope with NOT_IMPLEMENTED error
+        Envelope with token data (access_token, token_type, expires_in)
     """
-    # TODO: Implement actual authentication via Telegram ID and generate JWT
-    return error_response(
-        NOT_IMPLEMENTED,
-        "Authentication not yet implemented. Use Telegram bot.",
+    from src.api.auth import AuthService
+
+    # Generate token for the telegram user
+    # Using telegram_id as both user_id and telegram_id for Phase 1
+    auth_service = AuthService()
+    auth_token = auth_service.generate_token(
+        user_id=telegram_id,
+        telegram_id=telegram_id,
     )
+
+    # Encode to JWT string
+    jwt_token = auth_service.encode_token(auth_token)
+
+    # Calculate expires_in seconds
+    expires_in = int((auth_token.expires_at - auth_token.issued_at).total_seconds())
+
+    return success_response({
+        "access_token": jwt_token,
+        "token_type": "Bearer",
+        "expires_in": expires_in,
+    })
 
 
 # =============================================================================

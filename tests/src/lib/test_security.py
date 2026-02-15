@@ -1208,7 +1208,8 @@ class TestCreateSecurityMiddleware:
 
         app = FakeApp()
         create_security_middleware(app)
-        assert len(added_middlewares) == 1
+        # Should register 2 middlewares: SecurityHeaders + RateLimit (default)
+        assert len(added_middlewares) == 2
 
     def test_create_security_middleware_custom_csp(self):
         """create_security_middleware accepts a custom CSP."""
@@ -1222,6 +1223,22 @@ class TestCreateSecurityMiddleware:
 
         app = FakeApp()
         create_security_middleware(app, csp="default-src 'none'")
+        # Should register 2 middlewares: SecurityHeaders + RateLimit (default)
+        assert len(added) == 2
+
+    def test_create_security_middleware_rate_limiting_disabled(self):
+        """create_security_middleware can disable rate limiting."""
+        from src.lib.security import create_security_middleware
+
+        added: list[type] = []
+
+        class FakeApp:
+            def add_middleware(self, middleware_cls, **kwargs):
+                added.append(middleware_cls)
+
+        app = FakeApp()
+        create_security_middleware(app, enable_rate_limiting=False)
+        # Should register only 1 middleware: SecurityHeaders
         assert len(added) == 1
 
 

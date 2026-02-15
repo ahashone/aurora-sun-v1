@@ -506,8 +506,14 @@ class BackupService:
                     error=error_msg,
                 )
 
-            # Get backup size
+            # Get backup file path
             backup_file = Path(f"{backup_path}.dump")
+
+            # Encrypt backup file if enabled (AES-256-GCM)
+            if self.encrypt_backups and self._master_key:
+                backup_file = _encrypt_backup_file(backup_file, self._master_key)
+
+            # Get backup size
             size_bytes = backup_file.stat().st_size
 
             logger.info(f"Neo4j backup completed: {backup_file} ({size_bytes} bytes)")
@@ -594,6 +600,11 @@ class BackupService:
                 with open(backup_path, "w") as f:
                     json.dump(backup_data, f, indent=2)
 
+                # Encrypt backup file if enabled (AES-256-GCM)
+                if self.encrypt_backups and self._master_key:
+                    backup_path = _encrypt_backup_file(backup_path, self._master_key)
+
+                # Get backup size
                 size_bytes = backup_path.stat().st_size
 
                 logger.info(f"Qdrant backup completed: {backup_path} ({size_bytes} bytes)")

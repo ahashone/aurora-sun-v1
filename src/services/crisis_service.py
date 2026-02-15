@@ -353,7 +353,7 @@ class CrisisService:
         detected_signal: CrisisSignal | None = None
 
         for signal in self.CRISIS_SIGNALS:
-            if signal in message_lower:
+            if self._signal_matches(signal, message_lower):
                 # Calculate severity based on signal specificity
                 severity = self._calculate_signal_severity(signal, message_lower)
                 if severity > crisis_score:
@@ -375,7 +375,7 @@ class CrisisService:
         warning_score = 0
         best_warning_signal: str | None = None
         for signal in self.WARNING_SIGNALS:
-            if signal in message_lower:
+            if self._signal_matches(signal, message_lower):
                 severity = self._calculate_signal_severity(signal, message_lower)
                 if severity > warning_score:
                     warning_score = severity
@@ -391,6 +391,11 @@ class CrisisService:
             return CrisisLevel.WARNING
 
         return CrisisLevel.NONE
+
+    @staticmethod
+    def _signal_matches(signal: str, message_lower: str) -> bool:
+        """Check if signal matches with word boundaries to reduce false positives (MED-25)."""
+        return bool(re.search(r"\b" + re.escape(signal) + r"\b", message_lower))
 
     def _calculate_signal_severity(self, signal: str, message: str) -> int:
         """
