@@ -795,8 +795,12 @@ class EncryptionService:
             3. Re-encrypt all data with new key
             4. Update version in database
         """
+        import logging as _logging
+        _logger = _logging.getLogger(__name__)
+
         # Generate new user salt
         new_salt = os.urandom(self.SALT_SIZE)
+        new_salt_b64 = base64.b64encode(new_salt).decode()
 
         # Store in keyring
         salt_key = f"user_salt_{user_id}"
@@ -805,13 +809,24 @@ class EncryptionService:
                 keyring.set_password(
                     self._keyring_service,
                     salt_key,
-                    base64.b64encode(new_salt).decode(),
+                    new_salt_b64,
                 )
             except Exception:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
+                _logger.warning(
                     "Failed to store user salt in keyring for user_%d", user_id,
                 )
+
+        # After keyring storage, also update filesystem fallback
+        salt_dir = os.environ.get("AURORA_SALT_DIR", os.path.join(os.path.expanduser("~"), ".aurora-sun", "salts"))
+        if salt_dir:
+            salt_file = os.path.join(salt_dir, f"user_salt_{user_id}.salt")
+            try:
+                os.makedirs(salt_dir, mode=0o700, exist_ok=True)
+                with open(salt_file, "w") as f:
+                    f.write(new_salt_b64)
+                os.chmod(salt_file, 0o600)
+            except OSError:
+                _logger.warning("Failed to update salt file for user_%d", user_id)
 
         # Clear cache to force re-derivation
         if user_id in self._user_key_cache:
@@ -839,6 +854,9 @@ class EncryptionService:
             the encrypted data from the database. The data remains
             but is cryptographically inaccessible.
         """
+        import logging as _logging
+        _logger = _logging.getLogger(__name__)
+
         # Remove from cache
         if user_id in self._user_key_cache:
             del self._user_key_cache[user_id]
@@ -849,9 +867,25 @@ class EncryptionService:
             try:
                 keyring.delete_password(self._keyring_service, salt_key)
             except Exception:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
+                _logger.warning(
                     "Failed to delete user salt from keyring for user_%d", user_id,
+                )
+
+        # Also delete filesystem salt file
+        salt_dir = os.environ.get("AURORA_SALT_DIR", os.path.join(os.path.expanduser("~"), ".aurora-sun", "salts"))
+        if salt_dir:
+            salt_file = os.path.join(salt_dir, f"user_salt_{user_id}.salt")
+            try:
+                if os.path.exists(salt_file):
+                    # Secure deletion: overwrite before unlink
+                    with open(salt_file, "wb") as f:
+                        f.write(os.urandom(64))  # Overwrite with random data
+                        f.flush()
+                        os.fsync(f.fileno())
+                    os.unlink(salt_file)
+            except OSError:
+                _logger.error(
+                    "Failed to delete salt file for user_%d — GDPR erasure incomplete", user_id,
                 )
 
         # Note: We don't destroy the master key as it's shared

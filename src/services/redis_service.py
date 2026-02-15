@@ -1,10 +1,50 @@
 """Redis service for distributed state management."""
 
+import dataclasses
 import json
 import os
+from datetime import date, datetime
+from enum import Enum
 from typing import Any
 
 import redis.asyncio as redis
+
+
+class AuroraJSONEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder for Aurora Sun that handles:
+    - dataclasses → dict via dataclasses.asdict()
+    - datetime/date → .isoformat()
+    - Enum → .value
+    - set → list
+    - Any other non-serializable → str()
+
+    This encoder is safe and never raises — uses str() as last resort.
+    """
+
+    def default(self, obj: Any) -> Any:
+        """Convert non-serializable objects to JSON-serializable types."""
+        # Handle dataclasses
+        if dataclasses.is_dataclass(obj):
+            return dataclasses.asdict(obj)
+
+        # Handle datetime/date
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+
+        # Handle Enum
+        if isinstance(obj, Enum):
+            return obj.value
+
+        # Handle set
+        if isinstance(obj, set):
+            return list(obj)
+
+        # Last resort: convert to string (never raise)
+        try:
+            return str(obj)
+        except Exception:
+            return f"<non-serializable: {type(obj).__name__}>"
 
 
 class RedisService:
@@ -86,9 +126,9 @@ class RedisService:
         if client is None:
             return False
         if ttl:
-            result = await client.setex(key, ttl, json.dumps(value))
+            result = await client.setex(key, ttl, json.dumps(value, cls=AuroraJSONEncoder))
             return bool(result)
-        result = await client.set(key, json.dumps(value))
+        result = await client.set(key, json.dumps(value, cls=AuroraJSONEncoder))
         return bool(result)
 
     async def delete(self, key: str) -> bool:
@@ -136,9 +176,9 @@ class RedisService:
         if client is None:
             return False
         if ttl:
-            result = client.setex(key, ttl, json.dumps(value))
+            result = client.setex(key, ttl, json.dumps(value, cls=AuroraJSONEncoder))
             return bool(result)
-        result = client.set(key, json.dumps(value))
+        result = client.set(key, json.dumps(value, cls=AuroraJSONEncoder))
         return bool(result)
 
 

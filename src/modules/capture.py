@@ -19,6 +19,8 @@ from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
+from src.lib.encrypted_field import EncryptedFieldDescriptor
+from src.lib.encryption import DataClassification
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -62,38 +64,12 @@ class CapturedContent(Base):
     is_routed = Column(Integer, default=0)  # 0 = pending, 1 = routed to destination
     captured_at = Column(DateTime, nullable=False)
 
-    @property
-    def content(self) -> str:
-        """Get decrypted content."""
-        if self._content_plaintext is None:
-            return ""
-        try:
-            import json
-            data = json.loads(str(self._content_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "content")
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._content_plaintext)
-
-    @content.setter
-    def content(self, value: str | None) -> None:
-        """Set encrypted content."""
-        if value is None:
-            setattr(self, '_content_plaintext', None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value, int(self.user_id), DataClassification.SENSITIVE, "content"
-            )
-            setattr(self, '_content_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, '_content_plaintext', value)
+    # Encrypted field (fail-hard, no plaintext fallback)
+    content = EncryptedFieldDescriptor(
+        plaintext_attr="_content_plaintext",
+        field_name="content",
+        classification=DataClassification.SENSITIVE,
+    )
 
 
 class CaptureModule(GDPRModuleMixin):

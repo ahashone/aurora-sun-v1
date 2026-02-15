@@ -33,6 +33,8 @@ from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
+from src.lib.encrypted_field import EncryptedFieldDescriptor
+from src.lib.encryption import DataClassification
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -114,43 +116,15 @@ class Motif(Base):
     signal_count = Column(Integer, default=0)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # Encrypted field (fail-hard, no plaintext fallback)
+    name = EncryptedFieldDescriptor(
+        plaintext_attr="_name_plaintext",
+        field_name="name",
+        classification=DataClassification.SENSITIVE,
+    )
+
     # Relationships
     signals = relationship("MotifSignal", back_populates="motif", lazy="select")
-
-    @property
-    def name(self) -> str:
-        """Get decrypted name."""
-        if self._name_plaintext is None:
-            return ""
-        try:
-            import json
-            data = json.loads(str(self._name_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(
-                    encrypted, int(self.user_id), "name"
-                )
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._name_plaintext)
-
-    @name.setter
-    def name(self, value: str | None) -> None:
-        """Set encrypted name."""
-        if value is None:
-            setattr(self, "_name_plaintext", None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value, int(self.user_id), DataClassification.SENSITIVE, "name"
-            )
-            setattr(self, "_name_plaintext", json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, "_name_plaintext", value)
 
 
 class MotifSignal(Base):
@@ -177,43 +151,15 @@ class MotifSignal(Base):
     _signal_text_plaintext = Column("signal_text", Text, nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # Encrypted field (fail-hard, no plaintext fallback)
+    signal_text = EncryptedFieldDescriptor(
+        plaintext_attr="_signal_text_plaintext",
+        field_name="signal_text",
+        classification=DataClassification.SENSITIVE,
+    )
+
     # Relationships
     motif = relationship("Motif", back_populates="signals")
-
-    @property
-    def signal_text(self) -> str:
-        """Get decrypted signal text."""
-        if self._signal_text_plaintext is None:
-            return ""
-        try:
-            import json
-            data = json.loads(str(self._signal_text_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(
-                    encrypted, int(self.user_id), "signal_text"
-                )
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._signal_text_plaintext)
-
-    @signal_text.setter
-    def signal_text(self, value: str | None) -> None:
-        """Set encrypted signal text."""
-        if value is None:
-            setattr(self, "_signal_text_plaintext", None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value, int(self.user_id), DataClassification.SENSITIVE, "signal_text"
-            )
-            setattr(self, "_signal_text_plaintext", json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, "_signal_text_plaintext", value)
 
 
 # =============================================================================

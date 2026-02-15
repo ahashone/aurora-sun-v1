@@ -68,8 +68,8 @@ def test_session_updated_at_changes_on_update(db_session):
     assert session.updated_at >= original_updated
 
 
-def test_session_metadata_json_serialization(db_session):
-    """Test session metadata is correctly serialized to JSON."""
+def test_session_metadata_json_serialization(db_session, encryption_service):
+    """Test session metadata is correctly serialized to JSON (using encrypted_metadata)."""
     metadata = {
         "string": "value",
         "number": 42,
@@ -77,22 +77,24 @@ def test_session_metadata_json_serialization(db_session):
         "list": [1, 2, 3],
         "nested": {"a": "b"},
     }
-    session = Session(user_id=1, session_metadata=metadata)
+    session = Session(user_id=1)
+    session.encrypted_metadata = metadata
     db_session.add(session)
     db_session.commit()
 
     # Fetch from database to ensure round-trip serialization
     fetched = db_session.query(Session).filter_by(id=session.id).first()
-    assert fetched.session_metadata == metadata
+    assert fetched.encrypted_metadata == metadata
 
 
 def test_session_empty_metadata(db_session):
     """Test session with null metadata."""
-    session = Session(user_id=1, session_metadata=None)
+    session = Session(user_id=1)
+    session.encrypted_metadata = None
     db_session.add(session)
     db_session.commit()
 
-    assert session.session_metadata is None
+    assert session.encrypted_metadata is None
 
 
 def test_session_multiple_sessions_same_user(db_session):
@@ -159,19 +161,20 @@ def test_session_state_variants(db_session):
         assert session.state == expected_state
 
 
-def test_session_metadata_update(db_session):
-    """Test updating session metadata."""
-    session = Session(user_id=1, session_metadata={"initial": "data"})
+def test_session_metadata_update(db_session, encryption_service):
+    """Test updating session metadata (using encrypted_metadata)."""
+    session = Session(user_id=1)
+    session.encrypted_metadata = {"initial": "data"}
     db_session.add(session)
     db_session.commit()
 
     # Update metadata
-    session.session_metadata = {"updated": "value", "count": 5}
+    session.encrypted_metadata = {"updated": "value", "count": 5}
     db_session.commit()
 
     # Fetch and verify
     fetched = db_session.query(Session).filter_by(id=session.id).first()
-    assert fetched.session_metadata == {"updated": "value", "count": 5}
+    assert fetched.encrypted_metadata == {"updated": "value", "count": 5}
 
 
 def test_session_is_active_idle_state(db_session):
@@ -237,15 +240,15 @@ def test_session_set_and_get_sensitive_metadata(db_session, encryption_service):
     assert decrypted == metadata
 
 
-def test_session_get_sensitive_metadata_fallback_to_plaintext(db_session):
-    """Test get_sensitive_metadata falls back to session_metadata."""
+def test_session_get_sensitive_metadata_no_fallback(db_session):
+    """Test get_sensitive_metadata returns None when no encrypted data (no plaintext fallback)."""
     session = Session(user_id=1, session_metadata={"plaintext": "data"})
     db_session.add(session)
     db_session.commit()
 
-    # No encrypted metadata, should fall back to session_metadata
+    # No encrypted metadata, should return None (no fallback to session_metadata)
     metadata = session.get_sensitive_metadata(user_id=1)
-    assert metadata == {"plaintext": "data"}
+    assert metadata is None
 
 
 def test_session_get_sensitive_metadata_none_when_no_metadata(db_session):

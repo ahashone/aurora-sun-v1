@@ -191,6 +191,8 @@ class AuthService:
             "iat": token.issued_at,
             "exp": token.expires_at,
             "type": token.token_type,
+            "iss": "aurora-sun",
+            "aud": "aurora-sun-api",
         }
         return pyjwt.encode(payload, self.secret_key, algorithm="HS256")
 
@@ -206,7 +208,11 @@ class AuthService:
         """
         try:
             payload = pyjwt.decode(
-                jwt_token, self.secret_key, algorithms=["HS256"]
+                jwt_token,
+                self.secret_key,
+                algorithms=["HS256"],
+                audience="aurora-sun-api",
+                issuer="aurora-sun",
             )
 
             token = AuthToken(

@@ -7,13 +7,17 @@ Covers:
 - Counter operations (incr, expire)
 - Connection handling (with mocks)
 - Sync vs async methods
+- Custom JSON encoder (dataclasses, datetime, etc.)
 """
 
+from dataclasses import dataclass
+from datetime import datetime, date
+from enum import Enum
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from src.services.redis_service import RedisService, get_redis_service
+from src.services.redis_service import AuroraJSONEncoder, RedisService, get_redis_service
 
 # =============================================================================
 # Mock Redis Client
@@ -445,3 +449,151 @@ async def test_special_characters_in_key(redis_service):
     for key in special_keys:
         await redis_service.set(key, f"value_{key}")
         assert await redis_service.get(key) == f'"value_{key}"'
+
+
+# =============================================================================
+# Custom JSON Encoder Tests (CRIT-6)
+# =============================================================================
+
+
+@dataclass
+class TestSession:
+    """Test dataclass for encoder testing."""
+    name: str
+    count: int
+    created_at: datetime
+    tags: set[str]
+
+
+class TestStatus(Enum):
+    """Test enum for encoder testing."""
+    PENDING = "pending"
+    ACTIVE = "active"
+    DONE = "done"
+
+
+@pytest.mark.asyncio
+async def test_encoder_handles_dataclass(redis_service):
+    """Test that custom encoder handles dataclass instances."""
+    session = TestSession(
+        name="test_session",
+        count=42,
+        created_at=datetime(2026, 2, 15, 10, 30, 0),
+        tags={"tag1", "tag2"}
+    )
+
+    # Should not raise TypeError
+    result = await redis_service.set("session_key", session)
+    assert result is True
+
+    # Verify it was stored correctly (as JSON string)
+    stored_value = await redis_service.get("session_key")
+    assert stored_value is not None
+    assert "test_session" in stored_value
+    assert "42" in stored_value
+    assert "2026-02-15T10:30:00" in stored_value
+    # Set is converted to list
+    assert "tag1" in stored_value and "tag2" in stored_value
+
+
+@pytest.mark.asyncio
+async def test_encoder_handles_datetime_objects(redis_service):
+    """Test that custom encoder handles datetime and date objects."""
+    test_data = {
+        "timestamp": datetime(2026, 2, 15, 14, 30, 45),
+        "date_only": date(2026, 2, 15),
+        "name": "test"
+    }
+
+    result = await redis_service.set("datetime_key", test_data)
+    assert result is True
+
+    stored_value = await redis_service.get("datetime_key")
+    assert stored_value is not None
+    assert "2026-02-15T14:30:45" in stored_value  # datetime.isoformat()
+    assert "2026-02-15" in stored_value  # date.isoformat()
+
+
+@pytest.mark.asyncio
+async def test_encoder_handles_enum_objects(redis_service):
+    """Test that custom encoder handles Enum objects."""
+    test_data = {
+        "status": TestStatus.ACTIVE,
+        "description": "test"
+    }
+
+    result = await redis_service.set("enum_key", test_data)
+    assert result is True
+
+    stored_value = await redis_service.get("enum_key")
+    assert stored_value is not None
+    assert "active" in stored_value  # Enum.value
+
+
+@pytest.mark.asyncio
+async def test_encoder_handles_set_objects(redis_service):
+    """Test that custom encoder handles set objects."""
+    test_data = {
+        "tags": {"python", "redis", "testing"},
+        "name": "test"
+    }
+
+    result = await redis_service.set("set_key", test_data)
+    assert result is True
+
+    stored_value = await redis_service.get("set_key")
+    assert stored_value is not None
+    # Set is converted to list (order may vary)
+    assert "python" in stored_value
+    assert "redis" in stored_value
+    assert "testing" in stored_value
+
+
+@pytest.mark.asyncio
+async def test_encoder_handles_nested_dataclass(redis_service):
+    """Test that custom encoder handles nested dataclass instances."""
+    @dataclass
+    class NestedSession:
+        """Nested dataclass for testing."""
+        outer_name: str
+        inner_session: TestSession
+
+    nested = NestedSession(
+        outer_name="outer",
+        inner_session=TestSession(
+            name="inner",
+            count=99,
+            created_at=datetime(2026, 1, 1),
+            tags=set()
+        )
+    )
+
+    result = await redis_service.set("nested_key", nested)
+    assert result is True
+
+    stored_value = await redis_service.get("nested_key")
+    assert stored_value is not None
+    assert "outer" in stored_value
+    assert "inner" in stored_value
+    assert "99" in stored_value
+
+
+@pytest.mark.asyncio
+async def test_encoder_never_raises(redis_service):
+    """Test that encoder never raises exceptions (safe fallback)."""
+    # Test with a non-serializable object
+    class CustomClass:
+        def __init__(self):
+            self.value = "test"
+
+    test_data = {
+        "custom": CustomClass(),
+        "name": "test"
+    }
+
+    # Should not raise, should convert to string
+    result = await redis_service.set("custom_key", test_data)
+    assert result is True
+
+    stored_value = await redis_service.get("custom_key")
+    assert stored_value is not None

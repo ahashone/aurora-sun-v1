@@ -33,6 +33,8 @@ from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
+from src.lib.encrypted_field import EncryptedFieldDescriptor
+from src.lib.encryption import DataClassification
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -93,46 +95,15 @@ class Belief(Base):
     contradiction_index = Column(Float, default=0.0)  # 0.0-1.0
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # Encrypted field (fail-hard, no plaintext fallback)
+    belief_text = EncryptedFieldDescriptor(
+        plaintext_attr="_belief_text_plaintext",
+        field_name="belief_text",
+        classification=DataClassification.ART_9_SPECIAL,
+    )
+
     # Relationships
     evidence_items = relationship("BeliefEvidence", back_populates="belief", lazy="select")
-
-    @property
-    def belief_text(self) -> str:
-        """Get decrypted belief text."""
-        if self._belief_text_plaintext is None:
-            return ""
-        try:
-            import json
-            data = json.loads(str(self._belief_text_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(
-                    encrypted, int(self.user_id), "belief_text"
-                )
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._belief_text_plaintext)
-
-    @belief_text.setter
-    def belief_text(self, value: str | None) -> None:
-        """Set encrypted belief text."""
-        if value is None:
-            setattr(self, "_belief_text_plaintext", None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value,
-                int(self.user_id),
-                DataClassification.ART_9_SPECIAL,
-                "belief_text",
-            )
-            setattr(self, "_belief_text_plaintext", json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, "_belief_text_plaintext", value)
 
 
 class BeliefEvidence(Base):
@@ -156,46 +127,15 @@ class BeliefEvidence(Base):
     evidence_type = Column(String(20), nullable=False)  # supporting | contradicting
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
+    # Encrypted field (fail-hard, no plaintext fallback)
+    evidence_text = EncryptedFieldDescriptor(
+        plaintext_attr="_evidence_text_plaintext",
+        field_name="evidence_text",
+        classification=DataClassification.ART_9_SPECIAL,
+    )
+
     # Relationships
     belief = relationship("Belief", back_populates="evidence_items")
-
-    @property
-    def evidence_text(self) -> str:
-        """Get decrypted evidence text."""
-        if self._evidence_text_plaintext is None:
-            return ""
-        try:
-            import json
-            data = json.loads(str(self._evidence_text_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(
-                    encrypted, int(self.user_id), "evidence_text"
-                )
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._evidence_text_plaintext)
-
-    @evidence_text.setter
-    def evidence_text(self, value: str | None) -> None:
-        """Set encrypted evidence text."""
-        if value is None:
-            setattr(self, "_evidence_text_plaintext", None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value,
-                int(self.user_id),
-                DataClassification.ART_9_SPECIAL,
-                "evidence_text",
-            )
-            setattr(self, "_evidence_text_plaintext", json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, "_evidence_text_plaintext", value)
 
 
 # =============================================================================

@@ -11,7 +11,7 @@ services:
     environment:
       - AURORA_ENVIRONMENT=production
       - DATABASE_URL=postgresql://aurora:${POSTGRES_PASSWORD}@postgres:5432/aurora_sun
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - NEO4J_URL=neo4j://neo4j:7687
       - QDRANT_URL=http://qdrant:6333
       - LETTA_URL=http://letta:8080
@@ -161,7 +161,7 @@ services:
 
   # Letta Memory Service
   letta:
-    image: letta/letta:latest
+    image: letta/letta:0.6.5
     container_name: aurora-letta
     restart: unless-stopped
     environment:

@@ -291,8 +291,13 @@ def _compute_cycle_log_hmac(log: RIACycleLog) -> str:
 
     key_material = os.environ.get("AURORA_MASTER_KEY", "")
     if not key_material:
+        env = os.environ.get("AURORA_ENVIRONMENT", "development")
+        if env in ("production", "staging"):
+            raise RuntimeError(
+                "AURORA_MASTER_KEY is required in production/staging for RIA cycle log integrity"
+            )
         _logging.getLogger(__name__).warning(
-            "AURORA_MASTER_KEY not set; using insecure fallback for cycle log HMAC"
+            "AURORA_MASTER_KEY not set; using insecure fallback for cycle log HMAC (dev only)"
         )
         key_material = "dev-only-insecure-key"
 

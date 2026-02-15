@@ -15,6 +15,9 @@ from __future__ import annotations
 import os
 
 import uvicorn
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env before any config access
 
 from src.api import create_app
 

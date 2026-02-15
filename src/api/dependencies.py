@@ -141,7 +141,12 @@ class InputSanitizerDependency:
         try:
             raw_model_instance = self.model(**body)
         except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Validation error: {e}")
+            import os
+            env = os.environ.get("AURORA_ENVIRONMENT", "development")
+            if env in ("production", "staging"):
+                raise HTTPException(status_code=422, detail="Invalid request data")
+            else:
+                raise HTTPException(status_code=422, detail=f"Validation error: {e}")
 
         # Sanitize the model instance
         sanitized_model_instance = self._sanitize_model(raw_model_instance, "", self.llm_fields, self.storage_fields)

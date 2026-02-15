@@ -7,9 +7,12 @@ Covers:
 - LRU eviction
 - Size limits
 - Redis persistence (mocked)
+- Dataclass serialization (CRIT-6)
 """
 
 import asyncio
+from dataclasses import dataclass
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -418,3 +421,121 @@ async def test_overwrite_updates_ttl(store):
 
     # Should still exist (new TTL)
     assert await store.get("key1") == "value2"
+
+
+# =============================================================================
+# Dataclass Serialization Tests (CRIT-6)
+# =============================================================================
+
+
+@dataclass
+class MockPlanningSession:
+    """Mock planning session for testing dataclass serialization."""
+    scope: str
+    priority_count: int
+    created_at: datetime
+    tags: set[str]
+
+
+@dataclass
+class MockFutureLetterSession:
+    """Mock future letter session for testing dataclass serialization."""
+    time_horizon: int
+    letter_content: str
+    created_at: datetime
+
+
+@pytest.mark.asyncio
+async def test_store_dataclass_instance(store):
+    """Test that BoundedStateStore can store dataclass instances (CRIT-6)."""
+    session = MockPlanningSession(
+        scope="Complete project",
+        priority_count=5,
+        created_at=datetime(2026, 2, 15, 10, 0, 0),
+        tags={"urgent", "work"}
+    )
+
+    # Should not raise TypeError when serializing to Redis
+    result = await store.set("planning_session", session)
+    assert result is True
+
+    # Verify Redis.set was called (which would have triggered JSON encoding)
+    store._redis.set.assert_called()
+
+    # Verify it's stored and can be retrieved from in-memory store
+    # Note: In-memory retrieval returns the original dataclass
+    retrieved = await store.get("planning_session")
+    assert retrieved is not None
+    assert isinstance(retrieved, MockPlanningSession)
+    assert retrieved.scope == "Complete project"
+    assert retrieved.priority_count == 5
+    assert retrieved.created_at == datetime(2026, 2, 15, 10, 0, 0)
+    assert retrieved.tags == {"urgent", "work"}
+
+
+@pytest.mark.asyncio
+async def test_store_nested_dataclass(store):
+    """Test storing complex nested dataclass structures."""
+    @dataclass
+    class OuterSession:
+        """Outer session for testing."""
+        name: str
+        inner: MockPlanningSession
+
+    outer = OuterSession(
+        name="test_session",
+        inner=MockPlanningSession(
+            scope="Inner scope",
+            priority_count=3,
+            created_at=datetime(2026, 1, 1),
+            tags=set()
+        )
+    )
+
+    # Should not raise TypeError when serializing to Redis
+    result = await store.set("nested_session", outer)
+    assert result is True
+
+    # Verify Redis.set was called (would have triggered nested serialization)
+    store._redis.set.assert_called()
+
+    retrieved = await store.get("nested_session")
+    assert retrieved is not None
+    assert isinstance(retrieved, OuterSession)
+    assert retrieved.name == "test_session"
+    assert retrieved.inner.scope == "Inner scope"
+    assert retrieved.inner.priority_count == 3
+
+
+@pytest.mark.asyncio
+async def test_store_multiple_session_types(store):
+    """Test storing different session types simultaneously."""
+    planning = MockPlanningSession(
+        scope="Planning test",
+        priority_count=1,
+        created_at=datetime(2026, 2, 15),
+        tags={"test"}
+    )
+
+    future_letter = MockFutureLetterSession(
+        time_horizon=10,
+        letter_content="Dear future self...",
+        created_at=datetime(2026, 2, 15, 12, 0, 0)
+    )
+
+    # Store both - should not raise TypeError
+    await store.set("session:planning:123", planning)
+    await store.set("session:future_letter:456", future_letter)
+
+    # Retrieve both
+    retrieved_planning = await store.get("session:planning:123")
+    retrieved_letter = await store.get("session:future_letter:456")
+
+    assert retrieved_planning is not None
+    assert isinstance(retrieved_planning, MockPlanningSession)
+    assert retrieved_planning.scope == "Planning test"
+
+    assert retrieved_letter is not None
+    assert isinstance(retrieved_letter, MockFutureLetterSession)
+    assert retrieved_letter.time_horizon == 10
+    assert retrieved_letter.letter_content == "Dear future self..."

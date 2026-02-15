@@ -85,6 +85,8 @@ class Session(Base):
     # Note: The Python attribute is named 'session_metadata' to avoid conflict
     # with SQLAlchemy's reserved 'metadata' attribute on DeclarativeBase.
     # The database column is still named 'metadata'.
+    # DEPRECATED: Legacy plaintext metadata. All new metadata must use encrypted_metadata.
+    # Will be removed in a future migration after data migration is complete.
     session_metadata = Column("metadata", JSON, nullable=True)
 
     # Encrypted metadata column for sensitive session context.
@@ -132,14 +134,9 @@ class Session(Base):
         """Get decrypted sensitive metadata. Data Classification: SENSITIVE.
 
         Uses the property pattern consistent with User.name, SensoryProfile.modality_loads, etc.
-        Falls back to plaintext session_metadata if no encrypted data is available.
+        Returns None if no encrypted data is available (no plaintext fallback).
         """
         if self._encrypted_metadata_plaintext is None:
-            # Fallback to plaintext metadata
-            if self.session_metadata:
-                meta = self.session_metadata
-                if isinstance(meta, dict):
-                    return meta
             return None
         try:
             encrypted_dict = json.loads(str(self._encrypted_metadata_plaintext))
@@ -245,11 +242,6 @@ class Session(Base):
                     user_id,
                 )
                 return None
-        # Fallback to plaintext metadata
-        if self.session_metadata:
-            meta = self.session_metadata
-            if isinstance(meta, dict):
-                return meta
         return None
 
 
