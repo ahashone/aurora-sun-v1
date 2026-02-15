@@ -26,7 +26,6 @@ Usage:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -41,13 +40,9 @@ from src.lib.encryption import (
     EncryptionServiceError,
     get_encryption_service,
 )
+from src.lib.security import hash_uid
 
 logger = logging.getLogger(__name__)
-
-
-def _hash_uid(user_id: int) -> str:
-    """Return a 12-char SHA-256 prefix for log-safe user identification."""
-    return hashlib.sha256(str(user_id).encode()).hexdigest()[:12]
 
 
 # =============================================================================
@@ -213,7 +208,6 @@ class CrisisService:
         "can't cope",
         "overwhelming",
         "falling apart",
-        "falling apart",
         "losing control",
         "not okay",
         "not doing well",
@@ -262,7 +256,7 @@ class CrisisService:
             "text": None,
         },
         CountryCode.NL: {
-            "name": "Telefoon青少年的",
+            "name": "113 Zelfmoordpreventie",
             "number": "0800 0113",
             "website": "113.nl",
             "text": "Text 113 to 4301",
@@ -379,18 +373,20 @@ class CrisisService:
 
         # Check for warning signals
         warning_score = 0
+        best_warning_signal: str | None = None
         for signal in self.WARNING_SIGNALS:
             if signal in message_lower:
                 severity = self._calculate_signal_severity(signal, message_lower)
                 if severity > warning_score:
                     warning_score = severity
+                    best_warning_signal = signal
 
         if warning_score >= 5:
-            if warning_score > crisis_score:
+            if warning_score > crisis_score and best_warning_signal:
                 detected_signal = CrisisSignal(
-                    signal=signal,
+                    signal=best_warning_signal,
                     severity=warning_score,
-                    context=self._extract_context(message, signal),
+                    context=self._extract_context(message, best_warning_signal),
                 )
             return CrisisLevel.WARNING
 
@@ -499,7 +495,7 @@ class CrisisService:
         if len(self._crisis_alert_timestamps[user_id]) >= self.CRISIS_ALERT_MAX_PER_HOUR:
             logger.warning(
                 "crisis_alert_rate_limited user_hash=%s alerts_in_window=%d",
-                _hash_uid(user_id),
+                hash_uid(user_id),
                 len(self._crisis_alert_timestamps[user_id]),
             )
             return False
@@ -567,11 +563,16 @@ class CrisisService:
         self,
         user_id: int,
         signal: CrisisSignal | None,
+        country: str = "US",
     ) -> CrisisResponse:
-        """Handle immediate crisis level."""
-        # Get user's country for hotline (would come from user profile in production)
-        # For now, use default
-        hotline_info = await self.get_hotline("US")
+        """Handle immediate crisis level.
+
+        Args:
+            user_id: User identifier
+            signal: Detected crisis signal
+            country: Country code for hotline lookup (default: US)
+        """
+        hotline_info = await self.get_hotline(country)
 
         hotline_text = f"\n\nCrisis Hotline: {hotline_info['number']}"
         if hotline_info.get("text"):
@@ -731,18 +732,12 @@ class CrisisService:
             )
             self._crisis_log[user_id].append(encrypted.to_db_dict())
         except EncryptionServiceError:
-            # Fallback: store without encryption (dev mode only)
-            logger.warning("crisis_event_encryption_failed_storing_plaintext")
-            plaintext_record: dict[str, str | int | None] = {
-                "ciphertext": json.dumps(event),
-                "classification": "plaintext_fallback",
-                "version": 0,
-            }
-            self._crisis_log[user_id].append(plaintext_record)
+            logger.error("crisis_event_encryption_failed — refusing plaintext storage")
+            raise
 
         logger.info(
             "crisis_event_logged user_hash=%s level=%s",
-            _hash_uid(user_id),
+            hash_uid(user_id),
             level.value,
         )
 

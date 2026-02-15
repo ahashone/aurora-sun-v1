@@ -33,6 +33,10 @@ os.environ.setdefault(
     "AURORA_HASH_SALT",
     base64.b64encode(b"test-salt-for-hashing-32bytes!!").decode(),
 )
+os.environ.setdefault(
+    "AURORA_API_SECRET_KEY",
+    "test-secret-key-for-jwt-signing-at-least-32-bytes-long",
+)
 
 # ---------------------------------------------------------------------------
 # Application imports (after env vars are set)

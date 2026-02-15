@@ -25,13 +25,22 @@ Reference: ROADMAP 5.4, ARCHITECTURE.md Section 14 (SW-14: REST API)
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from typing import Any
 
 from fastapi import APIRouter as FastAPIRouter
+from fastapi import Depends
 from pydantic import BaseModel, Field
 
+from src.api.dependencies import (
+    APIRateLimiter,
+    InputSanitizerDependency,
+    get_current_user_id,
+    require_admin,
+)
 from src.api.schemas import error_response, success_response
-from src.lib.errors import AUTH_REQUIRED, NOT_IMPLEMENTED
+from src.lib.errors import NOT_IMPLEMENTED
+from src.lib.security import hash_uid, sanitize_for_storage
 
 logger = logging.getLogger(__name__)
 
@@ -139,33 +148,38 @@ async def health_check() -> dict[str, Any]:
 
 
 @router.get("/health/detailed")
-async def health_check_detailed(user_id: int | None = None) -> dict[str, Any]:
+async def health_check_detailed(
+    user_id: int = Depends(require_admin),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
-    Detailed health check endpoint (requires authentication/admin role).
+    Detailed health check endpoint (requires admin role).
 
     Detailed info separated from public /health (information disclosure prevention).
 
     Args:
-        user_id: Authenticated admin user ID (placeholder for auth middleware)
+        user_id: Authenticated admin user ID (via require_admin dependency)
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with detailed health status or error
     """
     from datetime import datetime
 
-    # TODO: Add actual authentication/admin role check via middleware
-    if user_id is None:
-        return error_response(AUTH_REQUIRED, "Authentication required")
+    logger.info("Detailed health check accessed by admin user_hash=%s", hash_uid(user_id))
 
     return success_response({
         "status": "healthy",
         "version": "0.1.0",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     })
 
 
 @router.post("/auth/token")
-async def get_auth_token(telegram_id: int) -> dict[str, Any]:
+async def get_auth_token(
+    telegram_id: int,
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()), # Add rate limiter
+) -> dict[str, Any]:
     """
     Get authentication token for a Telegram user.
 
@@ -174,10 +188,12 @@ async def get_auth_token(telegram_id: int) -> dict[str, Any]:
 
     Args:
         telegram_id: Telegram user ID
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with NOT_IMPLEMENTED error
     """
+    # TODO: Implement actual authentication via Telegram ID and generate JWT
     return error_response(
         NOT_IMPLEMENTED,
         "Authentication not yet implemented. Use Telegram bot.",
@@ -190,12 +206,16 @@ async def get_auth_token(telegram_id: int) -> dict[str, Any]:
 
 
 @router.get("/visions")
-async def list_visions(user_id: int) -> dict[str, Any]:
+async def list_visions(
+    user_id: int = Depends(get_current_user_id),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     List all visions for a user.
 
     Args:
         user_id: User ID
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with list of visions
@@ -205,7 +225,17 @@ async def list_visions(user_id: int) -> dict[str, Any]:
 
 
 @router.post("/visions")
-async def create_vision(user_id: int, data: CreateVisionRequest) -> dict[str, Any]:
+async def create_vision(
+    user_id: int = Depends(get_current_user_id),
+    data: CreateVisionRequest = Depends(
+        InputSanitizerDependency(
+            CreateVisionRequest,
+            llm_fields=["title", "description"],
+            storage_fields=["title", "description"]
+        )
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Create a new vision.
 
@@ -214,6 +244,7 @@ async def create_vision(user_id: int, data: CreateVisionRequest) -> dict[str, An
     Args:
         user_id: User ID
         data: Validated vision data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created vision
@@ -223,13 +254,18 @@ async def create_vision(user_id: int, data: CreateVisionRequest) -> dict[str, An
 
 
 @router.get("/goals")
-async def list_goals(user_id: int, vision_id: int | None = None) -> dict[str, Any]:
+async def list_goals(
+    user_id: int = Depends(get_current_user_id),
+    vision_id: int | None = None,
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     List all goals for a user.
 
     Args:
         user_id: User ID
         vision_id: Optional vision ID filter
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with list of goals
@@ -239,7 +275,17 @@ async def list_goals(user_id: int, vision_id: int | None = None) -> dict[str, An
 
 
 @router.post("/goals")
-async def create_goal(user_id: int, data: CreateGoalRequest) -> dict[str, Any]:
+async def create_goal(
+    user_id: int = Depends(get_current_user_id),
+    data: CreateGoalRequest = Depends(
+        InputSanitizerDependency(
+            CreateGoalRequest,
+            llm_fields=["title", "description"],
+            storage_fields=["title", "description"]
+        )
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Create a new goal.
 
@@ -248,6 +294,7 @@ async def create_goal(user_id: int, data: CreateGoalRequest) -> dict[str, Any]:
     Args:
         user_id: User ID
         data: Validated goal data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created goal
@@ -258,9 +305,10 @@ async def create_goal(user_id: int, data: CreateGoalRequest) -> dict[str, Any]:
 
 @router.get("/tasks")
 async def list_tasks(
-    user_id: int,
+    user_id: int = Depends(get_current_user_id),
     goal_id: int | None = None,
     status: str | None = None,
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
 ) -> dict[str, Any]:
     """
     List all tasks for a user.
@@ -269,6 +317,7 @@ async def list_tasks(
         user_id: User ID
         goal_id: Optional goal ID filter
         status: Optional status filter
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with list of tasks
@@ -278,7 +327,17 @@ async def list_tasks(
 
 
 @router.post("/tasks")
-async def create_task(user_id: int, data: CreateTaskRequest) -> dict[str, Any]:
+async def create_task(
+    user_id: int = Depends(get_current_user_id),
+    data: CreateTaskRequest = Depends(
+        InputSanitizerDependency(
+            CreateTaskRequest,
+            llm_fields=["title", "description"],
+            storage_fields=["title", "description"]
+        )
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Create a new task.
 
@@ -287,6 +346,7 @@ async def create_task(user_id: int, data: CreateTaskRequest) -> dict[str, Any]:
     Args:
         user_id: User ID
         data: Validated task data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created task
@@ -301,7 +361,17 @@ async def create_task(user_id: int, data: CreateTaskRequest) -> dict[str, Any]:
 
 
 @router.post("/captures")
-async def create_capture(user_id: int, data: CreateCaptureRequest) -> dict[str, Any]:
+async def create_capture(
+    user_id: int = Depends(get_current_user_id),
+    data: CreateCaptureRequest = Depends(
+        InputSanitizerDependency(
+            CreateCaptureRequest,
+            llm_fields=["content"],
+            storage_fields=["content"]
+        )
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Create a new capture (text, voice, link, image).
 
@@ -310,6 +380,7 @@ async def create_capture(user_id: int, data: CreateCaptureRequest) -> dict[str, 
     Args:
         user_id: User ID
         data: Validated capture data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created capture
@@ -320,9 +391,8 @@ async def create_capture(user_id: int, data: CreateCaptureRequest) -> dict[str, 
 
 @router.post("/captures/voice")
 async def create_voice_capture(
-    user_id: int,
-    audio_data: bytes,
-    metadata: dict[str, Any],
+    user_id: int = Depends(get_current_user_id),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
 ) -> dict[str, Any]:
     """
     Create a voice capture (transcribed automatically).
@@ -331,6 +401,7 @@ async def create_voice_capture(
         user_id: User ID
         audio_data: Audio file data
         metadata: Capture metadata
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created capture and transcription
@@ -346,7 +417,12 @@ async def create_voice_capture(
 
 
 @router.post("/recall")
-async def recall_knowledge(user_id: int, query: str, limit: int = 10) -> dict[str, Any]:
+async def recall_knowledge(
+    query: str,
+    user_id: int = Depends(get_current_user_id),
+    limit: int = 10,
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Query knowledge graph for relevant captures.
 
@@ -354,12 +430,16 @@ async def recall_knowledge(user_id: int, query: str, limit: int = 10) -> dict[st
         user_id: User ID
         query: Search query
         limit: Max results
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with recall results
     """
+    # Apply sanitize_for_storage to the query string
+    sanitized_query, _ = sanitize_for_storage(query)
+
     # Placeholder - in production, query Neo4j/Qdrant for semantic search
-    return success_response({"query": query, "results": [], "total": 0})
+    return success_response({"query": sanitized_query, "results": [], "total": 0})
 
 
 # =============================================================================
@@ -369,10 +449,11 @@ async def recall_knowledge(user_id: int, query: str, limit: int = 10) -> dict[st
 
 @router.get("/transactions")
 async def list_transactions(
-    user_id: int,
+    user_id: int = Depends(get_current_user_id),
     transaction_type: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
 ) -> dict[str, Any]:
     """
     List transactions for a user.
@@ -382,6 +463,7 @@ async def list_transactions(
         transaction_type: Optional filter (income/expense)
         start_date: Optional start date filter
         end_date: Optional end date filter
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with list of transactions
@@ -391,7 +473,16 @@ async def list_transactions(
 
 
 @router.post("/transactions")
-async def create_transaction(user_id: int, data: CreateTransactionRequest) -> dict[str, Any]:
+async def create_transaction(
+    user_id: int = Depends(get_current_user_id),
+    data: CreateTransactionRequest = Depends(
+        InputSanitizerDependency(
+            CreateTransactionRequest,
+            storage_fields=["description", "category"]
+        )
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Create a new transaction.
 
@@ -400,6 +491,7 @@ async def create_transaction(user_id: int, data: CreateTransactionRequest) -> di
     Args:
         user_id: User ID
         data: Validated transaction data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created transaction
@@ -409,12 +501,16 @@ async def create_transaction(user_id: int, data: CreateTransactionRequest) -> di
 
 
 @router.get("/balance")
-async def get_balance(user_id: int) -> dict[str, Any]:
+async def get_balance(
+    user_id: int = Depends(get_current_user_id),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Get account balance for a user.
 
     Args:
         user_id: User ID
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with balance information
@@ -434,7 +530,16 @@ async def get_balance(user_id: int) -> dict[str, Any]:
 
 
 @router.post("/energy")
-async def log_energy(user_id: int, data: LogEnergyRequest) -> dict[str, Any]:
+async def log_energy(
+    user_id: int = Depends(get_current_user_id),
+    data: LogEnergyRequest = Depends(
+        InputSanitizerDependency(
+            LogEnergyRequest,
+            storage_fields=["note"]
+        )
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Log energy level.
 
@@ -443,6 +548,7 @@ async def log_energy(user_id: int, data: LogEnergyRequest) -> dict[str, Any]:
     Args:
         user_id: User ID
         data: Validated energy log data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created energy log
@@ -452,7 +558,11 @@ async def log_energy(user_id: int, data: LogEnergyRequest) -> dict[str, Any]:
 
 
 @router.post("/wearables")
-async def submit_wearable_data(user_id: int, data: SubmitWearableDataRequest) -> dict[str, Any]:
+async def submit_wearable_data(
+    data: SubmitWearableDataRequest,
+    user_id: int = Depends(get_current_user_id),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Submit wearable data (heart rate, steps, sleep, etc.).
 
@@ -461,6 +571,7 @@ async def submit_wearable_data(user_id: int, data: SubmitWearableDataRequest) ->
     Args:
         user_id: User ID
         data: Validated wearable data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with acknowledgment
@@ -476,9 +587,10 @@ async def submit_wearable_data(user_id: int, data: SubmitWearableDataRequest) ->
 
 @router.get("/calendar/events")
 async def list_calendar_events(
-    user_id: int,
+    user_id: int = Depends(get_current_user_id),
     start_date: str | None = None,
     end_date: str | None = None,
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
 ) -> dict[str, Any]:
     """
     List calendar events.
@@ -487,6 +599,7 @@ async def list_calendar_events(
         user_id: User ID
         start_date: Optional start date filter
         end_date: Optional end date filter
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with list of calendar events
@@ -496,7 +609,17 @@ async def list_calendar_events(
 
 
 @router.post("/calendar/events")
-async def create_calendar_event(user_id: int, data: CreateCalendarEventRequest) -> dict[str, Any]:
+async def create_calendar_event(
+    user_id: int = Depends(get_current_user_id),
+    data: CreateCalendarEventRequest = Depends(
+        InputSanitizerDependency(
+            CreateCalendarEventRequest,
+            llm_fields=["title", "description"],
+            storage_fields=["title", "description"]
+        )
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Create a calendar event.
 
@@ -505,6 +628,7 @@ async def create_calendar_event(user_id: int, data: CreateCalendarEventRequest) 
     Args:
         user_id: User ID
         data: Validated event data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with created event
@@ -512,19 +636,22 @@ async def create_calendar_event(user_id: int, data: CreateCalendarEventRequest) 
     # Placeholder
     return success_response({"id": 1, "user_id": user_id, **data.model_dump()})
 
-
 # =============================================================================
 # User Profile & Preferences Endpoints
 # =============================================================================
 
 
 @router.get("/user/profile")
-async def get_user_profile(user_id: int) -> dict[str, Any]:
+async def get_user_profile(
+    user_id: int = Depends(get_current_user_id),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Get user profile.
 
     Args:
         user_id: User ID
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with user profile
@@ -539,7 +666,13 @@ async def get_user_profile(user_id: int) -> dict[str, Any]:
 
 
 @router.put("/user/preferences")
-async def update_user_preferences(user_id: int, data: UpdatePreferencesRequest) -> dict[str, Any]:
+async def update_user_preferences(
+    user_id: int = Depends(get_current_user_id),
+    data: UpdatePreferencesRequest = Depends(
+        InputSanitizerDependency(UpdatePreferencesRequest)
+    ),
+    rate_limiter: APIRateLimiter = Depends(APIRateLimiter()),
+) -> dict[str, Any]:
     """
     Update user preferences.
 
@@ -548,6 +681,7 @@ async def update_user_preferences(user_id: int, data: UpdatePreferencesRequest) 
     Args:
         user_id: User ID
         data: Validated preferences data
+        rate_limiter: Rate limiting dependency
 
     Returns:
         Envelope with updated preferences

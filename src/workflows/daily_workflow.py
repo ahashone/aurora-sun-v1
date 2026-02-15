@@ -436,14 +436,8 @@ class DailyWorkflow:
         messages: list[str] = []
 
         # TODO: Get yesterday's wins from DailyPlan
-        # yesterday_wins = await self._get_yesterday_wins(user_id)
 
         # TODO: Call morning hooks from registered modules
-        # for module_name, hooks in self._hooks.items():
-        #     if hooks.morning:
-        #         hook_result = await hooks.morning(module_ctx)
-        #         if hook_result:
-        #             messages.append(hook_result)
 
         message = "\n".join(messages) if messages else "Good morning! Let's start your day."
 
@@ -591,8 +585,6 @@ class DailyWorkflow:
             Tuple of (vision_texts, goals)
         """
         # TODO: Load vision and goals from database
-        # visions = await self._get_visions(user_id)
-        # goals = await self._get_90d_goals(user_id)
 
         visions: list[str] = []
         goals: list[Goal] = []

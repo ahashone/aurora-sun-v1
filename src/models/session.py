@@ -212,12 +212,12 @@ class Session(Base):
                 classification=DataClassification.SENSITIVE,
             )
             self._encrypted_metadata_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception:
-            logger.warning(
-                "Failed to encrypt session metadata for user %d, storing as plaintext fallback",
-                user_id,
+        except Exception as e:
+            logger.error(
+                "Encryption failed for session metadata, refusing to store plaintext",
+                extra={"user_id": user_id, "error": type(e).__name__},
             )
-            self.session_metadata = metadata  # type: ignore[assignment]
+            raise ValueError("Cannot store data: encryption service unavailable") from e
 
     def get_sensitive_metadata(self, user_id: int) -> dict[str, Any] | None:
         """

@@ -50,10 +50,30 @@ from src.services.revenue_tracker import (
 
 @pytest.fixture
 def mock_encryption():
-    """Create a mock EncryptionService that fails (plaintext fallback)."""
+    """Create a mock EncryptionService that encrypts/decrypts transparently."""
     mock = MagicMock(spec=EncryptionService)
-    mock.encrypt_field.side_effect = EncryptionServiceError("test mode")
-    mock.decrypt_field.side_effect = EncryptionServiceError("test mode")
+
+    def _mock_encrypt(plaintext_json, **kwargs):
+        mock_field = MagicMock()
+        mock_field.ciphertext = plaintext_json
+        mock_field.to_db_dict.return_value = {
+            "ciphertext": plaintext_json,
+            "classification": kwargs.get("classification", "financial").value
+                if hasattr(kwargs.get("classification"), "value")
+                else str(kwargs.get("classification", "financial")),
+            "version": 1,
+            "field_salt": None,
+            "envelope_nonce": None,
+        }
+        return mock_field
+
+    def _mock_decrypt(encrypted_field, **kwargs):
+        if hasattr(encrypted_field, 'ciphertext'):
+            return encrypted_field.ciphertext
+        return str(encrypted_field)
+
+    mock.encrypt_field.side_effect = _mock_encrypt
+    mock.decrypt_field.side_effect = _mock_decrypt
     return mock
 
 

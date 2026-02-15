@@ -426,13 +426,8 @@ class RevenueTracker:
             )
             self._entries[user_id].append(encrypted.to_db_dict())
         except EncryptionServiceError:
-            logger.warning("revenue_entry_encryption_failed_storing_plaintext")
-            plaintext_record: dict[str, str | int | None] = {
-                "ciphertext": json.dumps(entry.to_dict()),
-                "classification": "plaintext_fallback",
-                "version": 0,
-            }
-            self._entries[user_id].append(plaintext_record)
+            logger.error("revenue_entry_encryption_failed — refusing plaintext storage")
+            raise
 
         return f"entry_{len(self._entries[user_id])}"
 

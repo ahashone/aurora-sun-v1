@@ -352,7 +352,7 @@ class GDPRService:
         is_complete = len(errors) == 0
         return {
             "export_metadata": {
-                "user_id": user_id,
+                "user_id_hash": hash_uid(user_id),
                 "exported_at": datetime.now(UTC).isoformat(),
                 "aurora_version": "v1",
                 "total_records": len(exports),

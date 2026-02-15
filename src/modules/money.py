@@ -1203,9 +1203,8 @@ class MoneyModule(GDPRModuleMixin):
                 parsed_data.get("description", ""), user_id, "description", self._encryption
             )
         except EncryptionServiceError:
-            logger.warning("money_transaction_encryption_failed")
-            amount_enc = json.dumps({"plaintext_fallback": str(parsed_data["amount"])})
-            desc_enc = json.dumps({"plaintext_fallback": parsed_data.get("description", "")})
+            logger.error("money_transaction_encryption_failed — refusing plaintext storage")
+            raise
 
         record: dict[str, Any] = {
             "amount_encrypted": amount_enc,
@@ -1329,8 +1328,8 @@ class MoneyModule(GDPRModuleMixin):
             name_enc = _encrypt_financial(name, user_id, "recurring_name", self._encryption)
             amount_enc = _encrypt_financial(str(amount), user_id, "amount", self._encryption)
         except EncryptionServiceError:
-            name_enc = json.dumps({"plaintext_fallback": name})
-            amount_enc = json.dumps({"plaintext_fallback": str(amount)})
+            logger.error("money_recurring_encryption_failed — refusing plaintext storage")
+            raise
 
         self._recurring[user_id].append({
             "name_encrypted": name_enc,

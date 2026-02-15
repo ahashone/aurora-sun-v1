@@ -402,8 +402,6 @@ async def vision_display_node(state: DailyGraphState) -> dict[str, Any]:
     logger.info("Node: vision_display for user_hash=%s", hash_uid(user_id))
 
     # TODO: Load vision and goals from database
-    # visions = await get_visions(user_id)
-    # goals = await get_90d_goals(user_id)
 
     return {
         "current_stage": GraphNode.VISION_DISPLAY,
@@ -550,10 +548,8 @@ async def end_node(state: DailyGraphState) -> dict[str, Any]:
     logger.info("Node: end for user_hash=%s", hash_uid(user_id))
 
     # TODO: Save DailyPlan to database
-    # await save_daily_plan(state)
 
     # TODO: Feed Aurora narrative
-    # await feed_aurora_summary(state)
 
     return {
         "current_stage": GraphNode.END,

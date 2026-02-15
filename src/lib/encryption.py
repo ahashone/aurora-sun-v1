@@ -808,7 +808,10 @@ class EncryptionService:
                     base64.b64encode(new_salt).decode(),
                 )
             except Exception:
-                pass
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "Failed to store user salt in keyring for user_%d", user_id,
+                )
 
         # Clear cache to force re-derivation
         if user_id in self._user_key_cache:
@@ -846,7 +849,10 @@ class EncryptionService:
             try:
                 keyring.delete_password(self._keyring_service, salt_key)
             except Exception:
-                pass  # Best effort
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "Failed to delete user salt from keyring for user_%d", user_id,
+                )
 
         # Note: We don't destroy the master key as it's shared
 

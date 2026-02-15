@@ -9,7 +9,7 @@ services:
     container_name: aurora-sun-app
     restart: unless-stopped
     environment:
-      - AURORA_ENV=production
+      - AURORA_ENVIRONMENT=production
       - DATABASE_URL=postgresql://aurora:${POSTGRES_PASSWORD}@postgres:5432/aurora_sun
       - REDIS_URL=redis://redis:6379/0
       - NEO4J_URL=neo4j://neo4j:7687

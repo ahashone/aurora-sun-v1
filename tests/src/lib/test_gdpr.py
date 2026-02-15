@@ -368,12 +368,13 @@ class TestGDPRServiceExport:
 
     @pytest.mark.asyncio
     async def test_export_returns_metadata(self, service_with_modules):
-        """Export returns export_metadata with user_id and timestamp."""
+        """Export returns export_metadata with hashed user_id and timestamp."""
         service, _, _ = service_with_modules
         result = await service.export_user_data(user_id=42)
 
         assert "export_metadata" in result
-        assert result["export_metadata"]["user_id"] == 42
+        assert "user_id_hash" in result["export_metadata"]
+        assert "user_id" not in result["export_metadata"]
         assert result["export_metadata"]["aurora_version"] == "v1"
         assert result["export_metadata"]["exported_at"] is not None
 

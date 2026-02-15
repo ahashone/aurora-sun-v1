@@ -45,9 +45,32 @@ from src.services.crisis_service import (
 
 @pytest.fixture
 def crisis_service():
-    """Create a CrisisService with mocked encryption that falls back to plaintext."""
+    """Create a CrisisService with mocked encryption (encrypt/decrypt succeed)."""
+    import json as _json
+    from datetime import datetime, timezone
+
     mock_encryption = MagicMock()
-    mock_encryption.encrypt_field.side_effect = EncryptionServiceError("test mode")
+
+    # encrypt_field returns an object with to_db_dict()
+    def _mock_encrypt(plaintext_json, **kwargs):
+        mock_field = MagicMock()
+        mock_field.to_db_dict.return_value = {
+            "ciphertext": plaintext_json,  # store the JSON as-is for test readability
+            "classification": "art_9_special",
+            "version": 1,
+            "field_salt": None,
+            "envelope_nonce": None,
+        }
+        return mock_field
+
+    mock_encryption.encrypt_field.side_effect = _mock_encrypt
+
+    # decrypt_field returns the original plaintext JSON
+    def _mock_decrypt(encrypted_field, **kwargs):
+        return encrypted_field.ciphertext if hasattr(encrypted_field, 'ciphertext') else str(encrypted_field)
+
+    mock_encryption.decrypt_field.side_effect = _mock_decrypt
+
     return CrisisService(encryption_service=mock_encryption)
 
 
@@ -1120,7 +1143,7 @@ class TestLogCrisisEvent:
 
     @pytest.mark.asyncio
     async def test_event_logged_with_signal(self, crisis_service):
-        """Crisis event with signal is logged correctly (plaintext fallback in test)."""
+        """Crisis event with signal is logged correctly (encrypted in test)."""
         import json
 
         signal = CrisisSignal(signal="suicide", severity=9, context="test")
@@ -1130,9 +1153,9 @@ class TestLogCrisisEvent:
 
         assert 1 in crisis_service._crisis_log
         stored = crisis_service._crisis_log[1][0]
-        # In test mode, encryption fails and events are stored as plaintext_fallback
-        assert stored["classification"] == "plaintext_fallback"
-        event = json.loads(str(stored["ciphertext"]))
+        assert stored["classification"] == "art_9_special"
+        # Mock encrypt_field stores JSON as ciphertext for test readability
+        event = json.loads(stored["ciphertext"])
         assert event["user_id"] == 1
         assert event["level"] == "crisis"
         assert event["signal"] == "suicide"
@@ -1141,7 +1164,7 @@ class TestLogCrisisEvent:
 
     @pytest.mark.asyncio
     async def test_event_logged_without_signal(self, crisis_service):
-        """Crisis event without signal is logged with None values."""
+        """Crisis event without signal is logged as encrypted."""
         import json
 
         await crisis_service._log_crisis_event(
@@ -1149,9 +1172,22 @@ class TestLogCrisisEvent:
         )
 
         stored = crisis_service._crisis_log[1][0]
-        event = json.loads(str(stored["ciphertext"]))
+        assert stored["classification"] == "art_9_special"
+        event = json.loads(stored["ciphertext"])
         assert event["signal"] is None
         assert event["signal_severity"] is None
+
+    @pytest.mark.asyncio
+    async def test_event_logging_raises_on_encryption_failure(self):
+        """Crisis event logging raises when encryption fails (fail-closed)."""
+        mock_encryption = MagicMock()
+        mock_encryption.encrypt_field.side_effect = EncryptionServiceError("test")
+        service = CrisisService(encryption_service=mock_encryption)
+
+        with pytest.raises(EncryptionServiceError):
+            await service._log_crisis_event(
+                user_id=1, level=CrisisLevel.CRISIS, signal=None
+            )
 
     @pytest.mark.asyncio
     async def test_multiple_events_accumulated(self, crisis_service):
@@ -1402,9 +1438,8 @@ class TestSignalCompleteness:
         assert len(crisis_service.CRISIS_SIGNALS) == 20
 
     def test_warning_signals_count(self, crisis_service):
-        """WARNING_SIGNALS list has expected number of entries (including duplicate)."""
-        # Note: "falling apart" appears twice in the source
-        assert len(crisis_service.WARNING_SIGNALS) == 14
+        """WARNING_SIGNALS list has expected number of entries (no duplicates)."""
+        assert len(crisis_service.WARNING_SIGNALS) == 13
 
     def test_no_overlap_between_crisis_and_warning(self, crisis_service):
         """No signal appears in both CRISIS_SIGNALS and WARNING_SIGNALS."""

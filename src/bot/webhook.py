@@ -101,15 +101,19 @@ def validate_webhook_request(
     import hmac
 
     expected_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
-    if expected_secret:
-        if not secret_header or not hmac.compare_digest(secret_header, expected_secret):
-            logger.warning("Webhook request failed secret validation")
+    if not expected_secret:
+        environment = os.environ.get("AURORA_ENVIRONMENT", "development")
+        if environment == "production":
+            logger.error("TELEGRAM_WEBHOOK_SECRET not set in production — rejecting all webhook requests")
             return False
+        logger.warning("TELEGRAM_WEBHOOK_SECRET not set — webhook validation skipped (dev mode)")
+    elif not secret_header or not hmac.compare_digest(secret_header, expected_secret):
+        logger.warning("Webhook request failed secret validation")
+        return False
 
     if client_ip and not is_telegram_ip(client_ip):
         logger.warning("Webhook request from non-Telegram IP: %s", client_ip)
         # Log but don't block — IP ranges may change, and proxies complicate this
-        # For strict enforcement, return False here
 
     return True
 
@@ -482,10 +486,15 @@ def create_app() -> Application[Any, Any, Any, Any, Any, Any]:
     # The secret is validated at the web framework level (Starlette/FastAPI middleware)
     # via validate_webhook_request() before the update reaches this Application.
     webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    environment = os.environ.get("AURORA_ENVIRONMENT", "development")
     if not webhook_secret:
+        if environment == "production":
+            raise ValueError(
+                "TELEGRAM_WEBHOOK_SECRET is required in production. "
+                "Set it in the environment to secure webhook requests."
+            )
         logger.warning(
-            "TELEGRAM_WEBHOOK_SECRET not set. "
-            "Webhook requests will not be validated with a secret token."
+            "TELEGRAM_WEBHOOK_SECRET not set — webhook requests will not be validated (dev mode)."
         )
 
     application = Application.builder().token(bot_token).build()

@@ -101,6 +101,6 @@ See [ROADMAP.md](ROADMAP.md) for the phase plan and [TODO.md](TODO.md) for curre
 
 ## Known Limitations
 
-- Test coverage is low (~7%) -- only encryption module fully tested
+- Test coverage is at ~88% across 3035+ tests
 - Voice input (Groq Whisper STT) not yet implemented
 - Neo4j, Qdrant, and Letta integrations planned for Phase 3+
