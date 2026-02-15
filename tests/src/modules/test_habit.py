@@ -9,14 +9,18 @@ Tests cover:
 - Helper methods (2-minute rule, CoherenceRatio, tracking info)
 - Edge cases (unknown state, empty input, session cleanup)
 - Daily workflow hooks
+- Encryption (CRIT-5: All Art.9 behavioral data encrypted)
 """
 
 from __future__ import annotations
+
+import json
 
 import pytest
 
 from src.core.module_context import ModuleContext
 from src.core.segment_context import SegmentContext
+from src.lib.encrypted_field import EncryptedFieldDescriptor
 from src.modules.habit import (
     Habit,
     HabitCreationSession,
@@ -549,3 +553,86 @@ class TestHabitModel:
     def test_habitlog_tablename(self) -> None:
         """HabitLog model has correct tablename."""
         assert HabitLog.__tablename__ == "habit_logs"
+
+
+# =============================================================================
+# TestEncryption (CRIT-5)
+# =============================================================================
+
+class TestEncryption:
+    """Test that all Art.9 behavioral data fields use EncryptedFieldDescriptor."""
+
+    def test_name_uses_encrypted_field_descriptor(self) -> None:
+        """name field uses EncryptedFieldDescriptor."""
+        assert isinstance(Habit.name, EncryptedFieldDescriptor)
+
+    def test_identity_statement_uses_encrypted_field_descriptor(self) -> None:
+        """identity_statement field uses EncryptedFieldDescriptor."""
+        assert isinstance(Habit.identity_statement, EncryptedFieldDescriptor)
+
+    def test_cue_uses_encrypted_field_descriptor(self) -> None:
+        """cue field uses EncryptedFieldDescriptor."""
+        assert isinstance(Habit.cue, EncryptedFieldDescriptor)
+
+    def test_craving_uses_encrypted_field_descriptor(self) -> None:
+        """craving field uses EncryptedFieldDescriptor."""
+        assert isinstance(Habit.craving, EncryptedFieldDescriptor)
+
+    def test_response_uses_encrypted_field_descriptor(self) -> None:
+        """response field uses EncryptedFieldDescriptor."""
+        assert isinstance(Habit.response, EncryptedFieldDescriptor)
+
+    def test_reward_uses_encrypted_field_descriptor(self) -> None:
+        """reward field uses EncryptedFieldDescriptor."""
+        assert isinstance(Habit.reward, EncryptedFieldDescriptor)
+
+    def test_all_descriptors_use_fail_hard(self) -> None:
+        """All encrypted fields use fail_hard=True (no plaintext fallback)."""
+        for field_name in ["name", "identity_statement", "cue", "craving", "response", "reward"]:
+            descriptor = getattr(Habit, field_name)
+            assert descriptor.fail_hard is True, f"{field_name} must have fail_hard=True"
+
+    def test_encrypted_field_round_trip(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Encrypted fields can be set and retrieved (round-trip test)."""
+        habit = Habit(user_id=1, is_active=1, cumulative_count=0)
+        habit.name = "Test Habit"
+        habit.identity_statement = "I am someone who tests"
+        habit.cue = "After breakfast"
+        habit.craving = "I want to verify encryption"
+        habit.response = "Write a test"
+        habit.reward = "Check it off"
+
+        db_session.add(habit)
+        db_session.commit()
+
+        # Retrieve from DB
+        retrieved = db_session.query(Habit).filter_by(user_id=1).first()
+        assert retrieved is not None
+        assert retrieved.name == "Test Habit"
+        assert retrieved.identity_statement == "I am someone who tests"
+        assert retrieved.cue == "After breakfast"
+        assert retrieved.craving == "I want to verify encryption"
+        assert retrieved.response == "Write a test"
+        assert retrieved.reward == "Check it off"
+
+    def test_encrypted_fields_stored_as_json(self, db_session) -> None:  # type: ignore[no-untyped-def]
+        """Encrypted fields are stored as JSON with ciphertext in database."""
+        habit = Habit(user_id=2, is_active=1, cumulative_count=0)
+        habit.name = "Secret Habit"
+        habit.identity_statement = "I am secure"
+
+        db_session.add(habit)
+        db_session.commit()
+
+        # Check raw storage
+        raw_name = habit._name_plaintext
+        raw_identity = habit._identity_statement_plaintext
+
+        # Should be JSON strings containing ciphertext
+        name_data = json.loads(str(raw_name))
+        identity_data = json.loads(str(raw_identity))
+
+        assert "ciphertext" in name_data, "name should store ciphertext"
+        assert "ciphertext" in identity_data, "identity_statement should store ciphertext"
+        assert "classification" in name_data
+        assert name_data["classification"] == "sensitive"

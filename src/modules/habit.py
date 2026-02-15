@@ -33,6 +33,8 @@ from src.core.daily_workflow_hooks import DailyWorkflowHooks
 from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
+from src.lib.encrypted_field import EncryptedFieldDescriptor
+from src.lib.encryption import DataClassification
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -89,54 +91,57 @@ class Habit(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     _name_plaintext = Column("name", Text, nullable=False)
-    identity_statement = Column(Text, nullable=True)
-    cue = Column(Text, nullable=True)
-    craving = Column(Text, nullable=True)
-    response = Column(Text, nullable=True)
-    reward = Column(Text, nullable=True)
+    _identity_statement_plaintext = Column("identity_statement", Text, nullable=True)
+    _cue_plaintext = Column("cue", Text, nullable=True)
+    _craving_plaintext = Column("craving", Text, nullable=True)
+    _response_plaintext = Column("response", Text, nullable=True)
+    _reward_plaintext = Column("reward", Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     is_active = Column(Integer, default=1)  # 1 = active, 0 = inactive
     cumulative_count = Column(Integer, default=0)
     habit_stack_after = Column(Text, nullable=True)  # "After I [existing]..."
     coherence_goal_id = Column(Integer, ForeignKey("goals.id"), nullable=True)
 
+    # Encrypted field descriptors (CRIT-5: All Art.9 behavioral data must be encrypted)
+    name = EncryptedFieldDescriptor(
+        plaintext_attr="_name_plaintext",
+        field_name="name",
+        classification=DataClassification.SENSITIVE,
+        fail_hard=True,
+    )
+    identity_statement = EncryptedFieldDescriptor(
+        plaintext_attr="_identity_statement_plaintext",
+        field_name="identity_statement",
+        classification=DataClassification.SENSITIVE,
+        fail_hard=True,
+    )
+    cue = EncryptedFieldDescriptor(
+        plaintext_attr="_cue_plaintext",
+        field_name="cue",
+        classification=DataClassification.SENSITIVE,
+        fail_hard=True,
+    )
+    craving = EncryptedFieldDescriptor(
+        plaintext_attr="_craving_plaintext",
+        field_name="craving",
+        classification=DataClassification.SENSITIVE,
+        fail_hard=True,
+    )
+    response = EncryptedFieldDescriptor(
+        plaintext_attr="_response_plaintext",
+        field_name="response",
+        classification=DataClassification.SENSITIVE,
+        fail_hard=True,
+    )
+    reward = EncryptedFieldDescriptor(
+        plaintext_attr="_reward_plaintext",
+        field_name="reward",
+        classification=DataClassification.SENSITIVE,
+        fail_hard=True,
+    )
+
     # Relationships
     logs = relationship("HabitLog", back_populates="habit", lazy="select")
-
-    @property
-    def name(self) -> str:
-        """Get decrypted name."""
-        if self._name_plaintext is None:
-            return ""
-        try:
-            import json
-            data = json.loads(str(self._name_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(
-                    encrypted, int(self.user_id), "name"
-                )
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._name_plaintext)
-
-    @name.setter
-    def name(self, value: str | None) -> None:
-        """Set encrypted name."""
-        if value is None:
-            setattr(self, "_name_plaintext", None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value, int(self.user_id), DataClassification.SENSITIVE, "name"
-            )
-            setattr(self, "_name_plaintext", json.dumps(encrypted.to_db_dict()))
-        except Exception:
-            setattr(self, "_name_plaintext", value)
 
 
 class HabitLog(Base):
