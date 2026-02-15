@@ -940,7 +940,7 @@ class SecurityHeaders:
     - X-Content-Type-Options: nosniff
     - X-Frame-Options: DENY
     - X-XSS-Protection: 1; mode=block
-    - Strict-Transport-Security: max-age=31536000; includeSubDomains
+    - Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
     - Content-Security-Policy: (configurable)
     - Referrer-Policy: strict-origin-when-cross-origin
 
@@ -978,7 +978,7 @@ class SecurityHeaders:
             "X-Content-Type-Options": "nosniff",
             "X-Frame-Options": "DENY",
             "X-XSS-Protection": "1; mode=block",
-            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+            "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
             "Referrer-Policy": "strict-origin-when-cross-origin",
             "Content-Security-Policy": csp or cls.DEFAULT_CSP,
             # Permissions Policy (formerly Feature Policy)

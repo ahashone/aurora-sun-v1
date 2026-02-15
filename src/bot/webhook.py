@@ -48,6 +48,7 @@ from src.bot.onboarding import OnboardingFlow
 from src.lib.encryption import hash_telegram_id
 
 # Security imports
+from src.lib.ai_guardrails import AIGuardrails
 from src.lib.security import InputSanitizer, RateLimiter, RateLimitTier, SecurityEventLogger, hash_uid
 from src.models.consent import ConsentStatus, ConsentValidationResult
 from src.services.crisis_service import CrisisLevel, check_and_handle_crisis
@@ -488,9 +489,11 @@ class TelegramWebhookHandler:
         This is where the magic happens:
         1. Extract message text
         2. Sanitize input (XSS, path traversal, markdown)
-        3. Pass to Intent Router
-        4. Route to appropriate module
-        5. Send response
+        3. AI guardrail: prompt injection check (MED-4)
+        4. Pass to Intent Router
+        5. Route to appropriate module
+        6. AI guardrail: output validation (MED-4)
+        7. Send response
 
         Args:
             update: Telegram Update
@@ -503,6 +506,22 @@ class TelegramWebhookHandler:
 
         # Sanitize all user input before LLM/storage processing
         message_text = InputSanitizer.sanitize_all(message_text)
+
+        # =============================================================================
+        # MED-4: AI guardrail — prompt injection detection BEFORE LLM activation
+        # =============================================================================
+        guardrail_result = AIGuardrails.check_input(message_text, user_id=user.id)
+        if guardrail_result.blocked:
+            logger.warning(
+                "ai_guardrail_blocked_input user_hash=%s risk_score=%.3f",
+                hash_uid(user.id),
+                guardrail_result.risk_score,
+            )
+            if update.message:
+                await update.message.reply_text(guardrail_result.safe_response)
+            return
+        # Use sanitized text from guardrails (injection patterns neutralized)
+        message_text = guardrail_result.sanitized_text
 
         # Get the module registry
         if self._module_registry is None:
@@ -550,9 +569,22 @@ class TelegramWebhookHandler:
                     # Call module handler
                     response = await module.handle(message_text, ctx)
 
-                    # Send response
+                    # =============================================================================
+                    # MED-4: AI guardrail — output validation BEFORE delivery to user
+                    # =============================================================================
                     if update.message and response and response.text:
-                        await update.message.reply_text(response.text)
+                        output_check = AIGuardrails.check_output(
+                            response.text, user_id=user.id
+                        )
+                        if output_check.safe:
+                            await update.message.reply_text(response.text)
+                        else:
+                            logger.warning(
+                                "ai_guardrail_blocked_output user_hash=%s issues=%s",
+                                hash_uid(user.id),
+                                output_check.issues,
+                            )
+                            await update.message.reply_text(output_check.safe_response)
 
                 except Exception:
                     logger.exception("Error routing to module '%s'", module.name if module else "unknown")

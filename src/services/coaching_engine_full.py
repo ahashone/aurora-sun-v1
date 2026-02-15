@@ -26,6 +26,7 @@ from enum import StrEnum
 from typing import Any
 
 from src.core.segment_context import SegmentContext
+from src.lib.ai_guardrails import AIGuardrails
 from src.lib.security import sanitize_for_llm
 
 
@@ -367,6 +368,17 @@ class FullCoachingEngine:
         # Sanitize user message before it enters the LLM pipeline (prompt injection prevention)
         sanitized_message = sanitize_for_llm(message)
 
+        # =============================================================================
+        # MED-4: AI guardrail — prompt injection detection BEFORE LLM activation
+        # =============================================================================
+        guardrail_input = AIGuardrails.check_input(sanitized_message, user_id=user_id)
+        if guardrail_input.blocked:
+            result = CoachingResult()
+            result.text = guardrail_input.safe_response
+            result.step_completed = CoachingStep.END
+            return result
+        sanitized_message = guardrail_input.sanitized_text
+
         # Build context
         context = CoachingContext(
             user_id=user_id,
@@ -394,6 +406,18 @@ class FullCoachingEngine:
 
         # Step 4: COACHING - generate response with 4-tier fallback
         result = await self.generate_coaching_response(context, result)
+
+        # =============================================================================
+        # MED-4: AI guardrail — output validation BEFORE delivery
+        # =============================================================================
+        if result.text:
+            output_check = AIGuardrails.check_output(
+                result.text, user_id=user_id
+            )
+            if not output_check.safe:
+                result.text = output_check.safe_response
+            else:
+                result.text = output_check.sanitized_text
 
         # Step 5: MEMORY - store interaction
         await self._store_memory(context, result)

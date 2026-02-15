@@ -17,22 +17,12 @@ dependencies = [
     "alembic==1.14.1",
     "asyncpg==0.30.0",
 
-    # AI/LLM
-    "anthropic==0.43.0",
-    "openai==1.59.6",
-    "groq==0.13.1",
-
-    # LangGraph & DSPy (pre-release: API may change between versions)
+    # LangGraph (used in daily_graph.py)
     "langgraph==0.2.62",        # pre-release: pin strictly
-    "dspy-ai==2.5.43",          # pre-release: pin strictly
-    "pydantic-ai==0.0.39",      # pre-release: pin strictly
 
     # Vector & Graph
     "neo4j==5.27.0",
     "qdrant-client==1.12.1",
-
-    # Memory
-    "letta-client==0.6.5",
 
     # Redis
     "redis==5.2.1",
@@ -43,7 +33,6 @@ dependencies = [
     "PyJWT==2.9.0",
 
     # Monitoring
-    "langfuse==2.58.2",
     "prometheus-client==0.21.1",
 
     # Utilities
@@ -54,6 +43,15 @@ dependencies = [
     # Logging
     "structlog==24.4.0",
 ]
+
+# Phase 3+ dependencies: not yet imported in src/, add back when wired.
+# "anthropic==0.43.0",       # AI/LLM provider
+# "openai==1.59.6",          # AI/LLM provider
+# "groq==0.13.1",            # AI/LLM provider (fast inference)
+# "dspy-ai==2.5.43",         # DSPy optimization (pre-release)
+# "pydantic-ai==0.0.39",     # PydanticAI agent framework (pre-release)
+# "letta-client==0.6.5",     # Letta memory service client
+# "langfuse==2.58.2",        # LLM observability
 
 [project.optional-dependencies]
 dev = [

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import base64
 import os
+import shutil
+import tempfile
 
 import pytest
 from sqlalchemy import create_engine
@@ -37,6 +39,13 @@ os.environ.setdefault(
     "AURORA_API_SECRET_KEY",
     "test-secret-key-for-jwt-signing-at-least-32-bytes-long",
 )
+
+# Create a temporary salt directory for the entire test session so that
+# EncryptionService never writes to ~/.aurora-sun/salts/ (which may not
+# exist in CI or on a clean machine).  The directory is cleaned up by the
+# _salt_dir_cleanup session fixture below.
+_TEST_SALT_DIR = tempfile.mkdtemp(prefix="aurora_test_salts_")
+os.environ["AURORA_SALT_DIR"] = _TEST_SALT_DIR
 
 # ---------------------------------------------------------------------------
 # Application imports (after env vars are set)
@@ -92,6 +101,28 @@ def db_session():
 
     session.close()
     engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 2b. salt_dir cleanup -- remove temp salt directory after the test session
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True, scope="session")
+def _salt_dir_cleanup():
+    """
+    Session-scoped autouse fixture that cleans up the temporary salt
+    directory created at module-import time.
+
+    AURORA_SALT_DIR is set at the top of this file so that every
+    EncryptionService instance (including those created at module level
+    in individual test files) writes salt files to a temporary directory
+    instead of the user's home directory.  This avoids failures in CI
+    or on machines where ~/.aurora-sun/salts/ does not exist.
+    """
+    yield
+    # Teardown: remove the temp salt directory and unset the env var
+    shutil.rmtree(_TEST_SALT_DIR, ignore_errors=True)
+    os.environ.pop("AURORA_SALT_DIR", None)
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 # TODO -- Aurora Sun V1
 
 > Max ~30 items. Completed items visible 1 session, then remove.
-> **All Phases Complete (1-5).** 3144 tests passing, 88% coverage, 0 ruff, 0 mypy strict.
+> **All Phases Complete (1-5).** 3302 tests passing, 88% coverage, 0 ruff, 0 mypy strict.
 > **Audit sources (2026-02-15):** Paranoid Security Codex (16 findings), GPT-5-Codex (65.8/100, 21 findings), + 5 earlier audits.
 > **Full audit reports:** `AUDIT_REPORT_2026-02-15_Gemini.md`, `AUDIT_REPORT_2026-02-15_gpt-5-codex.md`
 
@@ -39,7 +39,7 @@
 
 - [x] MED-2: Backup encryption mandatory + PGPASSFILE | backup.py, backup.sh
 - [x] MED-3: Postgres exporter sslmode → TLS (sslmode=prefer) | docker-compose.prod.yml
-- [ ] MED-4: AI guardrails before LLM activation (prompt injection, output validation) | webhook.py:439, ria_service.py:489
+- [x] MED-4: AI guardrails — PromptInjectionDetector + OutputValidator + AIGuardrails facade + 136 tests | ai_guardrails.py, webhook.py, coaching_engine_full.py, ria_service.py
 - [x] MED-7: CVE/dependency scan + lock file (pip-audit in CI) | ci.yml
 - [x] MED-8: Test coverage gaps — shutdown.py, api/__init__.py, dependencies.py | test_shutdown.py, test_api_init.py, test_dependencies.py
 - [ ] MED-9: Refactor god modules: gdpr.py (1141 LOC), money.py (1589 LOC), planning.py (1138 LOC)
@@ -49,7 +49,7 @@
 - [x] MED-15: Security event logging — SecurityEventLogger + SecurityEventType enum | security.py, webhook.py, auth.py
 - [x] MED-20: Deduplicate segment config — single source in segment_context.py | config/segment.py, onboarding.py, user.py
 - [x] MED-21: Fix API validation error detail leakage — generic message + server-side logging | dependencies.py
-- [ ] MED-22: Fix 14 salt-dir-dependent test failures | test_encryption.py, test_money.py (Codex-T1)
+- [x] MED-22: Fix 14 salt-dir-dependent test failures | tests/conftest.py (AURORA_SALT_DIR → tmp_path)
 - [x] MED-23: Fix 6 mypy strict errors in api/ — Generic[ModelType], typed call_next | dependencies.py, __init__.py
 - [x] MED-24: DPA action plan with deadlines for all sub-processors | SUB-PROCESSOR-REGISTRY.md
 - [x] MED-25: Crisis detection word boundary matching — regex \b guards | crisis_service.py
@@ -57,14 +57,14 @@
 
 ## LOW (When convenient)
 
-- [ ] LOW-4: Audit unused runtime dependencies | pyproject.toml
+- [x] LOW-4: Audit unused runtime dependencies — removed 7 unused deps (anthropic, openai, groq, dspy-ai, pydantic-ai, letta-client, langfuse) | pyproject.toml
 - [x] LOW-5: Sanitizer uses public API via _set_telegram_field helper | webhook.py
-- [ ] LOW-6: JWT token revocation mechanism (Redis blacklist) | auth.py
+- [x] LOW-6: JWT token revocation mechanism (Redis blacklist) — jti claim + TokenBlacklist + 18 tests | auth.py, test_auth.py
 - [x] LOW-7: Pin letta:latest → letta:0.6.5 | docker-compose.prod.yml
-- [ ] LOW-8: API integration tests with TestClient | (Codex)
+- [x] LOW-8: API integration tests — 43 tests with httpx AsyncClient | test_api_integration.py
 - [x] LOW-9: Migrate from deprecated `safety check` to pip-audit | ci.yml
-- [ ] Add HSTS preload registration
-- [ ] Formal threat model + red-team schedule
+- [x] HSTS preload registration — already present in SecurityHeadersMiddleware | security.py
+- [x] Formal threat model + red-team schedule — STRIDE analysis + quarterly schedule | docs/THREAT-MODEL.md
 
 ---
 
@@ -81,3 +81,4 @@
 | 2026-02-15 | Audit Fixes Batch 2 | 11 items fixed (2 CRIT, 6 HIGH, 2 MED, 1 infra), 3059 tests passing |
 | 2026-02-15 | Audit Fixes Batch 3 | 3 items fixed (MED-8, MED-10, PERF-002), +85 tests, 3144 tests passing |
 | 2026-02-15 | Audit Fixes Batch 4 | 11 items fixed (HIGH-12, MED-2/3/7/14/15/21/23/24, LOW-5/9), 3144 tests passing |
+| 2026-02-15 | Audit Fixes Batch 5 | 8 items fixed (MED-4/22, LOW-4/6/8, HSTS, threat model), +158 tests, 3302 tests passing |

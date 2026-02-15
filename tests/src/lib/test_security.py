@@ -817,11 +817,12 @@ class TestSecurityHeaders:
         assert headers["X-XSS-Protection"] == "1; mode=block"
 
     def test_strict_transport_security(self):
-        """HSTS header has correct values."""
+        """HSTS header has correct values including preload."""
         headers = SecurityHeaders.get_headers()
         hsts = headers["Strict-Transport-Security"]
-        assert "max-age=31536000" in hsts
+        assert "max-age=63072000" in hsts
         assert "includeSubDomains" in hsts
+        assert "preload" in hsts
 
     def test_referrer_policy(self):
         """Referrer-Policy is set to strict-origin-when-cross-origin."""

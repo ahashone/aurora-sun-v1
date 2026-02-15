@@ -38,6 +38,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.segment_context import WorkingStyleCode
+from src.lib.ai_guardrails import AIGuardrails
 from src.models.base import Base
 
 import logging
@@ -527,6 +528,8 @@ class RIAService:
         # - Generate segment-specific hypotheses
         # - Create proposals (NEW_INTERVENTION, MODIFY_INTERVENTION, etc.)
         # - DM admin for approval
+        # MED-4: When LLM generates proposal text, validate via:
+        #   AIGuardrails.check_output(llm_response) before create_proposal()
         _logger.warning("RIA PROPOSE phase is a stub — no proposals generated (cycle=%s)", cycle_id)
 
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
@@ -609,6 +612,25 @@ class RIAService:
             proposal_id: UUID of the created proposal
         """
         import json
+
+        # =============================================================================
+        # MED-4: AI guardrail — validate text fields that may originate from LLM output
+        # before persisting. If LLM-generated proposal text contains leaked internal
+        # data (API keys, DB URIs), redact it before storage.
+        # =============================================================================
+        output_check = AIGuardrails.check_output(description)
+        if output_check.issues:
+            _logger.warning(
+                "ria_proposal_output_guardrail issues=%s", output_check.issues
+            )
+            description = output_check.sanitized_text
+
+        rationale_check = AIGuardrails.check_output(rationale)
+        if rationale_check.issues:
+            _logger.warning(
+                "ria_proposal_rationale_guardrail issues=%s", rationale_check.issues
+            )
+            rationale = rationale_check.sanitized_text
 
         proposal = RIAProposal(
             proposal_id=str(uuid.uuid4()),
