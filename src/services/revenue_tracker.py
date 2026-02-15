@@ -422,7 +422,7 @@ class RevenueTracker:
                 json.dumps(entry.to_dict()),
                 user_id=user_id,
                 classification=DataClassification.FINANCIAL,
-                field_name=f"revenue_entry_{len(self._entries[user_id]) + 1}",
+                field_name="revenue_entry",
             )
             self._entries[user_id].append(encrypted.to_db_dict())
         except EncryptionServiceError:
@@ -444,7 +444,7 @@ class RevenueTracker:
             return result
         try:
             encrypted = EncryptedField.from_db_dict({k: v for k, v in stored.items()})
-            plaintext = self._encryption.decrypt_field(encrypted, user_id=user_id)
+            plaintext = self._encryption.decrypt_field(encrypted, user_id=user_id, field_name="revenue_entry")
             decrypted: dict[str, Any] = json.loads(plaintext)
             return decrypted
         except (EncryptionServiceError, json.JSONDecodeError, KeyError):

@@ -338,6 +338,10 @@ class TelegramWebhookHandler:
         """
         Get user by hashed Telegram ID (no raw PII stored in DB).
 
+        PERF-002: Checks Redis cache first. On cache miss, queries the
+        database and populates the cache for subsequent requests (TTL 300s).
+        Encrypted fields (name) are never cached — only safe fields.
+
         Supports both sync and async SQLAlchemy sessions.
 
         Args:
@@ -346,6 +350,27 @@ class TelegramWebhookHandler:
         Returns:
             User record if found, None otherwise
         """
+        # -----------------------------------------------------------------
+        # PERF-002: Import cache functions (lazy, inside method)
+        # -----------------------------------------------------------------
+        from src.services.user_cache import get_cached_user, set_cached_user
+
+        # -----------------------------------------------------------------
+        # PERF-002: Try Redis cache first
+        # -----------------------------------------------------------------
+        try:
+            cached = await get_cached_user(telegram_id_hash)
+            if cached is not None:
+                # Return a lightweight object with the cached fields
+                from types import SimpleNamespace
+                return SimpleNamespace(**cached)
+        except Exception:
+            # Cache failure must never block the request
+            logger.debug("User cache lookup failed, falling back to DB")
+
+        # -----------------------------------------------------------------
+        # Database lookup (original path)
+        # -----------------------------------------------------------------
         if self._db_session is None:
             logger.warning("No database session available for user lookup")
             return None
@@ -367,10 +392,21 @@ class TelegramWebhookHandler:
                 result = await self._db_session.execute(
                     select(User).where(User.telegram_id == telegram_id_hash)
                 )
-                return result.scalar_one_or_none()
+                user = result.scalar_one_or_none()
             else:
                 # Sync session (for tests and SQLAlchemy < 1.4)
-                return self._db_session.query(User).filter_by(telegram_id=telegram_id_hash).first()
+                user = self._db_session.query(User).filter_by(telegram_id=telegram_id_hash).first()
+
+            # -----------------------------------------------------------------
+            # PERF-002: Populate cache on DB hit
+            # -----------------------------------------------------------------
+            if user is not None:
+                try:
+                    await set_cached_user(telegram_id_hash, user)
+                except Exception:
+                    logger.debug("Failed to populate user cache after DB lookup")
+
+            return user
         except Exception:
             logger.exception("Failed to query user by telegram_id hash")
             return None

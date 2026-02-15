@@ -207,6 +207,7 @@ class Session(Base):
                 plaintext=plaintext,
                 user_id=user_id,
                 classification=DataClassification.SENSITIVE,
+                field_name="session_metadata",
             )
             self._encrypted_metadata_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
         except Exception as e:
@@ -233,7 +234,7 @@ class Session(Base):
             try:
                 encrypted_dict = json.loads(str(self._encrypted_metadata_plaintext))
                 encrypted_field = EncryptedField.from_db_dict(encrypted_dict)
-                plaintext = decrypt_for_user(encrypted_field, user_id)
+                plaintext = decrypt_for_user(encrypted_field, user_id, field_name="session_metadata")
                 result: dict[str, Any] = json.loads(plaintext)
                 return result
             except Exception:

@@ -1,7 +1,7 @@
 # TODO -- Aurora Sun V1
 
 > Max ~30 items. Completed items visible 1 session, then remove.
-> **All Phases Complete (1-5).** 3059 tests passing, 88% coverage, 0 ruff, 0 mypy strict.
+> **All Phases Complete (1-5).** 3144 tests passing, 88% coverage, 0 ruff, 0 mypy strict.
 > **Audit sources (2026-02-15):** Paranoid Security Codex (16 findings), GPT-5-Codex (65.8/100, 21 findings), + 5 earlier audits.
 > **Full audit reports:** `AUDIT_REPORT_2026-02-15_Gemini.md`, `AUDIT_REPORT_2026-02-15_gpt-5-codex.md`
 
@@ -32,7 +32,7 @@
 - [x] HIGH-8: Add processing_restriction column (GDPR Art. 18 freeze/unfreeze) | user.py
 - [ ] HIGH-12: Update cryptography from 42.0.8 to 46.0.5+ | pyproject.toml
 - [x] HIGH-20: Backup encryption for Neo4j/Qdrant — AES-256-GCM via _encrypt_backup_file | backup.py
-- [ ] PERF-002: Redis caching for user lookups | (every webhook hits PG)
+- [x] PERF-002: Redis caching for user lookups | user_cache.py, webhook.py, test_user_cache.py
 - [ ] BLOCKED: Module GDPR delete stubs need DB session injection | (waiting for Ahash)
 
 ## MEDIUM (Backlog)
@@ -41,9 +41,9 @@
 - [ ] MED-3: Postgres exporter sslmode → TLS | docker-compose.prod.yml:324
 - [ ] MED-4: AI guardrails before LLM activation (prompt injection, output validation) | webhook.py:439, ria_service.py:489
 - [ ] MED-7: CVE/dependency scan + lock file (pip-audit in CI) | ci.yml, pyproject.toml
-- [ ] MED-8: Test coverage gaps — shutdown.py (23%), api/__init__.py (36%), dependencies.py (35%)
+- [x] MED-8: Test coverage gaps — shutdown.py, api/__init__.py, dependencies.py | test_shutdown.py, test_api_init.py, test_dependencies.py
 - [ ] MED-9: Refactor god modules: gdpr.py (1141 LOC), money.py (1589 LOC), planning.py (1138 LOC)
-- [ ] MED-10: Add AAD to all AESGCM encrypt calls | encryption.py:553,577,620
+- [x] MED-10: Add AAD to all AESGCM encrypt calls + fix field_name mismatches | encryption.py, session.py, crisis_service.py, revenue_tracker.py
 - [ ] MED-11: Migrate user salt storage from filesystem to DB | encryption.py:360
 - [ ] MED-14: GDPR compliance gaps: retention placeholder, consent overwrites
 - [ ] MED-15: Security event logging — SecurityEventLogger | no SIEM
@@ -79,3 +79,4 @@
 | 2026-02-15 | Audit Round 2 | +2 audits ingested (Paranoid Codex, GPT-5-Codex), 25 new items added |
 | 2026-02-15 | Audit Fixes Batch 1 | 10 items fixed (2 CRIT, 8 HIGH, 1 LOW), 3054 tests passing |
 | 2026-02-15 | Audit Fixes Batch 2 | 11 items fixed (2 CRIT, 6 HIGH, 2 MED, 1 infra), 3059 tests passing |
+| 2026-02-15 | Audit Fixes Batch 3 | 3 items fixed (MED-8, MED-10, PERF-002), +85 tests, 3144 tests passing |

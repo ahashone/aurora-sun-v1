@@ -733,7 +733,7 @@ class CrisisService:
                 json.dumps(event),
                 user_id=user_id,
                 classification=DataClassification.ART_9_SPECIAL,
-                field_name=f"crisis_event_{len(self._crisis_log[user_id]) + 1}",
+                field_name="crisis_event",
             )
             self._crisis_log[user_id].append(encrypted.to_db_dict())
         except EncryptionServiceError:
@@ -764,7 +764,7 @@ class CrisisService:
             encrypted = EncryptedField.from_db_dict(
                 {k: v for k, v in stored.items()}
             )
-            plaintext = self._encryption.decrypt_field(encrypted, user_id=user_id)
+            plaintext = self._encryption.decrypt_field(encrypted, user_id=user_id, field_name="crisis_event")
             decrypted: dict[str, int | str | float | None] = json.loads(plaintext)
             return decrypted
         except (EncryptionServiceError, json.JSONDecodeError, KeyError):

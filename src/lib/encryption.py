@@ -531,26 +531,48 @@ class EncryptionService:
 
         plaintext_bytes = plaintext.encode("utf-8")
 
+        effective_field_name = field_name or "field"
+
         if classification == DataClassification.FINANCIAL:
-            return self._encrypt_envelope(plaintext_bytes, user_id, field_name or "field")
+            return self._encrypt_envelope(plaintext_bytes, user_id, effective_field_name)
         elif classification == DataClassification.ART_9_SPECIAL:
             return self._encrypt_with_field_salt(
-                plaintext_bytes, user_id, field_name or "field"
+                plaintext_bytes, user_id, effective_field_name
             )
         else:
-            return self._encrypt_simple(plaintext_bytes, user_id)
+            return self._encrypt_simple(plaintext_bytes, user_id, effective_field_name)
+
+    @staticmethod
+    def _build_aad(user_id: int, field_name: str) -> bytes:
+        """
+        Build Associated Authenticated Data (AAD) for AES-GCM.
+
+        AAD binds the ciphertext to a specific user and field, preventing
+        ciphertext from being moved between users or fields (ciphertext
+        relocation attack).
+
+        Args:
+            user_id: The user this data belongs to
+            field_name: The field name this data belongs to
+
+        Returns:
+            UTF-8 encoded AAD string in the format "user_id:field_name"
+        """
+        return f"{user_id}:{field_name}".encode("utf-8")
 
     def _encrypt_simple(
         self,
         plaintext: bytes,
         user_id: int,
+        field_name: str,
     ) -> EncryptedField:
         """Encrypt with per-user key only (SENSITIVE)."""
         nonce = os.urandom(self.NONCE_SIZE)
         user_key = self._derive_user_key(user_id)
+        aad = self._build_aad(user_id, field_name)
 
         aesgcm = AESGCM(user_key)
-        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+        ciphertext = aesgcm.encrypt(nonce, plaintext, aad)
 
         return EncryptedField(
             ciphertext=base64.b64encode(nonce + ciphertext).decode(),
@@ -571,10 +593,11 @@ class EncryptionService:
         # Derive field-specific key
         field_key = self._get_field_key(user_id, field_name, field_salt)
 
-        # Encrypt
+        # Encrypt with AAD binding ciphertext to user+field
         nonce = os.urandom(self.NONCE_SIZE)
+        aad = self._build_aad(user_id, field_name)
         aesgcm = AESGCM(field_key)
-        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+        ciphertext = aesgcm.encrypt(nonce, plaintext, aad)
 
         return EncryptedField(
             ciphertext=base64.b64encode(nonce + ciphertext).decode(),
@@ -614,10 +637,11 @@ class EncryptionService:
             dklen=self.KEY_SIZE,
         )
 
-        # Encrypt with field key
+        # Encrypt with field key and AAD binding ciphertext to user+field
         nonce = os.urandom(self.NONCE_SIZE)
+        aad = self._build_aad(user_id, field_name)
         aesgcm = AESGCM(field_key)
-        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+        ciphertext = aesgcm.encrypt(nonce, plaintext, aad)
 
         return EncryptedField(
             ciphertext=base64.b64encode(nonce + ciphertext).decode(),
@@ -659,16 +683,18 @@ class EncryptionService:
             nonce = ciphertext_with_nonce[:self.NONCE_SIZE]
             ciphertext = ciphertext_with_nonce[self.NONCE_SIZE:]
 
+            effective_field_name = field_name or "field"
+
             if classification == DataClassification.FINANCIAL:
                 return self._decrypt_envelope(
-                    ciphertext, nonce, user_id, field_name or "field", encrypted
+                    ciphertext, nonce, user_id, effective_field_name, encrypted
                 )
             elif classification == DataClassification.ART_9_SPECIAL:
                 return self._decrypt_with_field_salt(
-                    ciphertext, nonce, user_id, field_name or "field", encrypted
+                    ciphertext, nonce, user_id, effective_field_name, encrypted
                 )
             else:
-                return self._decrypt_simple(ciphertext, nonce, user_id)
+                return self._decrypt_simple(ciphertext, nonce, user_id, effective_field_name)
 
         except Exception as e:
             raise DecryptionError(f"Decryption failed: {e}") from e
@@ -678,12 +704,14 @@ class EncryptionService:
         ciphertext: bytes,
         nonce: bytes,
         user_id: int,
+        field_name: str,
     ) -> str:
         """Decrypt with per-user key only."""
         user_key = self._derive_user_key(user_id)
+        aad = self._build_aad(user_id, field_name)
 
         aesgcm = AESGCM(user_key)
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, aad)
 
         return plaintext.decode("utf-8")
 
@@ -701,9 +729,10 @@ class EncryptionService:
 
         field_salt = base64.b64decode(encrypted.field_salt)
         field_key = self._get_field_key(user_id, field_name, field_salt)
+        aad = self._build_aad(user_id, field_name)
 
         aesgcm = AESGCM(field_key)
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, aad)
 
         return plaintext.decode("utf-8")
 
@@ -735,9 +764,10 @@ class EncryptionService:
             dklen=self.KEY_SIZE,
         )
 
-        # Decrypt
+        # Decrypt with AAD binding ciphertext to user+field
+        aad = self._build_aad(user_id, field_name)
         aesgcm = AESGCM(field_key)
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, aad)
 
         return plaintext.decode("utf-8")
 
