@@ -48,7 +48,7 @@ from src.bot.onboarding import OnboardingFlow
 from src.lib.encryption import hash_telegram_id
 
 # Security imports
-from src.lib.security import InputSanitizer, RateLimiter, RateLimitTier, hash_uid
+from src.lib.security import InputSanitizer, RateLimiter, RateLimitTier, SecurityEventLogger, hash_uid
 from src.models.consent import ConsentStatus, ConsentValidationResult
 from src.services.crisis_service import CrisisLevel, check_and_handle_crisis
 
@@ -109,6 +109,7 @@ def validate_webhook_request(
         logger.warning("TELEGRAM_WEBHOOK_SECRET not set — webhook validation skipped (dev mode)")
     elif not secret_header or not hmac.compare_digest(secret_header, expected_secret):
         logger.warning("Webhook request failed secret validation")
+        SecurityEventLogger.auth_failure("webhook_secret_mismatch", ip=client_ip or "unknown")
         return False
 
     if client_ip and not is_telegram_ip(client_ip):
@@ -220,6 +221,7 @@ class TelegramWebhookHandler:
         # Check message rate limit (30/min, 100/hour)
         if not await RateLimiter.check_rate_limit(user.id, RateLimitTier.CHAT):
             logger.warning("rate_limit_exceeded user_hash=%s", hash_uid(user.id))
+            SecurityEventLogger.rate_limited("chat", user_id=user.id)
             if update.message:
                 await update.message.reply_text(
                     "You're sending messages too quickly. Please wait a moment."
@@ -265,6 +267,14 @@ class TelegramWebhookHandler:
     # =============================================================================
 
     @staticmethod
+    def _set_telegram_field(obj: Any, attr: str, value: str) -> None:
+        """Set a field on a potentially frozen Telegram object (LOW-5)."""
+        try:
+            object.__setattr__(obj, attr, value)
+        except (AttributeError, TypeError):
+            logger.debug("Could not sanitize %s.%s in-place", type(obj).__name__, attr)
+
+    @staticmethod
     def _sanitize_update_fields(update: Update) -> None:
         """
         Sanitize ALL user-input fields in a Telegram Update (SEC-004).
@@ -285,50 +295,44 @@ class TelegramWebhookHandler:
             update: Telegram Update object (modified in-place)
         """
         # Sanitize message text
-        if update.message and update.message.text:
-            try:
-                update.message._text = InputSanitizer.sanitize_all(
-                    update.message.text
-                )
-            except (AttributeError, TypeError):
-                # Telegram objects may be frozen; log and continue
-                logger.debug("Could not sanitize message.text in-place")
+        if update.message and update.message.text and isinstance(update.message.text, str):
+            TelegramWebhookHandler._set_telegram_field(
+                update.message,
+                "text",
+                InputSanitizer.sanitize_all(update.message.text)
+            )
 
         # Sanitize message caption (photos, videos, documents)
-        if update.message and update.message.caption:
-            try:
-                update.message._caption = InputSanitizer.sanitize_all(
-                    update.message.caption
-                )
-            except (AttributeError, TypeError):
-                logger.debug("Could not sanitize message.caption in-place")
+        if update.message and update.message.caption and isinstance(update.message.caption, str):
+            TelegramWebhookHandler._set_telegram_field(
+                update.message,
+                "caption",
+                InputSanitizer.sanitize_all(update.message.caption)
+            )
 
         # Sanitize callback_query.data (inline keyboard presses)
-        if update.callback_query and update.callback_query.data:
-            try:
-                update.callback_query._data = InputSanitizer.sanitize_all(
-                    update.callback_query.data
-                )
-            except (AttributeError, TypeError):
-                logger.debug("Could not sanitize callback_query.data in-place")
+        if update.callback_query and update.callback_query.data and isinstance(update.callback_query.data, str):
+            TelegramWebhookHandler._set_telegram_field(
+                update.callback_query,
+                "data",
+                InputSanitizer.sanitize_all(update.callback_query.data)
+            )
 
         # Sanitize inline_query.query (inline bot search)
-        if update.inline_query and update.inline_query.query:
-            try:
-                update.inline_query._query = InputSanitizer.sanitize_all(
-                    update.inline_query.query
-                )
-            except (AttributeError, TypeError):
-                logger.debug("Could not sanitize inline_query.query in-place")
+        if update.inline_query and update.inline_query.query and isinstance(update.inline_query.query, str):
+            TelegramWebhookHandler._set_telegram_field(
+                update.inline_query,
+                "query",
+                InputSanitizer.sanitize_all(update.inline_query.query)
+            )
 
         # Sanitize chosen_inline_result.query
-        if update.chosen_inline_result and update.chosen_inline_result.query:
-            try:
-                update.chosen_inline_result._query = InputSanitizer.sanitize_all(
-                    update.chosen_inline_result.query
-                )
-            except (AttributeError, TypeError):
-                logger.debug("Could not sanitize chosen_inline_result.query in-place")
+        if update.chosen_inline_result and update.chosen_inline_result.query and isinstance(update.chosen_inline_result.query, str):
+            TelegramWebhookHandler._set_telegram_field(
+                update.chosen_inline_result,
+                "query",
+                InputSanitizer.sanitize_all(update.chosen_inline_result.query)
+            )
 
     # =============================================================================
     # Helper Methods for Consent and User Management

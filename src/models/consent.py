@@ -303,22 +303,14 @@ class ConsentService:
         if not language:
             raise ValueError("consent_language cannot be empty")
 
+        # MED-14: GDPR requires preserving consent history (audit trail).
         # Check if user already has active consent
         existing = self._get_active_consent(user_id)
         if existing:
-            # Update existing record instead of creating new one
-            # SQLAlchemy ORM: use setattr for Column assignments
-            setattr(existing, 'consent_given_at', datetime.now(UTC))
-            setattr(existing, 'consent_version', version)
-            setattr(existing, 'consent_language', language)
-            setattr(existing, 'ip_hash', self._hash_ip(ip))
-            setattr(existing, 'consent_text_hash', self._hash_consent_text(consent_text))
-            setattr(existing, 'consent_withdrawn_at', None)
-            # Update version ID and preview for audit trail
-            setattr(existing, 'consent_text_version_id', f"v{version}")
-            setattr(existing, 'consent_text_preview', consent_text[:100] if consent_text else None)
+            # Withdraw the old consent record to preserve audit trail
+            setattr(existing, 'consent_withdrawn_at', datetime.now(UTC))
             self._session.commit()
-            return existing
+            # Fall through to create new consent record below
 
         # Create new consent record
         # Store version ID and truncated preview for audit verification

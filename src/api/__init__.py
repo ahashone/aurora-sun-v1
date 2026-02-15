@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Awaitable, Callable
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,7 +50,9 @@ _PUBLIC_PATHS: frozenset[str] = frozenset({
 })
 
 
-async def _auth_gate_dispatch(request: Request, call_next) -> Response:
+async def _auth_gate_dispatch(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """CRIT-2: Catch-all auth middleware — deny unauthenticated requests by default."""
     # CORS preflight (OPTIONS) must pass through
     if request.method == "OPTIONS":

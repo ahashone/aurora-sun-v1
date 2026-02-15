@@ -1,7 +1,7 @@
 # Sub-Processor Registry
 
 > **Document Type:** Reference (Active)
-> **Last Updated:** 2026-02-14
+> **Last Updated:** 2026-02-15
 > **Owner:** Aurora Sun V1 Architecture
 > **Reference:** ARCHITECTURE.md Section 10
 
@@ -126,12 +126,27 @@ This document tracks all third-party processors that handle user data in the Aur
 
 | Sub-Processor | DPA Status | Agreement Date | Expiry | Deadline | Notes |
 |--------------|------------|----------------|--------|----------|-------|
-| Anthropic | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Verify enterprise DPA terms |
-| OpenAI | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Enterprise DPA required |
-| Groq | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Verify DPA availability |
-| Telegram | Platform ToS | N/A | N/A | N/A | Not GDPR-compliant - data minimization critical |
-| Hetzner | Active | 2026-02-09 | Auto-renew | N/A | Privacy Policy serves as DPA |
-| Langfuse | Required - Pending Signature | - | - | Before Production Deployment | Must be signed before processing real user Art. 9 data. Verify EU DPA terms |
+| Anthropic | **PENDING** — Needs Signature | - | - | Before first real user (Phase 3) | Review: [anthropic.com/legal](https://www.anthropic.com/legal). Enterprise DPA covers Art. 9 data |
+| OpenAI | **PENDING** — Needs Signature | - | - | Before first real user (Phase 3) | Review: OpenAI Enterprise DPA. Required for fallback LLM path |
+| Groq | **PENDING** — Needs Signature | - | - | Before voice feature launch | Review: Groq Terms. Voice = biometric data (Art. 9) |
+| Telegram | Platform ToS (no DPA available) | N/A | N/A | N/A | Not GDPR-compliant — data minimization critical. Document residual risk in DPIA |
+| Hetzner | **ACTIVE** | 2026-02-09 | Auto-renew | N/A | DPA via Privacy Policy + Terms. EU jurisdiction (compliant) |
+| Langfuse | **PENDING** — Needs Signature | - | - | Before observability activation | EU-based (Germany). Must anonymize all trace data before export |
+
+### MED-24: DPA Action Plan
+
+**Blocker:** No real user Art. 9 data may be processed until DPAs are signed. Current dev/test data is synthetic.
+
+| Priority | Action | Owner | Deadline |
+|----------|--------|-------|----------|
+| 1 | Sign Anthropic Enterprise DPA (primary LLM) | Ahash | Before Phase 3 user interviews |
+| 2 | Sign Hetzner DPA addendum (confirm Art. 9 coverage) | Ahash | Before Phase 3 |
+| 3 | Sign OpenAI Enterprise DPA (fallback LLM) | Ahash | Before fallback activation |
+| 4 | Sign Langfuse DPA (observability) | Ahash | Before production tracing |
+| 5 | Evaluate Groq DPA (voice transcription) | Ahash | Before voice feature launch |
+| 6 | Document Telegram residual risk in DPIA | Engineering | Before Phase 3 |
+
+**Note:** Telegram does not offer a GDPR-compliant DPA. Residual risk must be documented in DPIA with mitigations (data minimization, no PII storage, encryption).
 
 ---
 

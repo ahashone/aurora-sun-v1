@@ -85,8 +85,15 @@ backup_postgres() {
 
   local backup_file="$BACKUP_DIR/postgres/postgresql_${TIMESTAMP}.dump"
 
+  # MED-2: Use PGPASSFILE to avoid password in process list
+  export PGPASSFILE="/tmp/.pgpass_$$"
+  echo "postgres:5432:aurora_sun:aurora:${POSTGRES_PASSWORD:-}" > "$PGPASSFILE"
+  chmod 600 "$PGPASSFILE"
+
   docker-compose -f "$PROJECT_ROOT/docker-compose.prod.yml" exec -T postgres \
     pg_dump -U aurora -F c -b -v aurora_sun > "$backup_file"
+
+  rm -f "$PGPASSFILE"
 
   if [[ -f "$backup_file" ]]; then
     local size=$(du -h "$backup_file" | cut -f1)
@@ -185,8 +192,9 @@ encrypt_backups() {
   log_info "Encrypting backups..."
 
   if [[ -z "${BACKUP_ENCRYPTION_KEY:-}" ]]; then
-    log_warn "BACKUP_ENCRYPTION_KEY not set, skipping encryption"
-    return 0
+    log_error "BACKUP_ENCRYPTION_KEY not set — refusing unencrypted backups (MED-2)"
+    log_error "Set BACKUP_ENCRYPTION_KEY or use --no-encrypt (dev only)"
+    return 1
   fi
 
   for dir in postgres redis neo4j qdrant; do

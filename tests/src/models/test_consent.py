@@ -333,10 +333,10 @@ class TestConsentServiceCreate:
                 consent_text="text",
             )
 
-    def test_create_consent_updates_existing_active(
+    def test_create_consent_preserves_audit_trail(
         self, consent_service: ConsentService, user_id: int
     ):
-        """Creating consent when active consent exists updates the existing record."""
+        """Creating consent when active consent exists preserves audit trail (MED-14)."""
         # Create first consent
         record1 = consent_service.create_consent_record(
             user_id=user_id,
@@ -347,7 +347,7 @@ class TestConsentServiceCreate:
         )
         record1_id = record1.id
 
-        # Create second consent for same user (should update, not duplicate)
+        # Create second consent for same user (should create NEW record, not update)
         record2 = consent_service.create_consent_record(
             user_id=user_id,
             version="2.0",
@@ -356,10 +356,23 @@ class TestConsentServiceCreate:
             consent_text="updated text",
         )
 
-        # Should be the same record, updated
-        assert record2.id == record1_id
+        # Should be a NEW record with different ID
+        assert record2.id != record1_id
         assert record2.consent_version == "2.0"
         assert record2.consent_language == "de"
+        assert record2.consent_withdrawn_at is None
+
+        # Old record should have been withdrawn (audit trail preserved)
+        db_session = consent_service._session
+        old_record = db_session.query(ConsentRecord).filter(
+            ConsentRecord.id == record1_id
+        ).first()
+        assert old_record is not None
+        assert old_record.consent_withdrawn_at is not None
+
+        # Consent history should show 2 records
+        history = consent_service.get_consent_history(user_id)
+        assert len(history) == 2
 
 
 # =============================================================================

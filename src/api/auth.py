@@ -21,7 +21,7 @@ from typing import Any
 
 import jwt as pyjwt
 
-from src.lib.security import hash_uid
+from src.lib.security import SecurityEventLogger, hash_uid
 
 logger = logging.getLogger(__name__)
 
@@ -227,9 +227,11 @@ class AuthService:
 
         except pyjwt.ExpiredSignatureError:
             logger.warning("Token expired")
+            SecurityEventLogger.auth_failure("token_expired")
             return None
         except pyjwt.InvalidTokenError as e:
             logger.error("Token decode error: %s", e)
+            SecurityEventLogger.auth_failure("invalid_token", detail=str(e))
             return None
 
     def authenticate_request(self, authorization_header: str | None) -> AuthToken | None:

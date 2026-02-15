@@ -341,7 +341,8 @@ services:
     container_name: aurora-postgres-exporter
     restart: unless-stopped
     environment:
-      - DATA_SOURCE_NAME=postgresql://aurora:${POSTGRES_PASSWORD}@postgres:5432/aurora_sun?sslmode=disable
+      # MED-3: Use sslmode=prefer (negotiates TLS when PG supports it)
+      - DATA_SOURCE_NAME=postgresql://aurora:${POSTGRES_PASSWORD}@postgres:5432/aurora_sun?sslmode=prefer
     # Internal-only access. Not exposed to host.
     expose:
       - "9187"

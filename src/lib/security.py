@@ -1109,3 +1109,63 @@ def create_security_middleware(
         app.add_middleware(RateLimitMiddleware)
 
     logger.info("security_middleware_initialized", csp=csp, rate_limiting=enable_rate_limiting)
+
+
+# ---------------------------------------------------------------------------
+# MED-15: Structured Security Event Logging
+# ---------------------------------------------------------------------------
+
+_security_logger = structlog.get_logger("aurora.security.events")
+
+
+class SecurityEventType(StrEnum):
+    """Categories of security-relevant events."""
+
+    AUTH_FAILURE = "auth_failure"
+    AUTH_SUCCESS = "auth_success"
+    RATE_LIMIT = "rate_limit"
+    CONSENT_CHANGE = "consent_change"
+    ENCRYPTION_ERROR = "encryption_error"
+    DATA_ACCESS = "data_access"
+    DATA_EXPORT = "data_export"
+    DATA_DELETE = "data_delete"
+    INJECTION_ATTEMPT = "injection_attempt"
+    INVALID_INPUT = "invalid_input"
+    WEBHOOK_REJECTED = "webhook_rejected"
+    KEY_ROTATION = "key_rotation"
+
+
+class SecurityEventLogger:
+    """Centralized security event logging (MED-15).
+
+    Emits structured log events for SIEM/audit trail consumption.
+    User IDs are always hashed before logging.
+    """
+
+    @staticmethod
+    def log(event_type: SecurityEventType, **context: Any) -> None:
+        if "user_id" in context:
+            context["user_hash"] = hash_uid(context.pop("user_id"))
+        _security_logger.warning(
+            "security_event", event_type=event_type.value, **context
+        )
+
+    @staticmethod
+    def auth_failure(reason: str, **context: Any) -> None:
+        SecurityEventLogger.log(SecurityEventType.AUTH_FAILURE, reason=reason, **context)
+
+    @staticmethod
+    def rate_limited(action: str, **context: Any) -> None:
+        SecurityEventLogger.log(SecurityEventType.RATE_LIMIT, action=action, **context)
+
+    @staticmethod
+    def consent_change(change_type: str, **context: Any) -> None:
+        SecurityEventLogger.log(SecurityEventType.CONSENT_CHANGE, change_type=change_type, **context)
+
+    @staticmethod
+    def data_access(resource: str, **context: Any) -> None:
+        SecurityEventLogger.log(SecurityEventType.DATA_ACCESS, resource=resource, **context)
+
+    @staticmethod
+    def injection_attempt(vector: str, **context: Any) -> None:
+        SecurityEventLogger.log(SecurityEventType.INJECTION_ATTEMPT, vector=vector, **context)

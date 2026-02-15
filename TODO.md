@@ -30,39 +30,39 @@
 - [x] HIGH-6: Daily workflow DB persistence — upsert logic in save_daily_plan | daily_workflow.py
 - [x] HIGH-7: RIA service stubs — added logger warnings to all phase methods | ria_service.py
 - [x] HIGH-8: Add processing_restriction column (GDPR Art. 18 freeze/unfreeze) | user.py
-- [ ] HIGH-12: Update cryptography from 42.0.8 to 46.0.5+ | pyproject.toml
+- [x] HIGH-12: Update cryptography from 42.0.8 to >=46.0.0 | pyproject.toml
 - [x] HIGH-20: Backup encryption for Neo4j/Qdrant — AES-256-GCM via _encrypt_backup_file | backup.py
 - [x] PERF-002: Redis caching for user lookups | user_cache.py, webhook.py, test_user_cache.py
 - [ ] BLOCKED: Module GDPR delete stubs need DB session injection | (waiting for Ahash)
 
 ## MEDIUM (Backlog)
 
-- [ ] MED-2: Backup encryption mandatory + PGPASSFILE | backup.sh, backup.py:320
-- [ ] MED-3: Postgres exporter sslmode → TLS | docker-compose.prod.yml:324
+- [x] MED-2: Backup encryption mandatory + PGPASSFILE | backup.py, backup.sh
+- [x] MED-3: Postgres exporter sslmode → TLS (sslmode=prefer) | docker-compose.prod.yml
 - [ ] MED-4: AI guardrails before LLM activation (prompt injection, output validation) | webhook.py:439, ria_service.py:489
-- [ ] MED-7: CVE/dependency scan + lock file (pip-audit in CI) | ci.yml, pyproject.toml
+- [x] MED-7: CVE/dependency scan + lock file (pip-audit in CI) | ci.yml
 - [x] MED-8: Test coverage gaps — shutdown.py, api/__init__.py, dependencies.py | test_shutdown.py, test_api_init.py, test_dependencies.py
 - [ ] MED-9: Refactor god modules: gdpr.py (1141 LOC), money.py (1589 LOC), planning.py (1138 LOC)
 - [x] MED-10: Add AAD to all AESGCM encrypt calls + fix field_name mismatches | encryption.py, session.py, crisis_service.py, revenue_tracker.py
 - [ ] MED-11: Migrate user salt storage from filesystem to DB | encryption.py:360
-- [ ] MED-14: GDPR compliance gaps: retention placeholder, consent overwrites
-- [ ] MED-15: Security event logging — SecurityEventLogger | no SIEM
+- [x] MED-14: Fix GDPR consent overwrite to preserve audit trail | consent.py, test_consent.py
+- [x] MED-15: Security event logging — SecurityEventLogger + SecurityEventType enum | security.py, webhook.py, auth.py
 - [x] MED-20: Deduplicate segment config — single source in segment_context.py | config/segment.py, onboarding.py, user.py
-- [ ] MED-21: Fix API validation error detail leakage | dependencies.py:143 (Codex-S4)
+- [x] MED-21: Fix API validation error detail leakage — generic message + server-side logging | dependencies.py
 - [ ] MED-22: Fix 14 salt-dir-dependent test failures | test_encryption.py, test_money.py (Codex-T1)
-- [ ] MED-23: Fix 6 mypy strict errors in api/ | dependencies.py, __init__.py (Codex)
-- [ ] MED-24: DPA status pending for sub-processors | SUB-PROCESSOR-REGISTRY.md (Paranoid-013)
+- [x] MED-23: Fix 6 mypy strict errors in api/ — Generic[ModelType], typed call_next | dependencies.py, __init__.py
+- [x] MED-24: DPA action plan with deadlines for all sub-processors | SUB-PROCESSOR-REGISTRY.md
 - [x] MED-25: Crisis detection word boundary matching — regex \b guards | crisis_service.py
 - [ ] MED-26: Reduce 105x `except Exception` + 45x `pass` — domain-specific exceptions | (Codex-Q5/S5)
 
 ## LOW (When convenient)
 
 - [ ] LOW-4: Audit unused runtime dependencies | pyproject.toml
-- [ ] LOW-5: Sanitizer uses private Telegram attrs | webhook.py:150
+- [x] LOW-5: Sanitizer uses public API via _set_telegram_field helper | webhook.py
 - [ ] LOW-6: JWT token revocation mechanism (Redis blacklist) | auth.py
 - [x] LOW-7: Pin letta:latest → letta:0.6.5 | docker-compose.prod.yml
 - [ ] LOW-8: API integration tests with TestClient | (Codex)
-- [ ] LOW-9: Migrate from deprecated `safety check` to `safety scan` | (Paranoid-015)
+- [x] LOW-9: Migrate from deprecated `safety check` to pip-audit | ci.yml
 - [ ] Add HSTS preload registration
 - [ ] Formal threat model + red-team schedule
 
@@ -80,3 +80,4 @@
 | 2026-02-15 | Audit Fixes Batch 1 | 10 items fixed (2 CRIT, 8 HIGH, 1 LOW), 3054 tests passing |
 | 2026-02-15 | Audit Fixes Batch 2 | 11 items fixed (2 CRIT, 6 HIGH, 2 MED, 1 infra), 3059 tests passing |
 | 2026-02-15 | Audit Fixes Batch 3 | 3 items fixed (MED-8, MED-10, PERF-002), +85 tests, 3144 tests passing |
+| 2026-02-15 | Audit Fixes Batch 4 | 11 items fixed (HIGH-12, MED-2/3/7/14/15/21/23/24, LOW-5/9), 3144 tests passing |

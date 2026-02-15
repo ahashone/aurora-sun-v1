@@ -277,7 +277,7 @@ class BackupService:
         self.encrypt_backups = encrypt_backups
         self.compression_level = compression_level
 
-        # Load master key for backup encryption
+        # MED-2: Load master key for backup encryption (mandatory in production)
         self._master_key: bytes | None = None
         if encrypt_backups:
             env_key = os.environ.get("AURORA_MASTER_KEY")
@@ -285,7 +285,15 @@ class BackupService:
                 try:
                     self._master_key = base64.b64decode(env_key)
                 except Exception:
-                    logger.warning("Failed to decode AURORA_MASTER_KEY for backup encryption")
+                    logger.error("Failed to decode AURORA_MASTER_KEY — backup encryption unavailable")
+            if not self._master_key:
+                environment = os.environ.get("AURORA_ENVIRONMENT", "development")
+                if environment == "production":
+                    raise ValueError(
+                        "AURORA_MASTER_KEY is required for backup encryption in production. "
+                        "Set encrypt_backups=False only in development."
+                    )
+                logger.warning("AURORA_MASTER_KEY not set — backups will be UNENCRYPTED (dev only)")
 
         # Create backup directory if it doesn't exist
         self.backup_dir.mkdir(parents=True, exist_ok=True)

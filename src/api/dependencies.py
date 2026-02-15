@@ -2,7 +2,8 @@
 FastAPI Dependencies for Authentication, Authorization, and Rate Limiting.
 """
 
-from typing import Any, TypeVar
+import logging
+from typing import Any, Generic, Optional, TypeVar
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -16,6 +17,8 @@ from src.lib.security import (
     sanitize_for_llm,
     sanitize_for_storage,
 )
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
 
@@ -106,8 +109,9 @@ class APIRateLimiter:
 
 # Generic type for Pydantic models
 ModelType = TypeVar("ModelType", bound=BaseModel)
+T = TypeVar("T", bound=BaseModel)
 
-class InputSanitizerDependency:
+class InputSanitizerDependency(Generic[ModelType]):
     """
     FastAPI Dependency to sanitize incoming Pydantic models.
 
@@ -122,7 +126,12 @@ class InputSanitizerDependency:
             ...
     """
 
-    def __init__(self, model: type[ModelType], llm_fields: list[str] = None, storage_fields: list[str] = None):
+    def __init__(
+        self,
+        model: type[ModelType],
+        llm_fields: Optional[list[str]] = None,
+        storage_fields: Optional[list[str]] = None,
+    ) -> None:
         self.model = model
         self.llm_fields = llm_fields if llm_fields is not None else []
         self.storage_fields = storage_fields if storage_fields is not None else []
@@ -141,12 +150,9 @@ class InputSanitizerDependency:
         try:
             raw_model_instance = self.model(**body)
         except Exception as e:
-            import os
-            env = os.environ.get("AURORA_ENVIRONMENT", "development")
-            if env in ("production", "staging"):
-                raise HTTPException(status_code=422, detail="Invalid request data")
-            else:
-                raise HTTPException(status_code=422, detail=f"Validation error: {e}")
+            # MED-21: Log validation errors but return generic message to client
+            logger.warning("Input validation failed: %s", e)
+            raise HTTPException(status_code=422, detail="Validation error")
 
         # Sanitize the model instance
         sanitized_model_instance = self._sanitize_model(raw_model_instance, "", self.llm_fields, self.storage_fields)
@@ -170,7 +176,13 @@ class InputSanitizerDependency:
         return value
 
     @classmethod
-    def _sanitize_model(cls, model_instance: BaseModel, parent_path: str, llm_fields: list[str], storage_fields: list[str]) -> BaseModel:
+    def _sanitize_model(
+        cls,
+        model_instance: T,
+        parent_path: str,
+        llm_fields: list[str],
+        storage_fields: list[str],
+    ) -> T:
         # Create a deep copy to avoid modifying the original model instance during iteration
         # This is important because the model_instance might be passed by reference
         # and its fields might be read during the iteration over model_instance.
