@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
@@ -25,6 +26,8 @@ from typing import Any, Literal
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.services.redis_service import RedisService, get_redis_service
+
+logger = logging.getLogger(__name__)
 
 from .tension_engine import (
     Quadrant,
@@ -576,8 +579,8 @@ class CoachingEngine:
                 module="coaching_engine",
                 variant=None,
             )
-        except Exception:
-            pass
+        except (ImportError, AttributeError, TypeError, ValueError) as exc:
+            logger.debug("Effectiveness tracking skipped: %s", exc)
 
 
 # Module-level singleton for easy access

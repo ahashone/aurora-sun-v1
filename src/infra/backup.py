@@ -32,6 +32,7 @@ import base64
 import json
 import logging
 import os
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -284,7 +285,7 @@ class BackupService:
             if env_key:
                 try:
                     self._master_key = base64.b64decode(env_key)
-                except Exception:
+                except (ValueError, base64.binascii.Error):
                     logger.error("Failed to decode AURORA_MASTER_KEY — backup encryption unavailable")
             if not self._master_key:
                 environment = os.environ.get("AURORA_ENVIRONMENT", "development")
@@ -373,7 +374,7 @@ class BackupService:
                 message="Backup completed successfully",
             )
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.exception("PostgreSQL backup failed")
             return BackupResult(
                 service="postgresql",
@@ -450,7 +451,7 @@ class BackupService:
                 message="Backup completed successfully",
             )
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, ValueError) as e:
             logger.exception("Redis backup failed")
             return BackupResult(
                 service="redis",
@@ -535,7 +536,7 @@ class BackupService:
                 message="Backup completed successfully",
             )
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.exception("Neo4j backup failed")
             return BackupResult(
                 service="neo4j",
@@ -626,7 +627,7 @@ class BackupService:
                     message="Backup completed successfully",
                 )
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, ValueError) as e:
             logger.exception("Qdrant backup failed")
             return BackupResult(
                 service="qdrant",
@@ -789,7 +790,7 @@ class RestoreService:
                 message="Restore completed successfully",
             )
 
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             logger.exception("PostgreSQL restore failed")
             return RestoreResult(
                 service="postgresql",

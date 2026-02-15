@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Text
 from sqlalchemy.orm import relationship
 
+from src.lib.exceptions import EncryptionError
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -133,7 +134,7 @@ class DailyPlan(Base):
                 value, int(self.user_id), DataClassification.SENSITIVE, "reflection_text"
             )
             setattr(self, '_reflection_text_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             import logging
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'reflection_text', refusing to store plaintext",

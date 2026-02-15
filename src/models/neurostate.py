@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 
+from src.lib.exceptions import EncryptionError
 from src.models.base import Base
 
 # =============================================================================
@@ -152,7 +153,7 @@ class SensoryProfile(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "modality_loads"
             )
             self._modality_loads_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'modality_loads', refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -252,7 +253,7 @@ class MaskingLog(Base):
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
             )
             self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             import logging
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'notes', refusing to store plaintext",
@@ -375,7 +376,7 @@ class BurnoutAssessment(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "indicators"
             )
             self._indicators_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'indicators', refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -415,7 +416,7 @@ class BurnoutAssessment(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "energy_trajectory"
             )
             self._energy_trajectory_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'energy_trajectory', refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -452,7 +453,7 @@ class BurnoutAssessment(Base):
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
             )
             self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             import logging
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'notes', refusing to store plaintext",
@@ -554,7 +555,7 @@ class ChannelState(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "channel_scores"
             )
             self._channel_scores_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'channel_scores', refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -597,7 +598,7 @@ class ChannelState(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "supporting_signals"
             )
             self._supporting_signals_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'supporting_signals', refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -717,7 +718,7 @@ class InertiaEvent(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "attempted_interventions"
             )
             self._attempted_interventions_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'attempted_interventions', refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -754,7 +755,7 @@ class InertiaEvent(Base):
                 value, int(self.user_id), DataClassification.ART_9_SPECIAL, "notes"
             )
             self._notes_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             import logging
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'notes', refusing to store plaintext",
@@ -859,7 +860,7 @@ class EnergyLevelRecord(Base):
                 plaintext_json, int(self.user_id), DataClassification.ART_9_SPECIAL, "behavioral_proxies"
             )
             self._behavioral_proxies_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logging.getLogger(__name__).error(
                 "Encryption failed for field 'behavioral_proxies', refusing to store plaintext",
                 extra={"error": type(e).__name__},

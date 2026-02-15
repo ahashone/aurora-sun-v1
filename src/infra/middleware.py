@@ -428,7 +428,7 @@ class LLMCostLimiterMiddleware:
         try:
             value = await self.redis_client.get(key)
             return float(value) if value else 0.0
-        except Exception:
+        except (OSError, ConnectionError, TimeoutError, ValueError):
             logger.exception(f"Error getting cost for key {key}")
             return 0.0
 
@@ -442,7 +442,7 @@ class LLMCostLimiterMiddleware:
         try:
             await self.redis_client.incrbyfloat(key, amount)
             await self.redis_client.expire(key, ttl_seconds)
-        except Exception:
+        except (OSError, ConnectionError, TimeoutError):
             logger.exception(f"Error incrementing cost for key {key}")
 
 
@@ -492,7 +492,7 @@ async def log_request(
 
         return response
 
-    except Exception as e:
+    except Exception as e:  # Intentional catch-all: middleware must log all unhandled errors before re-raising
         duration = (datetime.now(UTC) - start_time).total_seconds()
 
         # Extract path safely

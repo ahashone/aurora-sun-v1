@@ -42,7 +42,7 @@
 - [x] MED-4: AI guardrails — PromptInjectionDetector + OutputValidator + AIGuardrails facade + 136 tests | ai_guardrails.py, webhook.py, coaching_engine_full.py, ria_service.py
 - [x] MED-7: CVE/dependency scan + lock file (pip-audit in CI) | ci.yml
 - [x] MED-8: Test coverage gaps — shutdown.py, api/__init__.py, dependencies.py | test_shutdown.py, test_api_init.py, test_dependencies.py
-- [ ] MED-9: Refactor god modules: gdpr.py (1141 LOC), money.py (1589 LOC), planning.py (1138 LOC)
+- [x] MED-9: Refactor god modules — gdpr.py 1141→160 LOC, money.py 1589→707 LOC, planning.py 1138→408 LOC | gdpr_*.py, money_*.py, planning_*.py
 - [x] MED-10: Add AAD to all AESGCM encrypt calls + fix field_name mismatches | encryption.py, session.py, crisis_service.py, revenue_tracker.py
 - [ ] MED-11: Migrate user salt storage from filesystem to DB | encryption.py:360
 - [x] MED-14: Fix GDPR consent overwrite to preserve audit trail | consent.py, test_consent.py
@@ -53,7 +53,7 @@
 - [x] MED-23: Fix 6 mypy strict errors in api/ — Generic[ModelType], typed call_next | dependencies.py, __init__.py
 - [x] MED-24: DPA action plan with deadlines for all sub-processors | SUB-PROCESSOR-REGISTRY.md
 - [x] MED-25: Crisis detection word boundary matching — regex \b guards | crisis_service.py
-- [ ] MED-26: Reduce 105x `except Exception` + 45x `pass` — domain-specific exceptions | (Codex-Q5/S5)
+- [x] MED-26: Reduce `except Exception` — 108→~30 (intentional), 4 new exception types, documented catch-alls | exceptions.py + 26 src files
 
 ## LOW (When convenient)
 
@@ -82,3 +82,4 @@
 | 2026-02-15 | Audit Fixes Batch 3 | 3 items fixed (MED-8, MED-10, PERF-002), +85 tests, 3144 tests passing |
 | 2026-02-15 | Audit Fixes Batch 4 | 11 items fixed (HIGH-12, MED-2/3/7/14/15/21/23/24, LOW-5/9), 3144 tests passing |
 | 2026-02-15 | Audit Fixes Batch 5 | 8 items fixed (MED-4/22, LOW-4/6/8, HSTS, threat model), +158 tests, 3302 tests passing |
+| 2026-02-15 | Audit Fixes Batch 6 | 2 items fixed (MED-9 god module refactor, MED-26 exception narrowing), 3302 tests passing |

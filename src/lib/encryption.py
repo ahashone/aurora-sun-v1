@@ -25,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import os
@@ -42,6 +43,7 @@ except ImportError:
 
 # Cryptography imports
 try:
+    from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -269,7 +271,7 @@ class EncryptionService:
                 return decoded
             except ValueError:
                 raise  # Re-raise ValueError (including our length check)
-            except Exception as e:
+            except (TypeError, binascii.Error) as e:
                 _logger.debug(
                     "Failed to decode AURORA_MASTER_KEY, trying next method",
                     extra={"error": type(e).__name__},
@@ -281,7 +283,7 @@ class EncryptionService:
                 key = keyring.get_password(self.SERVICE_NAME, "master_key")
                 if key:
                     return base64.b64decode(key)
-            except Exception as e:
+            except Exception as e:  # Intentional catch-all: keyring backends raise heterogeneous exceptions
                 _logger.debug(
                     "Keyring unavailable for master key, trying next method",
                     extra={"error": type(e).__name__},
@@ -350,7 +352,7 @@ class EncryptionService:
                 stored_salt = keyring.get_password(self._keyring_service, salt_key)
                 if stored_salt:
                     return base64.b64decode(stored_salt)
-            except Exception as e:
+            except Exception as e:  # Intentional catch-all: keyring backends raise heterogeneous exceptions
                 _logger.warning(
                     "Keyring read failed for user salt, trying file fallback",
                     extra={"user_id": user_id, "error": type(e).__name__},
@@ -363,7 +365,7 @@ class EncryptionService:
                     stored_salt = f.read().strip()
                 if stored_salt:
                     return base64.b64decode(stored_salt)
-            except Exception as e:
+            except (OSError, ValueError, binascii.Error) as e:
                 _logger.warning(
                     "File-based salt read failed",
                     extra={"user_id": user_id, "error": type(e).__name__},
@@ -383,7 +385,7 @@ class EncryptionService:
                     salt_b64,
                 )
                 stored = True
-            except Exception as e:
+            except Exception as e:  # Intentional catch-all: keyring backends raise heterogeneous exceptions
                 _logger.warning(
                     "Keyring write failed for user salt, using file fallback",
                     extra={"user_id": user_id, "error": type(e).__name__},
@@ -396,7 +398,7 @@ class EncryptionService:
                 f.write(salt_b64)
             os.chmod(salt_file, 0o600)
             stored = True
-        except Exception as e:
+        except OSError as e:
             _logger.warning(
                 "File-based salt write failed",
                 extra={"user_id": user_id, "error": type(e).__name__},
@@ -696,7 +698,9 @@ class EncryptionService:
             else:
                 return self._decrypt_simple(ciphertext, nonce, user_id, effective_field_name)
 
-        except Exception as e:
+        except DecryptionError:
+            raise
+        except (ValueError, TypeError, KeyError, binascii.Error, InvalidTag) as e:
             raise DecryptionError(f"Decryption failed: {e}") from e
 
     def _decrypt_simple(
@@ -841,7 +845,7 @@ class EncryptionService:
                     salt_key,
                     new_salt_b64,
                 )
-            except Exception:
+            except Exception:  # Intentional catch-all: keyring backends raise heterogeneous exceptions
                 _logger.warning(
                     "Failed to store user salt in keyring for user_%d", user_id,
                 )
@@ -896,7 +900,7 @@ class EncryptionService:
         if KEYRING_AVAILABLE:
             try:
                 keyring.delete_password(self._keyring_service, salt_key)
-            except Exception:
+            except Exception:  # Intentional catch-all: keyring backends raise heterogeneous exceptions
                 _logger.warning(
                     "Failed to delete user salt from keyring for user_%d", user_id,
                 )

@@ -253,14 +253,14 @@ class TelegramWebhookHandler:
         # Route through NLI with error handling
         try:
             await self._route_through_nli(update, user)
-        except Exception:
+        except Exception:  # Intentional catch-all: top-level user-facing error handler
             logger.exception("Error routing message through NLI")
             try:
                 if update.message:
                     await update.message.reply_text(
                         "Something went wrong. Please try again."
                     )
-            except Exception:
+            except Exception:  # Intentional catch-all: must not raise when sending error reply
                 logger.exception("Failed to send error message to user")
 
     # =============================================================================
@@ -369,8 +369,7 @@ class TelegramWebhookHandler:
                 # Return a lightweight object with the cached fields
                 from types import SimpleNamespace
                 return SimpleNamespace(**cached)
-        except Exception:
-            # Cache failure must never block the request
+        except Exception:  # Intentional catch-all: cache failure must never block the DB fallback
             logger.debug("User cache lookup failed, falling back to DB")
 
         # -----------------------------------------------------------------
@@ -408,11 +407,11 @@ class TelegramWebhookHandler:
             if user is not None:
                 try:
                     await set_cached_user(telegram_id_hash, user)
-                except Exception:
+                except (OSError, ConnectionError, TimeoutError, ValueError):
                     logger.debug("Failed to populate user cache after DB lookup")
 
             return user
-        except Exception:
+        except (ImportError, AttributeError, OSError, ConnectionError):
             logger.exception("Failed to query user by telegram_id hash")
             return None
 
@@ -430,7 +429,7 @@ class TelegramWebhookHandler:
             try:
                 from src.models.consent import check_consent_gate
                 return check_consent_gate(self._db_session, user_id)
-            except Exception:
+            except (ImportError, AttributeError, OSError, ConnectionError):
                 logger.exception("Failed to validate consent via ConsentService")
 
         # Fallback: no DB session available — return NOT_GIVEN to be safe
@@ -586,7 +585,7 @@ class TelegramWebhookHandler:
                             )
                             await update.message.reply_text(output_check.safe_response)
 
-                except Exception:
+                except Exception:  # Intentional catch-all: module execution may raise any error type
                     logger.exception("Error routing to module '%s'", module.name if module else "unknown")
                     if update.message:
                         await update.message.reply_text("Something went wrong. Please try again.")

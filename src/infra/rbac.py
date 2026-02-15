@@ -453,7 +453,7 @@ def get_user_role(user_id: int, db_session: Any = None) -> Role:
         else:
             return Role.USER
 
-    except Exception:
+    except (ValueError, AttributeError, OSError, ConnectionError):
         logger.exception("Error fetching role for user_hash=%s", hash_uid(user_id))
         return Role.USER
 
@@ -491,7 +491,10 @@ def set_user_role(user_id: int, role: Role, db_session: Any) -> None:
         else:
             raise RoleError("User model does not have 'role' field")
 
-    except Exception as e:
+    except (RoleError,):
+        db_session.rollback()
+        raise
+    except (ValueError, AttributeError, OSError, ConnectionError) as e:
         db_session.rollback()
         logger.exception("Error setting role for user_hash=%s", hash_uid(user_id))
         raise RoleError(f"Failed to set role: {e}") from e

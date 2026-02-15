@@ -606,7 +606,7 @@ class RateLimiter:
                 window=config.window_minute,
                 max_requests=config.requests_per_minute
             )
-        except Exception:
+        except Exception:  # Intentional catch-all: rate limiter fail-open/fail-closed by design
             if fail_closed:
                 logger.warning(
                     "rate_limit_fail_closed",
@@ -634,7 +634,7 @@ class RateLimiter:
                 window=config.window_hour,
                 max_requests=config.requests_per_hour
             )
-        except Exception:
+        except Exception:  # Intentional catch-all: rate limiter fail-open/fail-closed by design
             if fail_closed:
                 logger.warning(
                     "rate_limit_fail_closed",
@@ -697,7 +697,7 @@ class RateLimiter:
         if redis_client:
             try:
                 return await cls._check_redis(redis_client, key, window, max_requests)
-            except Exception as e:
+            except Exception as e:  # Intentional catch-all: Redis errors trigger in-memory fallback
                 logger.warning("rate_limit_redis_error", error=str(e))
 
         # Fall back to memory limiter
@@ -719,7 +719,7 @@ class RateLimiter:
         if redis_client:
             try:
                 return await cls._get_remaining_redis(redis_client, key, window, max_requests)
-            except Exception as e:
+            except Exception as e:  # Intentional catch-all: Redis errors trigger in-memory fallback
                 logger.warning("rate_limit_redis_error", error=str(e))
 
         # Fall back to memory limiter

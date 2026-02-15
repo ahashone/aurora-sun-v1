@@ -229,7 +229,7 @@ class OnboardingFlow:
             value = await self._redis.get(f"{_ONBOARDING_STATE_PREFIX}{user_hash}")
             if value is not None:
                 return OnboardingStates(value.strip('"'))
-        except Exception as e:
+        except Exception as e:  # Intentional catch-all: Redis failure must never block onboarding
             logger.warning(
                 "Redis get failed for onboarding state, using memory fallback",
                 extra={"user_hash": user_hash[:8], "error": type(e).__name__},
@@ -245,7 +245,7 @@ class OnboardingFlow:
                 state.value,
                 ttl=_ONBOARDING_TTL,
             )
-        except Exception as e:
+        except Exception as e:  # Intentional catch-all: Redis failure must never block onboarding
             logger.warning(
                 "Redis set failed for onboarding state, using memory fallback only",
                 extra={"user_hash": user_hash[:8], "state": state.value, "error": type(e).__name__},
@@ -258,7 +258,7 @@ class OnboardingFlow:
             if raw is not None:
                 data: dict[str, Any] = json.loads(raw)
                 return data
-        except Exception as e:
+        except Exception as e:  # Intentional catch-all: Redis failure must never block onboarding
             logger.warning(
                 "Redis get failed for onboarding data, using memory fallback",
                 extra={"user_hash": user_hash[:8], "error": type(e).__name__},
@@ -274,7 +274,7 @@ class OnboardingFlow:
                 data,
                 ttl=_ONBOARDING_TTL,
             )
-        except Exception as e:
+        except Exception as e:  # Intentional catch-all: Redis failure must never block onboarding
             logger.warning(
                 "Redis set failed for onboarding data, using memory fallback only",
                 extra={"user_hash": user_hash[:8], "error": type(e).__name__},

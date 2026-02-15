@@ -51,3 +51,19 @@ class ServiceError(AuroraSunException):
 
 class DatabaseError(AuroraSunException):
     """Database connection, query, or migration failures."""
+
+
+class ValidationError(AuroraSunException):
+    """Input validation, parsing, or type conversion failures."""
+
+
+class SerializationError(AuroraSunException):
+    """JSON encode/decode, data serialization/deserialization failures."""
+
+
+class ExternalServiceError(ServiceError):
+    """External API call failures (Redis, LLM providers, etc.)."""
+
+
+class StateError(AuroraSunException):
+    """Invalid state transitions, missing required state."""

@@ -440,7 +440,7 @@ class TokenBlacklist:
             try:
                 result = sync_client.exists(f"{self.REDIS_KEY_PREFIX}{jti}")
                 return bool(result)
-            except Exception:
+            except (OSError, ConnectionError, TimeoutError):
                 logger.debug("Redis sync check failed for jti=%s, using memory only", jti)
 
         return False

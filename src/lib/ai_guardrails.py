@@ -35,6 +35,7 @@ References:
 from __future__ import annotations
 
 import base64
+import binascii
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -409,7 +410,7 @@ class PromptInjectionDetector:
                             confidence=0.85,
                         )
                     )
-            except Exception:
+            except (binascii.Error, ValueError):
                 # Not valid base64, skip
                 pass
 

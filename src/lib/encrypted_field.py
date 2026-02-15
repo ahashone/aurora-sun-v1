@@ -31,7 +31,7 @@ import json
 import logging
 from typing import Any, overload
 
-from src.lib.encryption import DataClassification
+from src.lib.encryption import DataClassification, EncryptionServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +179,7 @@ class EncryptedFieldDescriptor:
                 value, user_id, self.classification, self.field_name
             )
             setattr(obj, self.plaintext_attr, json.dumps(encrypted.to_db_dict()))
-        except Exception as e:
+        except (EncryptionServiceError, ValueError, TypeError, AttributeError) as e:
             if self.fail_hard:
                 logger.error(
                     "Encryption failed for field '%s', refusing to store plaintext",

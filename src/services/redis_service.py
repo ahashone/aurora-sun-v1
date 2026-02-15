@@ -43,7 +43,7 @@ class AuroraJSONEncoder(json.JSONEncoder):
         # Last resort: convert to string (never raise)
         try:
             return str(obj)
-        except Exception:
+        except Exception:  # Intentional catch-all: JSON encoder last-resort fallback, must never raise
             return f"<non-serializable: {type(obj).__name__}>"
 
 
@@ -103,7 +103,7 @@ class RedisService:
                     **tls,
                 )
                 self._sync_client.ping()
-            except Exception:
+            except Exception:  # Intentional catch-all: graceful fallback when sync Redis client unavailable
                 self._sync_client = None
         return self._sync_client
 

@@ -176,7 +176,7 @@ class SyncService:
                 await self._process_event_live(event)
                 event.synced = True
                 event.synced_at = datetime.now(UTC)
-        except Exception as exc:
+        except Exception as exc:  # Intentional catch-all: sync failures must not propagate, events are retried
             event.error = str(exc)
             logger.error(
                 "Failed to sync event %s: %s",

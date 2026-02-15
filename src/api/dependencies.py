@@ -143,13 +143,13 @@ class InputSanitizerDependency(Generic[ModelType]):
         # Get the JSON body from the request
         try:
             body = await request.json()
-        except Exception:
+        except (ValueError, UnicodeDecodeError):
             raise HTTPException(status_code=400, detail="Invalid JSON body")
 
         # Create an instance of the Pydantic model with the raw data
         try:
             raw_model_instance = self.model(**body)
-        except Exception as e:
+        except (ValueError, TypeError, KeyError) as e:
             # MED-21: Log validation errors but return generic message to client
             logger.warning("Input validation failed: %s", e)
             raise HTTPException(status_code=422, detail="Validation error")

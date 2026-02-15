@@ -220,7 +220,7 @@ class HealthCheckService:
                 timestamp=datetime.now(UTC),
             )
 
-        except Exception:
+        except Exception:  # Intentional catch-all: health check reports degraded on any failure
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("PostgreSQL health check failed")
             return HealthCheckResult(
@@ -291,7 +291,7 @@ class HealthCheckService:
                 timestamp=datetime.now(UTC),
             )
 
-        except Exception:
+        except Exception:  # Intentional catch-all: health check reports degraded on any failure
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Redis health check failed")
             return HealthCheckResult(
@@ -364,7 +364,7 @@ class HealthCheckService:
                 timestamp=datetime.now(UTC),
             )
 
-        except Exception:
+        except Exception:  # Intentional catch-all: health check reports degraded on any failure
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Neo4j health check failed")
             return HealthCheckResult(
@@ -433,7 +433,7 @@ class HealthCheckService:
                 timestamp=datetime.now(UTC),
             )
 
-        except Exception:
+        except Exception:  # Intentional catch-all: health check reports degraded on any failure
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Qdrant health check failed")
             return HealthCheckResult(
@@ -502,7 +502,7 @@ class HealthCheckService:
                 timestamp=datetime.now(UTC),
             )
 
-        except Exception:
+        except Exception:  # Intentional catch-all: health check reports degraded on any failure
             response_time = (asyncio.get_event_loop().time() - start_time) * 1000
             logger.exception("Letta health check failed")
             return HealthCheckResult(

@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from sqlalchemy import Column, DateTime, Index, Integer, String, event
 from sqlalchemy.orm import relationship, selectinload
 
+from src.lib.exceptions import EncryptionError
 from src.models.base import Base
 
 logger = logging.getLogger(__name__)
@@ -157,7 +158,7 @@ class User(Base):
                 value, int(self.id), DataClassification.SENSITIVE, "name"
             )
             setattr(self, '_name_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logger.error(
                 "Encryption failed for field 'name', refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -260,7 +261,7 @@ def _pre_generate_id_for_encryption(
 
         target.id = new_id  # type: ignore[assignment]
         logger.debug("Pre-generated user ID %s for encryption before INSERT (dialect: %s)", new_id, dialect_name)
-    except Exception as e:
+    except Exception as e:  # Intentional catch-all: graceful degradation for ID pre-generation across DB dialects
         logger.error(
             "Failed to pre-generate user ID, encryption will be delayed",
             extra={"error": type(e).__name__, "dialect": dialect_name},
@@ -293,7 +294,7 @@ def _pre_generate_id_for_encryption(
         # PERF-009: Invalidate decryption cache after encryption
         target.__dict__.pop("_cached_name", None)
         logger.debug("Encrypted name for user %s before INSERT", target.id)
-    except Exception as e:
+    except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
         logger.critical(
             "SECURITY: Failed to encrypt name before INSERT for user %s. "
             "Refusing to proceed with plaintext storage.",

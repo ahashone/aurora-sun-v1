@@ -100,8 +100,8 @@ async def get_cached_user(
     except (json.JSONDecodeError, TypeError) as exc:
         logger.warning("Failed to deserialize user cache for %s: %s", key, exc)
         return None
-    except Exception:
-        logger.exception("Unexpected error reading user cache")
+    except Exception as exc:  # Intentional catch-all: cache miss is acceptable, never block on cache errors
+        logger.warning("Unexpected error reading user cache: %s", exc)
         return None
 
 
@@ -129,8 +129,8 @@ async def set_cached_user(
     try:
         data = user_to_cache_dict(user)
         return await svc.set(key, data, ttl=ttl)
-    except Exception:
-        logger.exception("Failed to cache user for %s", key)
+    except Exception as exc:  # Intentional catch-all: cache write failure is non-critical
+        logger.warning("Failed to cache user for %s: %s", key, exc)
         return False
 
 
@@ -153,8 +153,8 @@ async def invalidate_user_cache(
     key = _cache_key(telegram_id_hash)
     try:
         return await svc.delete(key)
-    except Exception:
-        logger.exception("Failed to invalidate user cache for %s", key)
+    except Exception as exc:  # Intentional catch-all: cache invalidation failure is non-critical
+        logger.warning("Failed to invalidate user cache for %s: %s", key, exc)
         return False
 
 

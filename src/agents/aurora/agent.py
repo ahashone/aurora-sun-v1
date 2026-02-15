@@ -404,7 +404,7 @@ class AuroraAgent:
                 segment_ctx=segment_ctx,
             )
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             state.errors.append(f"Assessment error: {e!s}")
             state.current_step = WorkflowStep.ERROR
 
@@ -453,7 +453,7 @@ class AuroraAgent:
                 current=state.trajectory,
             )
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             state.errors.append(f"Synthesis error: {e!s}")
             state.current_step = WorkflowStep.ERROR
 
@@ -491,7 +491,7 @@ class AuroraAgent:
                 state.user_id
             )
 
-        except Exception as e:
+        except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
             state.errors.append(f"Recommendation error: {e!s}")
             state.current_step = WorkflowStep.ERROR
 

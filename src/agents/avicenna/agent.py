@@ -405,7 +405,7 @@ class AvicennaAgent:
 
                     return result
 
-                except Exception as exc:
+                except Exception as exc:  # Intentional catch-all: observer must track any module crash before re-raising
                     # Track module crash
                     issue = Issue(
                         severity=IssueSeverity.CRITICAL,

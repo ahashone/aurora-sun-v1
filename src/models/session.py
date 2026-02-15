@@ -23,6 +23,7 @@ from src.lib.encryption import (
     decrypt_for_user,
     encrypt_for_user,
 )
+from src.lib.exceptions import EncryptionError
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -183,7 +184,7 @@ class Session(Base):
                 plaintext_json, int(self.user_id), DC.SENSITIVE, "session_metadata"
             )
             self._encrypted_metadata_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logger.error(
                 "Encryption failed for session metadata, refusing to store plaintext",
                 extra={"error": type(e).__name__},
@@ -210,7 +211,7 @@ class Session(Base):
                 field_name="session_metadata",
             )
             self._encrypted_metadata_plaintext = json.dumps(encrypted.to_db_dict())  # type: ignore[assignment]
-        except Exception as e:
+        except (EncryptionError, ValueError, TypeError, RuntimeError) as e:
             logger.error(
                 "Encryption failed for session metadata, refusing to store plaintext",
                 extra={"user_id": user_id, "error": type(e).__name__},
@@ -237,7 +238,7 @@ class Session(Base):
                 plaintext = decrypt_for_user(encrypted_field, user_id, field_name="session_metadata")
                 result: dict[str, Any] = json.loads(plaintext)
                 return result
-            except Exception:
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError, EncryptionError):
                 logger.warning(
                     "Failed to decrypt session metadata for user %d",
                     user_id,
