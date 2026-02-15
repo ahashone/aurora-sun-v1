@@ -25,7 +25,7 @@ from src.lib.security import hash_uid
 
 logger = logging.getLogger(__name__)
 
-# FINDING-046: Named constant for indefinite retention.
+# Named constant for indefinite retention.
 # -1 means the data has no retention limit and is kept indefinitely
 # (e.g., anonymized analytics or public data that does not contain PII).
 RETENTION_INDEFINITE: int = -1
@@ -251,7 +251,7 @@ class GDPRService:
         # Export from direct database connections
         await self._export_from_databases(user_id, exports, errors)
 
-        # Build export package (FINDING-041: track completeness)
+        # Build export package (track completeness for GDPR compliance)
         export_package = self._build_export_package(user_id, exports, errors)
 
         logger.info(
@@ -395,7 +395,7 @@ class GDPRService:
             "components": {},
         }
 
-        # FINDING-010: Track critical database failures separately
+        # Track critical database failures separately (GDPR erasure must be complete)
         critical_failures: list[str] = []
         succeeded_components: list[str] = []
 
@@ -462,7 +462,7 @@ class GDPRService:
             logger.error("Letta deletion failed for user_hash=%s: %s", hash_uid(user_id), e)
             deletion_report["components"]["letta"] = {"status": "error", "error": "operation failed"}
 
-        # FINDING-010: Destroy encryption keys (not just a comment)
+        # Destroy encryption keys (actual key destruction, not just deletion of encrypted data)
         try:
             from src.lib.encryption import get_encryption_service
             encryption_service = get_encryption_service()
@@ -475,7 +475,7 @@ class GDPRService:
             deletion_report["components"]["encryption_keys"] = {"status": "error", "error": "key destruction failed"}
             critical_failures.append("encryption_keys")
 
-        # FINDING-010: If ANY critical database fails (PostgreSQL, Redis),
+        # If ANY critical database fails (PostgreSQL, Redis),
         # mark entire operation as FAILED, not "partial"
         all_success = all(
             comp.get("status") in ("deleted", "destroyed")
@@ -587,6 +587,169 @@ class GDPRService:
 
         logger.info("GDPR unfreeze completed for user_hash=%s", hash_uid(user_id))
         return unfreeze_report
+
+    async def bulk_delete_users(self, user_ids: list[int]) -> dict[str, Any]:
+        """
+        PERF-003: Bulk GDPR delete for multiple users.
+
+        Instead of calling delete_user_data() per user (N+1 pattern),
+        this method batches database operations across all users.
+
+        Args:
+            user_ids: List of user identifiers to delete
+
+        Returns:
+            dict: Bulk deletion report with per-user and aggregate status
+        """
+        if not user_ids:
+            return {"user_count": 0, "results": {}, "overall_status": "success"}
+
+        results: dict[int, dict[str, Any]] = {}
+        overall_failures: list[int] = []
+
+        # Phase 1: Batch module deletions (call each module once per user)
+        module_errors: dict[int, list[str]] = {uid: [] for uid in user_ids}
+        for module_name, module in self._modules.items():
+            for uid in user_ids:
+                try:
+                    await module.delete_user_data(uid)
+                except Exception as e:
+                    logger.error(
+                        "Module '%s' bulk deletion failed for user_hash=%s: %s",
+                        module_name, hash_uid(uid), e,
+                    )
+                    module_errors[uid].append(module_name)
+
+        # Phase 2: Batch database deletions
+        # PostgreSQL batch delete (single transaction for all users)
+        pg_failed_users: list[int] = []
+        if self.db:
+            try:
+                from sqlalchemy import text
+                async with self.db.begin() as conn:
+                    for uid in user_ids:
+                        await conn.execute(
+                            text("DELETE FROM users WHERE id = :user_id"),
+                            {"user_id": uid},
+                        )
+            except Exception as e:
+                logger.error("PostgreSQL bulk deletion failed: %s", e)
+                pg_failed_users = list(user_ids)
+
+        # Redis batch delete (scan + pipeline delete per user)
+        redis_failed_users: list[int] = []
+        if self.redis:
+            try:
+                all_keys: list[Any] = []
+                for uid in user_ids:
+                    for pattern in [f"user:{uid}:*", f"aurora:*:{uid}:*"]:
+                        cursor = 0
+                        while True:
+                            cursor, partial_keys = await self.redis.scan(
+                                cursor, match=pattern, count=100,
+                            )
+                            all_keys.extend(partial_keys)
+                            if cursor == 0:
+                                break
+                if all_keys:
+                    await self.redis.delete(*all_keys)
+            except Exception as e:
+                logger.error("Redis bulk deletion failed: %s", e)
+                redis_failed_users = list(user_ids)
+
+        # Neo4j batch delete
+        neo4j_failed_users: list[int] = []
+        if self.neo4j:
+            for uid in user_ids:
+                try:
+                    await self._delete_neo4j(uid)
+                except Exception as e:
+                    logger.error("Neo4j deletion failed for user_hash=%s: %s", hash_uid(uid), e)
+                    neo4j_failed_users.append(uid)
+
+        # Qdrant batch delete
+        qdrant_failed_users: list[int] = []
+        if self.qdrant:
+            for uid in user_ids:
+                try:
+                    await self._delete_qdrant(uid)
+                except Exception as e:
+                    logger.error("Qdrant deletion failed for user_hash=%s: %s", hash_uid(uid), e)
+                    qdrant_failed_users.append(uid)
+
+        # Letta batch delete
+        letta_failed_users: list[int] = []
+        if self.letta:
+            for uid in user_ids:
+                try:
+                    await self._delete_letta(uid)
+                except Exception as e:
+                    logger.error("Letta deletion failed for user_hash=%s: %s", hash_uid(uid), e)
+                    letta_failed_users.append(uid)
+
+        # Phase 3: Batch encryption key destruction
+        encryption_failed_users: list[int] = []
+        try:
+            from src.lib.encryption import get_encryption_service
+            encryption_service = get_encryption_service()
+            for uid in user_ids:
+                try:
+                    encryption_service.destroy_keys(uid)
+                except Exception as e:
+                    logger.error("Key destruction failed for user_hash=%s: %s", hash_uid(uid), e)
+                    encryption_failed_users.append(uid)
+        except Exception as e:
+            logger.error("Encryption service unavailable for bulk key destruction: %s", e)
+            encryption_failed_users = list(user_ids)
+
+        # Phase 4: Build per-user results
+        for uid in user_ids:
+            critical_failures: list[str] = []
+            if uid in pg_failed_users:
+                critical_failures.append("postgres")
+            if uid in redis_failed_users:
+                critical_failures.append("redis")
+            if uid in encryption_failed_users:
+                critical_failures.append("encryption_keys")
+
+            non_critical_failures: list[str] = list(module_errors[uid])
+            if uid in neo4j_failed_users:
+                non_critical_failures.append("neo4j")
+            if uid in qdrant_failed_users:
+                non_critical_failures.append("qdrant")
+            if uid in letta_failed_users:
+                non_critical_failures.append("letta")
+
+            if critical_failures:
+                status = "failed"
+                overall_failures.append(uid)
+            elif non_critical_failures:
+                status = "partial"
+            else:
+                status = "success"
+
+            results[uid] = {
+                "status": status,
+                "critical_failures": critical_failures,
+                "non_critical_failures": non_critical_failures,
+            }
+
+        overall_status = "success"
+        if overall_failures:
+            overall_status = "failed"
+        elif any(r["status"] == "partial" for r in results.values()):
+            overall_status = "partial"
+
+        logger.info(
+            "GDPR bulk deletion completed: %d users, status=%s",
+            len(user_ids), overall_status,
+        )
+        return {
+            "user_count": len(user_ids),
+            "results": results,
+            "overall_status": overall_status,
+            "failed_user_ids": overall_failures,
+        }
 
     async def check_retention(self) -> list[RecordsToDelete]:
         """
@@ -866,7 +1029,7 @@ class GDPRService:
             return
 
         try:
-            # FINDING-010: Scan for both user-prefixed and aurora-prefixed keys
+            # Scan for both user-prefixed and aurora-prefixed keys
             patterns = [
                 f"user:{user_id}:*",
                 f"aurora:*:{user_id}:*",

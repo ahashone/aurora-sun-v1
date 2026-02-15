@@ -214,7 +214,7 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 def _validate_role_from_kwargs(kwargs: dict[str, Any]) -> Role:
     """
-    FINDING-015: Validate the role from kwargs.
+    Validate the role from kwargs (prevents privilege escalation).
 
     SECURITY NOTE: In production, `current_user_role` MUST come from the
     authenticated session/token (e.g., decoded JWT), NOT from caller kwargs
@@ -236,7 +236,7 @@ def _validate_role_from_kwargs(kwargs: dict[str, Any]) -> Role:
     if not isinstance(role, Role):
         raise ValueError(f"Expected Role, got {type(role)}")
 
-    # FINDING-015: Reject Role.ADMIN unless the request is verified as internal/
+    # Reject Role.ADMIN unless the request is verified as internal/
     # authenticated. In production, this flag must be set by auth middleware only.
     if role == Role.ADMIN and not kwargs.get("_internal_request", False):
         logger.warning(
@@ -255,7 +255,7 @@ def require_permission(permission: Permission) -> Callable[[F], F]:
     """
     Decorator to enforce permission requirements.
 
-    FINDING-015: Role is validated via _validate_role_from_kwargs which
+    Role is validated via _validate_role_from_kwargs which
     rejects unverified ADMIN claims.
 
     Args:
@@ -351,7 +351,7 @@ def require_role(required_role: Role) -> Callable[[F], F]:
     """
     Decorator to enforce specific role requirement.
 
-    FINDING-015: Role is validated via _validate_role_from_kwargs.
+    Role is validated via _validate_role_from_kwargs.
 
     Args:
         required_role: Required role

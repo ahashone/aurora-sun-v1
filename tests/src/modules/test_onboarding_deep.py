@@ -248,3 +248,309 @@ class TestDeepOnboardingModule:
         assert data.consent_given is True
         assert data.energy_pattern == "morning"
         assert data.burnout_history == "occasional"
+
+    # =================================================================
+    # Path selection: Serbian and Greek
+    # =================================================================
+
+    def test_get_path_selection_prompt_serbian(self) -> None:
+        """Test path selection prompt in Serbian."""
+        module = DeepOnboardingModule()
+        result = module.get_path_selection_prompt("sr")
+
+        assert "message" in result
+        assert "options" in result
+        assert "Brzi start" in result["message"]
+        assert len(result["options"]) == 2
+
+    def test_get_path_selection_prompt_greek(self) -> None:
+        """Test path selection prompt in Greek."""
+        module = DeepOnboardingModule()
+        result = module.get_path_selection_prompt("el")
+
+        assert "message" in result
+        assert "options" in result
+        assert len(result["options"]) == 2
+
+    def test_get_path_selection_prompt_unsupported_falls_back(self) -> None:
+        """Test path selection prompt with unsupported language falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_path_selection_prompt("xx")
+
+        assert "message" in result
+        assert "Quick Start" in result["message"]
+
+    # =================================================================
+    # Segment prompt: Deep Dive translations
+    # =================================================================
+
+    def test_get_segment_prompt_deep_dive_german(self) -> None:
+        """Test segment prompt Deep Dive in German."""
+        module = DeepOnboardingModule()
+        result = module.get_segment_prompt("de", OnboardingPath.DEEP_DIVE)
+
+        assert "message" in result
+        assert "anpassen" in result["message"].lower() or "verstehen" in result["message"].lower()
+
+    def test_get_segment_prompt_deep_dive_serbian(self) -> None:
+        """Test segment prompt Deep Dive in Serbian."""
+        module = DeepOnboardingModule()
+        result = module.get_segment_prompt("sr", OnboardingPath.DEEP_DIVE)
+
+        assert "message" in result
+        assert len(result["options"]) == 5
+
+    def test_get_segment_prompt_deep_dive_greek(self) -> None:
+        """Test segment prompt Deep Dive in Greek."""
+        module = DeepOnboardingModule()
+        result = module.get_segment_prompt("el", OnboardingPath.DEEP_DIVE)
+
+        assert "message" in result
+        assert len(result["options"]) == 5
+
+    def test_get_segment_prompt_deep_dive_unsupported(self) -> None:
+        """Test segment prompt Deep Dive falls back for unsupported language."""
+        module = DeepOnboardingModule()
+        result = module.get_segment_prompt("xx", OnboardingPath.DEEP_DIVE)
+
+        assert "message" in result
+        assert len(result["options"]) == 5
+
+    # =================================================================
+    # Energy pattern prompt: Non-English fallbacks
+    # =================================================================
+
+    def test_get_energy_pattern_prompt_audhd_non_english(self) -> None:
+        """Test energy pattern prompt AuDHD non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_energy_pattern_prompt("de", "AH")
+
+        assert "message" in result
+        assert "options" in result
+        # Should fall back to English content
+        assert len(result["options"]) > 0
+
+    def test_get_energy_pattern_prompt_autism_non_english(self) -> None:
+        """Test energy pattern prompt Autism non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_energy_pattern_prompt("de", "AU")
+
+        assert "message" in result
+        assert "routine" in result["message"].lower() or "sensory" in result["message"].lower()
+
+    def test_get_energy_pattern_prompt_adhd_non_english(self) -> None:
+        """Test energy pattern prompt ADHD non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_energy_pattern_prompt("sr", "AD")
+
+        assert "message" in result
+        assert "energy" in result["message"].lower()
+
+    def test_get_energy_pattern_prompt_nt_non_english(self) -> None:
+        """Test energy pattern prompt NT non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_energy_pattern_prompt("el", "NT")
+
+        assert "message" in result
+        assert len(result["options"]) > 0
+
+    def test_get_energy_pattern_prompt_custom(self) -> None:
+        """Test energy pattern prompt for Custom segment (default path)."""
+        module = DeepOnboardingModule()
+        result = module.get_energy_pattern_prompt("en", "CU")
+
+        assert "message" in result
+        assert "options" in result
+        assert len(result["options"]) > 0
+
+    # =================================================================
+    # Burnout history prompt: Non-English fallbacks
+    # =================================================================
+
+    def test_get_burnout_history_prompt_adhd_non_english(self) -> None:
+        """Test burnout history prompt ADHD non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_burnout_history_prompt("de", "AD")
+
+        assert "message" in result
+        assert "boom-bust" in result["message"].lower() or "crash" in result["message"].lower()
+
+    def test_get_burnout_history_prompt_autism_non_english(self) -> None:
+        """Test burnout history prompt Autism non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_burnout_history_prompt("sr", "AU")
+
+        assert "message" in result
+        assert "shutdown" in result["message"].lower()
+
+    def test_get_burnout_history_prompt_audhd_non_english(self) -> None:
+        """Test burnout history prompt AuDHD non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_burnout_history_prompt("el", "AH")
+
+        assert "message" in result
+        assert len(result["options"]) == 4
+
+    def test_get_burnout_history_prompt_neurotypical(self) -> None:
+        """Test burnout history prompt for Neurotypical segment."""
+        module = DeepOnboardingModule()
+        result = module.get_burnout_history_prompt("en", "NT")
+
+        assert "message" in result
+        assert "burnout" in result["message"].lower()
+        assert len(result["options"]) == 4
+
+    def test_get_burnout_history_prompt_nt_non_english(self) -> None:
+        """Test burnout history prompt NT non-English falls back to English."""
+        module = DeepOnboardingModule()
+        result = module.get_burnout_history_prompt("de", "NT")
+
+        assert "message" in result
+        assert "burnout" in result["message"].lower()
+
+    def test_get_burnout_history_prompt_custom(self) -> None:
+        """Test burnout history prompt for Custom segment (standard model)."""
+        module = DeepOnboardingModule()
+        result = module.get_burnout_history_prompt("en", "CU")
+
+        assert "message" in result
+        assert len(result["options"]) == 4
+
+    # =================================================================
+    # Completion message: All languages and paths
+    # =================================================================
+
+    def test_get_completion_message_quick_start_serbian(self) -> None:
+        """Test completion message Quick Start in Serbian."""
+        module = DeepOnboardingModule()
+        data = OnboardingData(
+            language="sr",
+            name="Nikola",
+            segment="NT",
+            path=OnboardingPath.QUICK_START,
+            consent_given=True,
+        )
+
+        message = module.get_completion_message("sr", data)
+        assert "Nikola" in message
+
+    def test_get_completion_message_quick_start_greek(self) -> None:
+        """Test completion message Quick Start in Greek."""
+        module = DeepOnboardingModule()
+        data = OnboardingData(
+            language="el",
+            name="Nikos",
+            segment="AD",
+            path=OnboardingPath.QUICK_START,
+            consent_given=True,
+        )
+
+        message = module.get_completion_message("el", data)
+        assert "Nikos" in message
+
+    def test_get_completion_message_deep_dive_german(self) -> None:
+        """Test completion message Deep Dive in German."""
+        module = DeepOnboardingModule()
+        data = OnboardingData(
+            language="de",
+            name="Hans",
+            segment="AH",
+            path=OnboardingPath.DEEP_DIVE,
+            consent_given=True,
+        )
+
+        message = module.get_completion_message("de", data)
+        assert "Hans" in message
+        assert "AuDHD" in message
+
+    def test_get_completion_message_deep_dive_serbian(self) -> None:
+        """Test completion message Deep Dive in Serbian."""
+        module = DeepOnboardingModule()
+        data = OnboardingData(
+            language="sr",
+            name="Milan",
+            segment="AU",
+            path=OnboardingPath.DEEP_DIVE,
+            consent_given=True,
+        )
+
+        message = module.get_completion_message("sr", data)
+        assert "Milan" in message
+
+    def test_get_completion_message_deep_dive_greek(self) -> None:
+        """Test completion message Deep Dive in Greek."""
+        module = DeepOnboardingModule()
+        data = OnboardingData(
+            language="el",
+            name="Giorgos",
+            segment="NT",
+            path=OnboardingPath.DEEP_DIVE,
+            consent_given=True,
+        )
+
+        message = module.get_completion_message("el", data)
+        assert "Giorgos" in message
+
+    def test_get_completion_message_unsupported_language_fallback(self) -> None:
+        """Test completion message with unsupported language uses i18n fallback."""
+        module = DeepOnboardingModule()
+        data = OnboardingData(
+            language="xx",
+            name="Unknown",
+            segment="NT",
+            path=OnboardingPath.QUICK_START,
+            consent_given=True,
+        )
+
+        message = module.get_completion_message("xx", data)
+        # Should use i18n fallback
+        assert len(message) > 0
+
+    def test_get_completion_message_default_segment(self) -> None:
+        """Test completion message with None segment defaults to NT."""
+        module = DeepOnboardingModule()
+        data = OnboardingData(
+            language="en",
+            name="Test",
+            segment=None,
+            path=OnboardingPath.QUICK_START,
+            consent_given=True,
+        )
+
+        message = module.get_completion_message("en", data)
+        assert "Test" in message
+        assert "Neurotypical" in message
+
+
+class TestDeepOnboardingState:
+    """Tests for DeepOnboardingState enum."""
+
+    def test_common_states(self) -> None:
+        """Test common state values."""
+        from src.modules.onboarding_deep import DeepOnboardingState
+
+        assert DeepOnboardingState.WELCOME == "welcome"
+        assert DeepOnboardingState.PATH_SELECTION == "path_selection"
+        assert DeepOnboardingState.LANGUAGE == "language"
+        assert DeepOnboardingState.NAME == "name"
+        assert DeepOnboardingState.SEGMENT == "segment"
+        assert DeepOnboardingState.CONSENT == "consent"
+        assert DeepOnboardingState.COMPLETE == "complete"
+
+    def test_deep_dive_states(self) -> None:
+        """Test Deep Dive-only state values."""
+        from src.modules.onboarding_deep import DeepOnboardingState
+
+        assert DeepOnboardingState.ENERGY_PATTERN == "energy_pattern"
+        assert DeepOnboardingState.WORK_STYLE_DETAILS == "work_style_details"
+        assert DeepOnboardingState.BURNOUT_HISTORY == "burnout_history"
+        assert DeepOnboardingState.SENSORY_PREFERENCES == "sensory_preferences"
+
+
+class TestOnboardingPath:
+    """Tests for OnboardingPath enum."""
+
+    def test_path_values(self) -> None:
+        """Test path enum values."""
+        assert OnboardingPath.QUICK_START == "quick_start"
+        assert OnboardingPath.DEEP_DIVE == "deep_dive"

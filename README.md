@@ -40,7 +40,7 @@ cp .env.example .env
 alembic upgrade head
 
 # Run the application (development)
-uvicorn src.bot.webhook:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # Or via Docker Compose (production)
 docker compose -f docker-compose.prod.yml up -d

@@ -40,7 +40,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# FINDING-037: Allowed hostnames for internal service connections.
+# Allowed hostnames for internal service connections (SSRF prevention).
 # Only these hosts are permitted for health check and backup HTTP calls.
 ALLOWED_INTERNAL_HOSTS = {
     "localhost",
@@ -56,7 +56,7 @@ ALLOWED_INTERNAL_HOSTS = {
 
 def _validate_internal_url(url: str) -> None:
     """
-    FINDING-037: Validate that a URL points to an allowed internal host.
+    Validate that a URL points to an allowed internal host (SSRF prevention).
     Prevents SSRF by rejecting any URL not on the allowlist.
 
     Args:
@@ -78,7 +78,7 @@ def _validate_internal_url(url: str) -> None:
 
 def _sanitize_backup_name(backup_name: str, backup_dir: Path) -> Path:
     """
-    FINDING-038: Sanitize backup filenames to prevent path traversal.
+    Sanitize backup filenames to prevent path traversal.
 
     Args:
         backup_name: The requested backup filename
@@ -101,6 +101,14 @@ def _sanitize_backup_name(backup_name: str, backup_dir: Path) -> Path:
     if not clean_name:
         raise ValueError("Backup name cannot be empty after sanitization")
 
+    # Reject null bytes (defense-in-depth against C-level path truncation)
+    if "\x00" in clean_name:
+        raise ValueError("Invalid backup name (contains null byte)")
+
+    # Reject hidden files / dotfiles
+    if clean_name.startswith("."):
+        raise ValueError(f"Invalid backup name (starts with '.'): {backup_name}")
+
     # Resolve and verify the path is within backup_dir
     resolved = (backup_dir / clean_name).resolve()
     if not str(resolved).startswith(str(backup_dir.resolve())):
@@ -112,9 +120,43 @@ def _sanitize_backup_name(backup_name: str, backup_dir: Path) -> Path:
     return resolved
 
 
+def _validate_restore_path(backup_path: str, backup_dir: Path) -> Path:
+    """
+    SEC-006: Validate that a restore path is within the backup directory.
+
+    Defense-in-depth validation for restore operations to prevent
+    path traversal when specifying backup files to restore from.
+
+    Args:
+        backup_path: The requested backup file path
+        backup_dir: The backup directory
+
+    Returns:
+        Validated resolved path
+
+    Raises:
+        ValueError: If the path is outside the backup directory
+    """
+    resolved = Path(backup_path).resolve()
+    backup_resolved = backup_dir.resolve()
+
+    # Reject null bytes
+    if "\x00" in backup_path:
+        raise ValueError("Invalid backup path (contains null byte)")
+
+    # Reject paths outside backup directory
+    if not str(resolved).startswith(str(backup_resolved)):
+        raise ValueError(
+            f"Path traversal detected: restore path '{resolved}' "
+            f"is outside backup directory '{backup_resolved}'"
+        )
+
+    return resolved
+
+
 def _encrypt_backup_file(file_path: Path, master_key: bytes) -> Path:
     """
-    FINDING-036: Encrypt a backup file using AES-256-GCM with the master key.
+    Encrypt a backup file using AES-256-GCM with the master key.
 
     Reads the backup file, encrypts its contents, writes to a .enc file,
     and removes the original unencrypted file.
@@ -235,7 +277,7 @@ class BackupService:
         self.encrypt_backups = encrypt_backups
         self.compression_level = compression_level
 
-        # FINDING-036: Load master key for backup encryption
+        # Load master key for backup encryption
         self._master_key: bytes | None = None
         if encrypt_backups:
             env_key = os.environ.get("AURORA_MASTER_KEY")
@@ -270,7 +312,7 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"postgresql_{timestamp}.sql.gz"
-        # FINDING-038: Sanitize backup filename
+        # Sanitize backup filename (path traversal prevention)
         backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
@@ -305,7 +347,7 @@ class BackupService:
                     error=error_msg,
                 )
 
-            # FINDING-036: Encrypt backup file if enabled
+            # Encrypt backup file if enabled (AES-256-GCM)
             if self.encrypt_backups and self._master_key:
                 backup_path = _encrypt_backup_file(backup_path, self._master_key)
 
@@ -354,7 +396,7 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"redis_{timestamp}.rdb"
-        # FINDING-038: Sanitize backup filename
+        # Sanitize backup filename (path traversal prevention)
         backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
@@ -382,7 +424,7 @@ class BackupService:
 
             await client.close()
 
-            # FINDING-036: Encrypt backup file if enabled
+            # Encrypt backup file if enabled (AES-256-GCM)
             if self.encrypt_backups and self._master_key:
                 backup_path = _encrypt_backup_file(backup_path, self._master_key)
 
@@ -429,7 +471,7 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"neo4j_{timestamp}"
-        # FINDING-038: Sanitize backup filename
+        # Sanitize backup filename (path traversal prevention)
         backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
@@ -508,11 +550,11 @@ class BackupService:
         """
         timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H%M%S")
         backup_filename = backup_name or f"qdrant_{timestamp}.json"
-        # FINDING-038: Sanitize backup filename
+        # Sanitize backup filename (path traversal prevention)
         backup_path = _sanitize_backup_name(backup_filename, self.backup_dir)
 
         try:
-            # FINDING-037: Validate URL against allowlist
+            # Validate URL against allowlist (SSRF prevention)
             _validate_internal_url(qdrant_url)
 
             import httpx
@@ -683,6 +725,10 @@ class RestoreService:
             RestoreResult with restore status
         """
         try:
+            # SEC-006: Validate restore path is within backup directory
+            validated_path = _validate_restore_path(backup_path, self.backup_dir)
+            backup_path = str(validated_path)
+
             # Build pg_restore command
             cmd = [
                 "pg_restore",

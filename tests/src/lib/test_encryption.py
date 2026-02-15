@@ -628,3 +628,635 @@ class TestEncryptionIntegration:
         # User 2 cannot decrypt
         with pytest.raises(DecryptionError):
             encryption_service.decrypt_field(encrypted, user2_id)
+
+
+# =============================================================================
+# Coverage Boost: Error Paths in EncryptionService
+# =============================================================================
+
+class TestEncryptionServiceErrorPaths:
+    """Test error paths in EncryptionService for coverage."""
+
+    def test_corrupt_ciphertext_raises_decryption_error(
+        self, encryption_service: EncryptionService
+    ):
+        """Corrupt ciphertext should raise DecryptionError."""
+        bad = EncryptedField(
+            ciphertext=base64.b64encode(b"bad data").decode(),
+            classification=DataClassification.SENSITIVE,
+            version=1,
+        )
+        with pytest.raises(DecryptionError):
+            encryption_service.decrypt_field(bad, user_id=1)
+
+    def test_truncated_ciphertext_raises_decryption_error(
+        self, encryption_service: EncryptionService
+    ):
+        """Truncated ciphertext (< NONCE_SIZE) should still raise."""
+        short = EncryptedField(
+            ciphertext=base64.b64encode(b"ab").decode(),
+            classification=DataClassification.SENSITIVE,
+            version=1,
+        )
+        with pytest.raises(DecryptionError):
+            encryption_service.decrypt_field(short, user_id=1)
+
+    def test_wrong_version_after_rotation(
+        self, encryption_service: EncryptionService
+    ):
+        """After rotation, old version data cannot be decrypted."""
+        user_id = 55555
+        encrypted = encryption_service.encrypt_field(
+            "test", user_id, DataClassification.SENSITIVE
+        )
+        assert encrypted.version == 1
+        encryption_service.rotate_key(user_id)
+        # Old data should fail
+        with pytest.raises(DecryptionError):
+            encryption_service.decrypt_field(encrypted, user_id)
+
+    def test_encrypt_internal_classification_raises(
+        self, encryption_service: EncryptionService
+    ):
+        """INTERNAL classification does not require encryption."""
+        with pytest.raises(ValueError, match="does not require"):
+            encryption_service.encrypt_field(
+                "data", 1, DataClassification.INTERNAL
+            )
+
+    def test_decrypt_non_encrypted_classification_raises(
+        self, encryption_service: EncryptionService
+    ):
+        """Cannot decrypt a field marked as PUBLIC."""
+        field = EncryptedField(
+            ciphertext="data",
+            classification=DataClassification.PUBLIC,
+            version=1,
+        )
+        with pytest.raises(
+            ValueError, match="does not require decryption"
+        ):
+            encryption_service.decrypt_field(field, user_id=1)
+
+    def test_art9_decrypt_without_field_salt_raises(
+        self, encryption_service: EncryptionService
+    ):
+        """ART_9 decrypt without field_salt raises DecryptionError."""
+        user_id = 77777
+        encrypted = encryption_service.encrypt_field(
+            "health data", user_id,
+            DataClassification.ART_9_SPECIAL, "field"
+        )
+        # Remove field_salt
+        broken = EncryptedField(
+            ciphertext=encrypted.ciphertext,
+            classification=DataClassification.ART_9_SPECIAL,
+            version=encrypted.version,
+            field_salt=None,
+        )
+        with pytest.raises(DecryptionError):
+            encryption_service.decrypt_field(broken, user_id, "field")
+
+    def test_financial_decrypt_without_envelope_nonce_raises(
+        self, encryption_service: EncryptionService
+    ):
+        """FINANCIAL decrypt without envelope_nonce raises."""
+        user_id = 88888
+        encrypted = encryption_service.encrypt_field(
+            "account data", user_id,
+            DataClassification.FINANCIAL, "account"
+        )
+        broken = EncryptedField(
+            ciphertext=encrypted.ciphertext,
+            classification=DataClassification.FINANCIAL,
+            version=encrypted.version,
+            envelope_nonce=None,
+        )
+        with pytest.raises(DecryptionError):
+            encryption_service.decrypt_field(broken, user_id, "account")
+
+
+# =============================================================================
+# Coverage Boost: Key Rotation Edge Cases
+# =============================================================================
+
+class TestKeyRotationEdgeCases:
+    """Test key rotation edge cases."""
+
+    def test_needs_re_encryption_old_version(self):
+        """Old version data needs re-encryption."""
+        field = EncryptedField(
+            ciphertext="data",
+            classification=DataClassification.SENSITIVE,
+            version=1,
+        )
+        assert EncryptionService.needs_re_encryption(field, 2) is True
+
+    def test_needs_re_encryption_current_version(self):
+        """Current version data does not need re-encryption."""
+        field = EncryptedField(
+            ciphertext="data",
+            classification=DataClassification.SENSITIVE,
+            version=2,
+        )
+        assert EncryptionService.needs_re_encryption(field, 2) is False
+
+    def test_needs_re_encryption_default_version(self):
+        """With None current_version, defaults to 1."""
+        field = EncryptedField(
+            ciphertext="data",
+            classification=DataClassification.SENSITIVE,
+            version=1,
+        )
+        assert EncryptionService.needs_re_encryption(field) is False
+
+    def test_rotate_increments_version(
+        self, encryption_service: EncryptionService
+    ):
+        """Rotation increments the version counter."""
+        initial = encryption_service._current_version
+        encryption_service.rotate_key(44444)
+        assert encryption_service._current_version == initial + 1
+
+    def test_rotate_clears_cache(
+        self, encryption_service: EncryptionService
+    ):
+        """Rotation clears the rotated user from cache."""
+        user_id = 33333
+        # Force cache population
+        encryption_service._derive_user_key(user_id)
+        assert user_id in encryption_service._user_key_cache
+        encryption_service.rotate_key(user_id)
+        assert user_id not in encryption_service._user_key_cache
+
+    def test_rotate_does_not_affect_other_users(
+        self, encryption_service: EncryptionService
+    ):
+        """Rotation for user A doesn't break user B's data."""
+        user_a = 11111
+        user_b = 22222
+        plain = "shared format"
+        enc_b = encryption_service.encrypt_field(
+            plain, user_b, DataClassification.SENSITIVE
+        )
+        encryption_service.rotate_key(user_a)
+        decrypted = encryption_service.decrypt_field(enc_b, user_b)
+        assert decrypted == plain
+
+
+# =============================================================================
+# Coverage Boost: Destroy Keys
+# =============================================================================
+
+class TestDestroyKeysEdgeCases:
+    """Test destroy_keys edge cases."""
+
+    def test_destroy_clears_cache(
+        self, encryption_service: EncryptionService
+    ):
+        """destroy_keys removes user from cache."""
+        user_id = 66666
+        encryption_service._derive_user_key(user_id)
+        assert user_id in encryption_service._user_key_cache
+        encryption_service.destroy_keys(user_id)
+        assert user_id not in encryption_service._user_key_cache
+
+    def test_destroy_nonexistent_user_no_error(
+        self, encryption_service: EncryptionService
+    ):
+        """destroy_keys on nonexistent user does not raise."""
+        encryption_service.destroy_keys(999999)
+
+
+# =============================================================================
+# Coverage Boost: EncryptedField.from_db_dict Validation
+# =============================================================================
+
+class TestEncryptedFieldFromDbDictErrors:
+    """Test EncryptedField.from_db_dict error paths."""
+
+    def test_invalid_ciphertext_type_raises(self):
+        """Non-string ciphertext raises ValueError."""
+        with pytest.raises(ValueError, match="Expected str for ciphertext"):
+            EncryptedField.from_db_dict({
+                "ciphertext": 123,
+                "classification": "sensitive",
+                "version": 1,
+            })
+
+    def test_invalid_classification_type_raises(self):
+        """Non-string classification raises ValueError."""
+        with pytest.raises(
+            ValueError, match="Expected str for classification"
+        ):
+            EncryptedField.from_db_dict({
+                "ciphertext": "data",
+                "classification": 999,
+                "version": 1,
+            })
+
+    def test_invalid_version_type_raises(self):
+        """Non-int version raises ValueError."""
+        with pytest.raises(ValueError, match="Expected int for version"):
+            EncryptedField.from_db_dict({
+                "ciphertext": "data",
+                "classification": "sensitive",
+                "version": "1",
+            })
+
+    def test_non_string_field_salt_converted(self):
+        """Non-string field_salt is converted to string."""
+        field = EncryptedField.from_db_dict({
+            "ciphertext": "data",
+            "classification": "art_9_special",
+            "version": 1,
+            "field_salt": 12345,
+        })
+        assert field.field_salt == "12345"
+
+    def test_non_string_envelope_nonce_converted(self):
+        """Non-string envelope_nonce is converted to string."""
+        field = EncryptedField.from_db_dict({
+            "ciphertext": "data",
+            "classification": "financial",
+            "version": 1,
+            "envelope_nonce": 67890,
+        })
+        assert field.envelope_nonce == "67890"
+
+
+# =============================================================================
+# Coverage Boost: HashService Edge Cases
+# =============================================================================
+
+class TestHashServiceEdgeCases:
+    """Test HashService edge cases for coverage."""
+
+    def test_hash_pii_empty_string(self, hash_service: HashService):
+        """Hashing empty string still produces valid output."""
+        result = hash_service.hash_pii("")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_hash_pii_unicode(self, hash_service: HashService):
+        """Unicode values hash correctly."""
+        result = hash_service.hash_pii("\u00fc\u00f6\u00e4\u00df")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_verify_pii_empty_string(self, hash_service: HashService):
+        """Verify works with empty string."""
+        h = hash_service.hash_pii("")
+        assert hash_service.verify_pii("", h) is True
+
+    def test_hash_for_lookup_deterministic(
+        self, hash_service: HashService
+    ):
+        """hash_for_lookup is deterministic."""
+        h1 = hash_service.hash_for_lookup("test")
+        h2 = hash_service.hash_for_lookup("test")
+        assert h1 == h2
+
+    def test_hash_for_lookup_differs_from_hash_pii(
+        self, hash_service: HashService
+    ):
+        """Lookup hash differs from PII hash."""
+        pii = hash_service.hash_pii("same_value")
+        lookup = hash_service.hash_for_lookup("same_value")
+        assert pii != lookup
+
+
+# =============================================================================
+# Coverage Boost: DataClassification Methods
+# =============================================================================
+
+class TestDataClassificationMethods:
+    """Additional DataClassification coverage."""
+
+    def test_all_members_have_requires_encryption(self):
+        """Every classification has requires_encryption."""
+        for dc in DataClassification:
+            result = dc.requires_encryption()
+            assert isinstance(result, bool)
+
+    def test_public_no_encryption(self):
+        assert DataClassification.PUBLIC.requires_encryption() is False
+
+    def test_internal_no_encryption(self):
+        assert DataClassification.INTERNAL.requires_encryption() is False
+
+    def test_sensitive_requires_encryption(self):
+        assert DataClassification.SENSITIVE.requires_encryption() is True
+
+    def test_art9_requires_encryption(self):
+        assert DataClassification.ART_9_SPECIAL.requires_encryption() is True
+
+    def test_financial_requires_encryption(self):
+        assert DataClassification.FINANCIAL.requires_encryption() is True
+
+
+# =============================================================================
+# Coverage Boost: _load_master_key Paths
+# =============================================================================
+
+class TestLoadMasterKeyPaths:
+    """Test _load_master_key env var, keyring, dev paths."""
+
+    def test_env_var_master_key(self):
+        """AURORA_MASTER_KEY env var is loaded correctly."""
+        import unittest.mock as mock
+        key = os.urandom(32)
+        env = {
+            "AURORA_MASTER_KEY": base64.b64encode(key).decode(),
+            "AURORA_DEV_MODE": "1",
+            "AURORA_HASH_SALT": base64.b64encode(
+                b"test-salt-for-hashing-32bytes"
+            ).decode(),
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            svc = EncryptionService()
+            assert svc._master_key == key
+
+    def test_env_var_master_key_wrong_length_raises(self):
+        """AURORA_MASTER_KEY with wrong length raises ValueError."""
+        import unittest.mock as mock
+        bad_key = os.urandom(16)  # 16 bytes, not 32
+        env = {
+            "AURORA_MASTER_KEY": base64.b64encode(bad_key).decode(),
+            "AURORA_DEV_MODE": "1",
+            "AURORA_HASH_SALT": base64.b64encode(
+                b"test-salt-for-hashing-32bytes"
+            ).decode(),
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            with pytest.raises(ValueError, match="must be exactly 32 bytes"):
+                EncryptionService()
+
+    def test_dev_mode_fallback_key(self):
+        """Dev mode uses deterministic key when no other available."""
+        import hashlib
+        import unittest.mock as mock
+        env = {
+            "AURORA_DEV_MODE": "1",
+            "AURORA_HASH_SALT": base64.b64encode(
+                b"test-salt-for-hashing-32bytes"
+            ).decode(),
+        }
+        # Remove AURORA_MASTER_KEY and AURORA_DEV_KEY if present
+        with mock.patch.dict(
+            os.environ, env, clear=False
+        ):
+            os.environ.pop("AURORA_MASTER_KEY", None)
+            os.environ.pop("AURORA_DEV_KEY", None)
+            svc = EncryptionService()
+            expected = hashlib.sha256(
+                b"aurora-sun-dev-key-DO-NOT-USE-IN-PRODUCTION"
+            ).digest()
+            assert svc._master_key == expected
+
+    def test_dev_mode_production_env_raises(self):
+        """Dev mode + production environment raises RuntimeError."""
+        import unittest.mock as mock
+        env = {
+            "AURORA_DEV_MODE": "1",
+            "AURORA_ENVIRONMENT": "production",
+            "AURORA_HASH_SALT": base64.b64encode(
+                b"test-salt-for-hashing-32bytes"
+            ).decode(),
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            os.environ.pop("AURORA_MASTER_KEY", None)
+            os.environ.pop("AURORA_DEV_KEY", None)
+            with pytest.raises(
+                RuntimeError, match="AURORA_DEV_MODE=1.*production"
+            ):
+                EncryptionService()
+
+    def test_no_key_available_raises(self):
+        """No master key available at all raises error."""
+        import unittest.mock as mock
+
+        from src.lib.encryption import EncryptionServiceError
+        env = {
+            "AURORA_HASH_SALT": base64.b64encode(
+                b"test-salt-for-hashing-32bytes"
+            ).decode(),
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            os.environ.pop("AURORA_MASTER_KEY", None)
+            os.environ.pop("AURORA_DEV_KEY", None)
+            os.environ.pop("AURORA_DEV_MODE", None)
+            # Also mock KEYRING to not be available
+            with mock.patch(
+                "src.lib.encryption.KEYRING_AVAILABLE", False
+            ):
+                with pytest.raises(EncryptionServiceError):
+                    EncryptionService()
+
+    def test_aurora_dev_key_env_var(self):
+        """AURORA_DEV_KEY env var is loaded."""
+        import unittest.mock as mock
+        key = os.urandom(32)
+        env = {
+            "AURORA_DEV_KEY": base64.b64encode(key).decode(),
+            "AURORA_HASH_SALT": base64.b64encode(
+                b"test-salt-for-hashing-32bytes"
+            ).decode(),
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            os.environ.pop("AURORA_MASTER_KEY", None)
+            # Mock keyring to not return a key
+            with mock.patch(
+                "src.lib.encryption.KEYRING_AVAILABLE", False
+            ):
+                svc = EncryptionService()
+                assert svc._master_key == key
+
+
+# =============================================================================
+# Coverage Boost: HashService Init Paths
+# =============================================================================
+
+class TestHashServiceInitPaths:
+    """Test HashService initialization paths."""
+
+    def test_init_from_env_salt(self):
+        """HashService loads salt from AURORA_HASH_SALT env var."""
+        import unittest.mock as mock
+        salt = b"test-salt-32bytes-for-hashing!!"
+        env = {"AURORA_HASH_SALT": base64.b64encode(salt).decode()}
+        with mock.patch.dict(os.environ, env, clear=False):
+            svc = HashService()
+            assert svc._salt == salt
+
+    def test_init_dev_mode_fallback(self):
+        """Dev mode uses deterministic salt."""
+        import hashlib
+        import unittest.mock as mock
+        env = {"AURORA_DEV_MODE": "1"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            os.environ.pop("AURORA_HASH_SALT", None)
+            svc = HashService()
+            expected = hashlib.sha256(
+                b"aurora-sun-dev-salt-DO-NOT-USE-IN-PRODUCTION"
+            ).digest()
+            assert svc._salt == expected
+
+    def test_init_dev_mode_production_raises(self):
+        """Dev mode + production environment raises."""
+        import unittest.mock as mock
+        env = {
+            "AURORA_DEV_MODE": "1",
+            "AURORA_ENVIRONMENT": "production",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            os.environ.pop("AURORA_HASH_SALT", None)
+            with pytest.raises(RuntimeError, match="production"):
+                HashService()
+
+    def test_init_no_salt_raises(self):
+        """No salt available raises EncryptionServiceError."""
+        import unittest.mock as mock
+
+        from src.lib.encryption import EncryptionServiceError
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AURORA_HASH_SALT", None)
+            os.environ.pop("AURORA_DEV_MODE", None)
+            with pytest.raises(EncryptionServiceError):
+                HashService()
+
+
+# =============================================================================
+# Coverage Boost: hash_for_lookup with AURORA_LOOKUP_SALT
+# =============================================================================
+
+class TestHashForLookupWithEnvSalt:
+    """Test hash_for_lookup when AURORA_LOOKUP_SALT is set."""
+
+    def test_lookup_with_env_salt(self, hash_service: HashService):
+        """Setting AURORA_LOOKUP_SALT uses it for lookup."""
+        import unittest.mock as mock
+        lookup_salt = b"lookup-salt-32bytes!!"
+        env = {
+            "AURORA_LOOKUP_SALT": base64.b64encode(
+                lookup_salt
+            ).decode()
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            result = hash_service.hash_for_lookup("test_value")
+            assert isinstance(result, str)
+            assert len(result) > 0
+
+    def test_lookup_without_env_salt_uses_main_salt(
+        self, hash_service: HashService
+    ):
+        """Without AURORA_LOOKUP_SALT, uses main salt + context."""
+        import unittest.mock as mock
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AURORA_LOOKUP_SALT", None)
+            result = hash_service.hash_for_lookup("test_value")
+            assert isinstance(result, str)
+            assert len(result) > 0
+
+
+# =============================================================================
+# Coverage Boost: Convenience Functions (global singletons)
+# =============================================================================
+
+class TestConvenienceFunctions:
+    """Test module-level convenience functions."""
+
+    def test_get_encryption_service_returns_instance(self):
+        """get_encryption_service returns an EncryptionService."""
+        import src.lib.encryption as enc_mod
+        # Reset global singleton
+        enc_mod._encryption_service = None
+        svc = enc_mod.get_encryption_service()
+        assert isinstance(svc, EncryptionService)
+        # Second call returns same instance
+        assert enc_mod.get_encryption_service() is svc
+
+    def test_get_hash_service_returns_instance(self):
+        """get_hash_service returns a HashService."""
+        import src.lib.encryption as enc_mod
+        enc_mod._hash_service = None
+        svc = enc_mod.get_hash_service()
+        assert isinstance(svc, HashService)
+        assert enc_mod.get_hash_service() is svc
+
+    def test_encrypt_for_user_convenience(self):
+        """encrypt_for_user uses global singleton."""
+        import src.lib.encryption as enc_mod
+        enc_mod._encryption_service = None
+        result = enc_mod.encrypt_for_user(
+            "test data", 12345, DataClassification.SENSITIVE
+        )
+        assert isinstance(result, EncryptedField)
+        assert result.classification == DataClassification.SENSITIVE
+
+    def test_decrypt_for_user_convenience(self):
+        """decrypt_for_user uses global singleton."""
+        import src.lib.encryption as enc_mod
+        enc_mod._encryption_service = None
+        encrypted = enc_mod.encrypt_for_user(
+            "roundtrip", 12345, DataClassification.SENSITIVE
+        )
+        plaintext = enc_mod.decrypt_for_user(encrypted, 12345)
+        assert plaintext == "roundtrip"
+
+    def test_hash_telegram_id_convenience(self):
+        """hash_telegram_id uses global HashService."""
+        import src.lib.encryption as enc_mod
+        enc_mod._hash_service = None
+        result = enc_mod.hash_telegram_id("123456789")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_hash_for_search_convenience(self):
+        """hash_for_search uses global HashService."""
+        import src.lib.encryption as enc_mod
+        enc_mod._hash_service = None
+        result = enc_mod.hash_for_search("search_term")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+
+# =============================================================================
+# Coverage Boost: _get_user_salt File-Based Paths
+# =============================================================================
+
+class TestGetUserSaltPaths:
+    """Test _get_user_salt file-based salt storage paths."""
+
+    def test_salt_stored_in_file(
+        self, encryption_service: EncryptionService
+    ):
+        """User salt is written to file-based fallback."""
+        user_id = 123456
+        salt = encryption_service._get_user_salt(user_id)
+        assert isinstance(salt, bytes)
+        assert len(salt) == encryption_service.SALT_SIZE
+
+        # Calling again should return the same salt (from file)
+        salt2 = encryption_service._get_user_salt(user_id)
+        assert salt == salt2
+
+    def test_salt_file_read_error_generates_new(
+        self, encryption_service: EncryptionService
+    ):
+        """If file read fails, a new salt is generated."""
+        import unittest.mock as mock
+        user_id = 654321
+        # First call generates and stores the salt
+        encryption_service._get_user_salt(user_id)
+
+        # Mock os.path.exists to return False (simulate no file)
+        with mock.patch(
+            "src.lib.encryption.KEYRING_AVAILABLE", False
+        ):
+            with mock.patch("os.path.exists", return_value=False):
+                # This will generate a new salt since file is "gone"
+                new_salt = encryption_service._get_user_salt(
+                    user_id + 1
+                )
+                assert isinstance(new_salt, bytes)

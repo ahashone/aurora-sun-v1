@@ -52,7 +52,7 @@ class OnboardingStates(StrEnum):
     COMPLETED = "completed"        # User is onboarded
 
 
-# FINDING-033: Valid state transitions. Each state maps to its allowed next states.
+# Valid state transitions. Each state maps to its allowed next states.
 VALID_TRANSITIONS: dict[OnboardingStates, set[OnboardingStates]] = {
     OnboardingStates.LANGUAGE: {OnboardingStates.NAME},
     OnboardingStates.NAME: {OnboardingStates.WORKING_STYLE},
@@ -62,7 +62,7 @@ VALID_TRANSITIONS: dict[OnboardingStates, set[OnboardingStates]] = {
     OnboardingStates.COMPLETED: set(),  # Terminal state
 }
 
-# FINDING-032: Exact set of allowed callback values. No startswith() parsing.
+# Exact set of allowed callback values. No startswith() parsing (prevents injection).
 ALLOWED_CALLBACKS: set[str] = {
     "lang_en", "lang_de", "lang_sr", "lang_el",
     "segment_AD", "segment_AU", "segment_AH", "segment_NT", "segment_CU",
@@ -333,15 +333,22 @@ class OnboardingFlow:
         telegram_id = str(user.id)
         return hash_telegram_id(telegram_id)
 
-    async def start(self, update: Update, language: str = "en") -> None:
+    async def start(
+        self,
+        update: Update,
+        language: str = "en",
+        user_hash: str | None = None,
+    ) -> None:
         """
         Start onboarding for a new user.
 
         Args:
             update: Telegram Update
             language: Auto-detected language from Telegram
+            user_hash: Pre-computed user hash (PERF-007: skip HMAC)
         """
-        user_hash = self._get_user_hash(update)
+        if user_hash is None:
+            user_hash = self._get_user_hash(update)
         await self._set_state(user_hash, OnboardingStates.LANGUAGE)
 
         # Store language (auto-detected or user-selected)
@@ -414,7 +421,7 @@ class OnboardingFlow:
         callback_data = update.callback_query.data
         user_data = await self._get_data(user_hash)
 
-        # FINDING-032: Reject any callback not in the exact allowlist.
+        # Reject any callback not in the exact allowlist (prevents injection).
         if callback_data not in ALLOWED_CALLBACKS:
             logger.warning(
                 "Rejected invalid callback data: %s for state %s",
@@ -424,7 +431,7 @@ class OnboardingFlow:
             await update.callback_query.answer()
             return
 
-        # FINDING-032: Use exact string matching with a lookup dict instead of startswith().
+        # Use exact string matching with a lookup dict instead of startswith().
         LANG_MAP: dict[str, str] = {
             "lang_en": "en", "lang_de": "de", "lang_sr": "sr", "lang_el": "el",
         }
@@ -506,7 +513,7 @@ class OnboardingFlow:
                 break
 
         if next_state:
-            # FINDING-033: Validate the state transition is allowed.
+            # Validate the state transition is allowed (state machine integrity).
             if current_state is not None:
                 allowed_next = VALID_TRANSITIONS.get(current_state, set())
                 if next_state not in allowed_next:

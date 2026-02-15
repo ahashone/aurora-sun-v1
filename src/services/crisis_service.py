@@ -307,7 +307,7 @@ class CrisisService:
         "text": "See website for text options",
     }
 
-    # FINDING-027: Per-user crisis alert rate limiting to prevent alert fatigue.
+    # Per-user crisis alert rate limiting to prevent alert fatigue.
     # Max 5 crisis alerts per hour per user. After the limit, still log the event
     # and respond to the user with crisis resources, but suppress admin notifications.
     CRISIS_ALERT_MAX_PER_HOUR = 5
@@ -327,7 +327,7 @@ class CrisisService:
         self._encryption = encryption_service or get_encryption_service()
         # In-memory crisis event log (encrypted at rest)
         self._crisis_log: dict[int, list[dict[str, str | int | None]]] = {}
-        # FINDING-027: Per-user crisis alert timestamps for rate limiting
+        # Per-user crisis alert timestamps for rate limiting
         self._crisis_alert_timestamps: dict[int, list[float]] = {}
 
     async def detect_crisis(self, message: str) -> CrisisLevel:
@@ -473,7 +473,7 @@ class CrisisService:
         """
         Check if admin notifications should be sent for this user.
 
-        FINDING-027: Limits admin notifications to CRISIS_ALERT_MAX_PER_HOUR
+        Limits admin notifications to CRISIS_ALERT_MAX_PER_HOUR
         per user per hour. Always still responds to the user with crisis
         resources regardless of this limit.
 
@@ -521,7 +521,7 @@ class CrisisService:
         - Empathetic acknowledgment
         - Crisis resources (hotlines)
         - Workflow pause flag
-        - Admin notification flag (FINDING-027: rate-limited per user)
+        - Admin notification flag (rate-limited per user to prevent alert fatigue)
 
         The user ALWAYS receives crisis resources regardless of rate limiting.
         Only admin notifications are suppressed after the rate limit is reached.
@@ -541,7 +541,7 @@ class CrisisService:
         # Log crisis event (encrypted in production) -- always logged
         await self._log_crisis_event(user_id, level, signal)
 
-        # FINDING-027: Check per-user crisis alert rate limit
+        # Check per-user crisis alert rate limit
         admin_notify_allowed = self._check_crisis_alert_rate(user_id)
 
         if level == CrisisLevel.CRISIS:

@@ -13,11 +13,14 @@ import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Index, Integer, String, event
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, selectinload
 
 from src.models.base import Base
 
 logger = logging.getLogger(__name__)
+
+# PERF-009: Sentinel for distinguishing "not cached" from "cached as None"
+_SENTINEL = object()
 
 
 class User(Base):
@@ -97,23 +100,38 @@ class User(Base):
     # =============================================================================
     @property
     def name(self) -> str | None:
-        """Get decrypted name."""
+        """Get decrypted name (PERF-009: cached after first access)."""
+        cached = self.__dict__.get("_cached_name", _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached  # type: ignore[no-any-return]
         if self._name_plaintext is None:
+            self.__dict__["_cached_name"] = None
             return None
         try:
             data = json.loads(str(self._name_plaintext))
             if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
+                from src.lib.encryption import (
+                    EncryptedField,
+                    get_encryption_service,
+                )
                 encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(encrypted, int(self.id), "name")
+                svc = get_encryption_service()
+                result = svc.decrypt_field(
+                    encrypted, int(self.id), "name"
+                )
+                self.__dict__["_cached_name"] = result
+                return result
         except (json.JSONDecodeError, KeyError, ValueError, TypeError):
             pass
         # Plaintext fallback for unencrypted/legacy data or id=None
-        return str(self._name_plaintext) if self._name_plaintext else None
+        fallback: str | None = str(self._name_plaintext) if self._name_plaintext else None
+        self.__dict__["_cached_name"] = fallback
+        return fallback
 
     @name.setter
     def name(self, value: str | None) -> None:
         """Set encrypted name."""
+        self.__dict__.pop("_cached_name", None)
         if value is None:
             setattr(self, '_name_plaintext', None)
             return
@@ -148,9 +166,47 @@ class User(Base):
         code = str(self.working_style_code) if self.working_style_code else None
         return SEGMENT_DISPLAY_NAMES.get(code, "Neurotypical") if code else "Neurotypical"
 
+    # =================================================================
+    # PERF-001: Eager loading options for hot-path queries
+    # =================================================================
+    @classmethod
+    def eager_load_options(cls) -> list[object]:
+        """Return selectinload options for hot-path relationships.
+
+        Usage:
+            session.query(User).options(
+                *User.eager_load_options()
+            ).filter_by(...)
+        """
+        return [
+            selectinload(cls.goals),
+            selectinload(cls.tasks),
+            selectinload(cls.visions),
+        ]
+
+    @classmethod
+    def eager_load_all_options(cls) -> list[object]:
+        """Return selectinload options for ALL relationships."""
+        return [
+            selectinload(cls.goals),
+            selectinload(cls.tasks),
+            selectinload(cls.visions),
+            selectinload(cls.daily_plans),
+            selectinload(cls.sessions),
+            selectinload(cls.captured_items),
+            selectinload(cls.second_brain_entries),
+        ]
+
 
 # =============================================================================
-# FINDING-005: Re-encrypt name after INSERT when ID is assigned
+# PERF-005: Event listener cleanup analysis.
+# The @event.listens_for decorator below is a class-level listener registered
+# once at module import time. SQLAlchemy uses strong references for class-level
+# listeners, so it does NOT accumulate across requests. No cleanup needed.
+# =============================================================================
+
+# =============================================================================
+# Re-encrypt name after INSERT when auto-increment ID is assigned
 # =============================================================================
 @event.listens_for(User, "after_insert")
 def _re_encrypt_name_after_insert(
@@ -191,6 +247,8 @@ def _re_encrypt_name_after_insert(
         )
         # Update the in-memory attribute to match
         target._name_plaintext = encrypted_json  # type: ignore[assignment]
+        # PERF-009: Invalidate decryption cache after re-encryption
+        target.__dict__.pop("_cached_name", None)
         logger.debug("Re-encrypted name for user %s after INSERT", target.id)
     except Exception:
         logger.critical(

@@ -1044,3 +1044,562 @@ class Test5DatabaseAggregation:
             mock_neo4j_instance.delete_user_subgraph.assert_called_once_with(1)
             mock_qdrant_instance.delete_user_vectors.assert_called_once_with(1)
             mock_letta_instance.delete_user_memories.assert_called_once_with(1)
+
+
+# =============================================================================
+# Coverage boost: Export data flow edge cases
+# =============================================================================
+
+
+class TestGDPRExportEdgeCases:
+    """Additional export edge cases for coverage."""
+
+    @pytest.mark.asyncio
+    async def test_export_all_modules_fail(self):
+        """Export when ALL modules fail still returns metadata."""
+        service = GDPRService()
+        fail1 = MockGDPRModule(name="f1", fail_on_export=True)
+        fail2 = MockGDPRModule(name="f2", fail_on_export=True)
+        service.register_module("f1", fail1)
+        service.register_module("f2", fail2)
+
+        result = await service.export_user_data(user_id=1)
+
+        assert result["export_metadata"]["complete"] is False
+        assert len(result["export_metadata"]["failed_modules"]) == 2
+        assert result["modules"] == {}
+        assert result["export_metadata"]["total_records"] == 0
+        assert result["export_metadata"]["completeness_warning"] is not None
+
+    @pytest.mark.asyncio
+    async def test_export_completeness_warning_absent_on_success(self):
+        """No completeness_warning when all exports succeed."""
+        service = GDPRService()
+        mod = MockGDPRModule(name="ok", export_data={"data": 1})
+        service.register_module("ok", mod)
+
+        result = await service.export_user_data(user_id=1)
+
+        assert result["export_metadata"]["complete"] is True
+        assert result["export_metadata"]["completeness_warning"] is None
+
+    @pytest.mark.asyncio
+    async def test_export_metadata_has_aurora_version(self):
+        """Export metadata includes aurora_version."""
+        service = GDPRService()
+        result = await service.export_user_data(user_id=1)
+        assert result["export_metadata"]["aurora_version"] == "v1"
+
+    @pytest.mark.asyncio
+    async def test_export_each_module_has_exported_at(self):
+        """Each module export record has an exported_at timestamp."""
+        service = GDPRService()
+        mod = MockGDPRModule(name="timestamped", export_data={"x": 1})
+        service.register_module("timestamped", mod)
+
+        result = await service.export_user_data(user_id=1)
+        assert "exported_at" in result["modules"]["timestamped"]
+
+
+# =============================================================================
+# Coverage boost: Deletion cascades and critical failures
+# =============================================================================
+
+
+class TestGDPRDeletionCascades:
+    """Test deletion cascade behavior and critical failure handling."""
+
+    @pytest.mark.asyncio
+    async def test_delete_postgres_failure_marks_critical(self):
+        """PostgreSQL failure during delete is marked as critical."""
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
+        mock_db.begin = MagicMock(side_effect=RuntimeError("DB down"))
+
+        service = GDPRService(db_pool=mock_db)
+        result = await service.delete_user_data(user_id=1)
+
+        assert result["overall_status"] == "failed"
+        assert "postgres" in result.get("critical_failures", [])
+
+    @pytest.mark.asyncio
+    async def test_delete_redis_failure_marks_critical(self):
+        """Redis failure during delete is marked as critical."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_redis = MagicMock()
+        mock_redis.scan = AsyncMock(side_effect=RuntimeError("Redis down"))
+
+        service = GDPRService(redis=mock_redis)
+        result = await service.delete_user_data(user_id=1)
+
+        assert result["overall_status"] == "failed"
+        assert "redis" in result.get("critical_failures", [])
+
+    @pytest.mark.asyncio
+    async def test_delete_neo4j_failure_non_critical(self):
+        """Neo4j failure during delete is non-critical (partial status)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_neo4j = MagicMock()
+
+        with patch(
+            "src.services.knowledge.neo4j_service.Neo4jService"
+        ) as MockNeo4j:
+            mock_instance = MagicMock()
+            mock_instance.delete_user_subgraph = AsyncMock(
+                side_effect=RuntimeError("Neo4j down")
+            )
+            MockNeo4j.return_value = mock_instance
+
+            service = GDPRService(neo4j_driver=mock_neo4j)
+            result = await service.delete_user_data(user_id=1)
+
+            assert result["components"]["neo4j"]["status"] == "error"
+            assert result["overall_status"] == "partial"
+
+    @pytest.mark.asyncio
+    async def test_delete_qdrant_failure_non_critical(self):
+        """Qdrant failure during delete is non-critical."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_qdrant = MagicMock()
+
+        with patch(
+            "src.services.knowledge.qdrant_service.QdrantService"
+        ) as MockQdrant:
+            mock_instance = MagicMock()
+            mock_instance.delete_user_vectors = AsyncMock(
+                side_effect=RuntimeError("Qdrant down")
+            )
+            MockQdrant.return_value = mock_instance
+
+            service = GDPRService(qdrant_client=mock_qdrant)
+            result = await service.delete_user_data(user_id=1)
+
+            assert result["components"]["qdrant"]["status"] == "error"
+            assert result["overall_status"] == "partial"
+
+    @pytest.mark.asyncio
+    async def test_delete_letta_failure_non_critical(self):
+        """Letta failure during delete is non-critical."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_letta = MagicMock()
+
+        with patch(
+            "src.services.knowledge.letta_service.LettaService"
+        ) as MockLetta:
+            mock_instance = MagicMock()
+            mock_instance.delete_user_memories = AsyncMock(
+                side_effect=RuntimeError("Letta down")
+            )
+            MockLetta.return_value = mock_instance
+
+            service = GDPRService(letta_client=mock_letta)
+            result = await service.delete_user_data(user_id=1)
+
+            assert result["components"]["letta"]["status"] == "error"
+            assert result["overall_status"] == "partial"
+
+    @pytest.mark.asyncio
+    async def test_delete_no_databases_only_modules(self):
+        """Delete with modules but no database connections."""
+        service = GDPRService()
+        mod = MockGDPRModule(name="mod")
+        service.register_module("mod", mod)
+
+        result = await service.delete_user_data(user_id=42)
+
+        assert result["components"]["mod"]["status"] == "deleted"
+        assert result["overall_status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_delete_succeeded_components_tracked(self):
+        """Succeeded components are listed in report on partial failure."""
+        service = GDPRService()
+        working = MockGDPRModule(name="working")
+        failing = MockGDPRModule(name="failing", fail_on_delete=True)
+        service.register_module("working", working)
+        service.register_module("failing", failing)
+
+        result = await service.delete_user_data(user_id=1)
+
+        assert "working" in result.get("succeeded_components", [])
+        assert result["overall_status"] == "partial"
+
+
+# =============================================================================
+# Coverage boost: Retention policy evaluation
+# =============================================================================
+
+
+class TestRetentionPolicyEvaluation:
+    """Test retention policy evaluation edge cases."""
+
+    def test_is_expired_very_old_indefinite_data(self):
+        """Data from 10 years ago with indefinite retention is not expired."""
+        policy = RetentionPolicyConfig()
+        ancient_date = datetime(2016, 1, 1, tzinfo=UTC)
+        assert policy.is_expired(DataClassification.PUBLIC, ancient_date) is False
+        assert policy.is_expired(DataClassification.INTERNAL, ancient_date) is False
+
+    def test_is_expired_just_created_sensitive(self):
+        """Newly created SENSITIVE data is immediately expired."""
+        policy = RetentionPolicyConfig()
+        just_now = datetime.now(UTC)
+        assert policy.is_expired(DataClassification.SENSITIVE, just_now) is True
+
+    def test_custom_long_retention(self):
+        """Custom long retention (10 years) works correctly."""
+        policy = RetentionPolicyConfig(
+            retention_days={
+                DataClassification.PUBLIC: -1,
+                DataClassification.INTERNAL: -1,
+                DataClassification.SENSITIVE: 3650,
+                DataClassification.ART_9_SPECIAL: 0,
+                DataClassification.FINANCIAL: 0,
+            }
+        )
+        five_years_ago = datetime.now(UTC) - timedelta(days=1825)
+        assert policy.is_expired(DataClassification.SENSITIVE, five_years_ago) is False
+
+        eleven_years_ago = datetime.now(UTC) - timedelta(days=4015)
+        assert policy.is_expired(DataClassification.SENSITIVE, eleven_years_ago) is True
+
+    def test_get_retention_days_unknown_classification_defaults_to_zero(self):
+        """Unknown classification falls back to 0 (immediate deletion)."""
+        policy = RetentionPolicyConfig()
+        policy.retention_days = {}
+        assert policy.get_retention_days(DataClassification.SENSITIVE) == 0
+
+
+# =============================================================================
+# Coverage boost: Freeze/Unfreeze edge cases
+# =============================================================================
+
+
+class TestFreezeUnfreezeEdgeCases:
+    """Edge cases for freeze and unfreeze operations."""
+
+    @pytest.mark.asyncio
+    async def test_freeze_no_modules_no_db(self):
+        """Freeze with no modules and no db returns minimal report."""
+        service = GDPRService()
+        result = await service.freeze_user_data(user_id=1)
+
+        assert result["user_id"] == 1
+        assert result["restriction"] == "restricted"
+        assert result["components"] == {}
+
+    @pytest.mark.asyncio
+    async def test_unfreeze_no_modules_no_db(self):
+        """Unfreeze with no modules and no db returns minimal report."""
+        service = GDPRService()
+        result = await service.unfreeze_user_data(user_id=1)
+
+        assert result["user_id"] == 1
+        assert result["restriction"] == "active"
+        assert result["components"] == {}
+
+    @pytest.mark.asyncio
+    async def test_freeze_with_db_connection(self):
+        """Freeze with db sets restriction flag."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_db = MagicMock()
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_context.__aexit__ = AsyncMock(return_value=False)
+        mock_db.begin = MagicMock(return_value=mock_context)
+
+        service = GDPRService(db_pool=mock_db)
+        result = await service.freeze_user_data(user_id=1)
+
+        assert result["components"]["postgres"]["status"] == "restricted"
+
+    @pytest.mark.asyncio
+    async def test_unfreeze_with_db_connection(self):
+        """Unfreeze with db removes restriction flag."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_db = MagicMock()
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_context.__aexit__ = AsyncMock(return_value=False)
+        mock_db.begin = MagicMock(return_value=mock_context)
+
+        service = GDPRService(db_pool=mock_db)
+        result = await service.unfreeze_user_data(user_id=1)
+
+        assert result["components"]["postgres"]["status"] == "active"
+
+    @pytest.mark.asyncio
+    async def test_freeze_db_failure(self):
+        """Freeze with db failure reports error."""
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
+        mock_db.begin = MagicMock(side_effect=RuntimeError("DB down"))
+
+        service = GDPRService(db_pool=mock_db)
+        result = await service.freeze_user_data(user_id=1)
+
+        assert result["components"]["postgres"]["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_unfreeze_db_failure(self):
+        """Unfreeze with db failure reports error."""
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
+        mock_db.begin = MagicMock(side_effect=RuntimeError("DB down"))
+
+        service = GDPRService(db_pool=mock_db)
+        result = await service.unfreeze_user_data(user_id=1)
+
+        assert result["components"]["postgres"]["status"] == "error"
+
+
+# =============================================================================
+# Coverage boost: Check retention + GDPRExportRecord + constant
+# =============================================================================
+
+
+class TestCheckRetentionEdgeCases:
+    """Additional check_retention tests."""
+
+    @pytest.mark.asyncio
+    async def test_check_retention_with_custom_policy(self):
+        """check_retention uses the service's retention policy."""
+        custom = RetentionPolicyConfig(
+            retention_days={
+                DataClassification.PUBLIC: -1,
+                DataClassification.INTERNAL: -1,
+                DataClassification.SENSITIVE: 30,
+                DataClassification.ART_9_SPECIAL: 60,
+                DataClassification.FINANCIAL: 3650,
+            }
+        )
+        service = GDPRService(retention_policy=custom)
+        result = await service.check_retention()
+        assert isinstance(result, list)
+
+
+class TestGDPRExportRecordCoverage:
+    """Test GDPRExportRecord dataclass."""
+
+    def test_create_export_record(self):
+        """GDPRExportRecord can be created with all fields."""
+        from src.lib.gdpr import GDPRExportRecord
+
+        record = GDPRExportRecord(
+            module_name="test_module",
+            exported_at=datetime.now(UTC),
+            data={"key": "value"},
+        )
+        assert record.module_name == "test_module"
+        assert isinstance(record.data, dict)
+
+
+class TestRetentionIndefiniteConstant:
+    """Test the RETENTION_INDEFINITE constant."""
+
+    def test_retention_indefinite_value(self):
+        """RETENTION_INDEFINITE is -1."""
+        from src.lib.gdpr import RETENTION_INDEFINITE
+        assert RETENTION_INDEFINITE == -1
+
+    def test_retention_indefinite_used_in_policy(self):
+        """Default policy uses RETENTION_INDEFINITE for PUBLIC and INTERNAL."""
+        from src.lib.gdpr import RETENTION_INDEFINITE
+        policy = RetentionPolicyConfig()
+        assert (
+            policy.get_retention_days(DataClassification.PUBLIC) == RETENTION_INDEFINITE
+        )
+
+
+# =============================================================================
+# Coverage boost: _build_export_package static method
+# =============================================================================
+
+
+class TestBuildExportPackage:
+    """Test the _build_export_package static method directly."""
+
+    def test_build_with_no_exports_no_errors(self):
+        """Empty exports and errors produce complete package."""
+        result = GDPRService._build_export_package(
+            user_id=1, exports=[], errors=[]
+        )
+        assert result["export_metadata"]["complete"] is True
+        assert result["export_metadata"]["total_records"] == 0
+        assert result["modules"] == {}
+        assert result["export_metadata"]["completeness_warning"] is None
+
+    def test_build_with_exports_and_errors(self):
+        """Exports and errors produce incomplete package."""
+        from src.lib.gdpr import GDPRExportRecord
+
+        exports = [
+            GDPRExportRecord(
+                module_name="mod1",
+                exported_at=datetime.now(UTC),
+                data={"x": 1},
+            ),
+        ]
+        errors = ["mod2: export failed"]
+        result = GDPRService._build_export_package(
+            user_id=1, exports=exports, errors=errors
+        )
+        assert result["export_metadata"]["complete"] is False
+        assert result["export_metadata"]["total_records"] == 1
+        assert "mod1" in result["modules"]
+        assert result["export_metadata"]["completeness_warning"] is not None
+
+
+# =============================================================================
+# Coverage boost: Private database delete methods with no client
+# =============================================================================
+
+
+class TestDeleteDatabasesNoClient:
+    """Test deletion methods when clients are None."""
+
+    @pytest.mark.asyncio
+    async def test_delete_postgres_no_db(self):
+        """_delete_postgres with no db does nothing."""
+        service = GDPRService(db_pool=None)
+        await service._delete_postgres(user_id=1)
+
+    @pytest.mark.asyncio
+    async def test_delete_redis_no_redis(self):
+        """_delete_redis with no redis does nothing."""
+        service = GDPRService(redis=None)
+        await service._delete_redis(user_id=1)
+
+    @pytest.mark.asyncio
+    async def test_delete_neo4j_no_driver(self):
+        """_delete_neo4j with no driver does nothing."""
+        service = GDPRService(neo4j_driver=None)
+        await service._delete_neo4j(user_id=1)
+
+    @pytest.mark.asyncio
+    async def test_delete_qdrant_no_client(self):
+        """_delete_qdrant with no client does nothing."""
+        service = GDPRService(qdrant_client=None)
+        await service._delete_qdrant(user_id=1)
+
+    @pytest.mark.asyncio
+    async def test_delete_letta_no_client(self):
+        """_delete_letta with no client does nothing."""
+        service = GDPRService(letta_client=None)
+        await service._delete_letta(user_id=1)
+
+    @pytest.mark.asyncio
+    async def test_set_restriction_flag_no_db(self):
+        """_set_restriction_flag with no db does nothing."""
+        service = GDPRService(db_pool=None)
+        await service._set_restriction_flag(
+            user_id=1, restriction=ProcessingRestriction.RESTRICTED
+        )
+
+
+# =============================================================================
+# Coverage boost: Database export error paths (internal catch)
+# =============================================================================
+
+
+class TestDatabaseExportErrorPaths:
+    """Test database export methods that catch errors internally."""
+
+    @pytest.mark.asyncio
+    async def test_export_postgres_error_returns_error_dict(self):
+        """_export_postgres returns error dict when db query fails."""
+        from unittest.mock import MagicMock
+
+        mock_db = MagicMock()
+        mock_db.begin = MagicMock(side_effect=RuntimeError("PG down"))
+
+        service = GDPRService(db_pool=mock_db)
+        result = await service._export_postgres(user_id=1)
+
+        assert result == {"error": "export failed"}
+
+    @pytest.mark.asyncio
+    async def test_export_redis_error_returns_error_dict(self):
+        """_export_redis returns error dict when scan fails."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        mock_redis = MagicMock()
+        mock_redis.scan = AsyncMock(side_effect=RuntimeError("Redis down"))
+
+        service = GDPRService(redis=mock_redis)
+        result = await service._export_redis(user_id=1)
+
+        assert result == {"error": "export failed"}
+
+    @pytest.mark.asyncio
+    async def test_export_neo4j_error_returns_error_dict(self):
+        """_export_neo4j returns error dict when service fails."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_driver = MagicMock()
+        service = GDPRService(neo4j_driver=mock_driver)
+
+        with patch(
+            "src.services.knowledge.neo4j_service.Neo4jService"
+        ) as MockNeo4j:
+            mock_instance = MagicMock()
+            mock_instance.export_user_subgraph = AsyncMock(
+                side_effect=RuntimeError("Neo4j down")
+            )
+            MockNeo4j.return_value = mock_instance
+
+            result = await service._export_neo4j(user_id=1)
+            assert result == {"error": "export failed"}
+
+    @pytest.mark.asyncio
+    async def test_export_qdrant_error_returns_error_dict(self):
+        """_export_qdrant returns error dict when service fails."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_client = MagicMock()
+        service = GDPRService(qdrant_client=mock_client)
+
+        with patch(
+            "src.services.knowledge.qdrant_service.QdrantService"
+        ) as MockQdrant:
+            mock_instance = MagicMock()
+            mock_instance.export_user_vectors = AsyncMock(
+                side_effect=RuntimeError("Qdrant down")
+            )
+            MockQdrant.return_value = mock_instance
+
+            result = await service._export_qdrant(user_id=1)
+            assert result == {"error": "export failed"}
+
+    @pytest.mark.asyncio
+    async def test_export_letta_error_returns_error_dict(self):
+        """_export_letta returns error dict when service fails."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_client = MagicMock()
+        service = GDPRService(letta_client=mock_client)
+
+        with patch(
+            "src.services.knowledge.letta_service.LettaService"
+        ) as MockLetta:
+            mock_instance = MagicMock()
+            mock_instance.export_user_memories = AsyncMock(
+                side_effect=RuntimeError("Letta down")
+            )
+            MockLetta.return_value = mock_instance
+
+            result = await service._export_letta(user_id=1)
+            assert result == {"error": "export failed"}

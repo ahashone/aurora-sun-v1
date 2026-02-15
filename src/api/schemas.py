@@ -2,13 +2,14 @@
 Pydantic Schemas for Aurora Sun V1 REST API.
 
 Defines request/response schemas for all API endpoints.
+Includes the ResponseEnvelope pattern for consistent API responses.
 
-Reference: ROADMAP 5.4, ARCHITECTURE.md Section 14
+Reference: ROADMAP 5.4, ARCHITECTURE.md Section 14, REFACTOR-005
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -16,6 +17,86 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.core.segment_context import WorkingStyleCode
 from src.i18n import LanguageCode
+
+# =============================================================================
+# Response Envelope (REFACTOR-005)
+# =============================================================================
+
+
+class ErrorDetail(BaseModel):
+    """Structured error detail inside the response envelope."""
+
+    code: str
+    message: str
+    details: dict[str, Any] | None = None
+
+
+class ResponseMeta(BaseModel):
+    """Metadata included in every API response."""
+
+    timestamp: str = Field(
+        default_factory=lambda: datetime.now(UTC).isoformat()
+    )
+
+
+class ResponseEnvelope(BaseModel):
+    """
+    Standard API response envelope.
+
+    All API responses follow this format:
+    {
+        "success": true/false,
+        "data": ...,
+        "error": null / {"code": "...", "message": "..."},
+        "meta": {"timestamp": "..."}
+    }
+    """
+
+    success: bool
+    data: Any = None
+    error: ErrorDetail | None = None
+    meta: ResponseMeta = Field(default_factory=ResponseMeta)
+
+
+def success_response(data: Any = None) -> dict[str, Any]:
+    """
+    Build a success response envelope.
+
+    Args:
+        data: The response payload (any JSON-serializable value)
+
+    Returns:
+        Dict matching the ResponseEnvelope format
+    """
+    return ResponseEnvelope(
+        success=True,
+        data=data,
+        error=None,
+    ).model_dump()
+
+
+def error_response(
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Build an error response envelope.
+
+    Args:
+        code: Error code string (e.g. "AUTH_REQUIRED", "NOT_FOUND")
+        message: Human-readable error message
+        details: Optional additional error details
+
+    Returns:
+        Dict matching the ResponseEnvelope format
+    """
+    return ResponseEnvelope(
+        success=False,
+        data=None,
+        error=ErrorDetail(code=code, message=message, details=details),
+    ).model_dump()
+
 
 # =============================================================================
 # Common Schemas
@@ -334,6 +415,12 @@ class UserPreferencesUpdate(BaseModel):
 
 
 __all__ = [
+    # Response Envelope
+    "ResponseEnvelope",
+    "ErrorDetail",
+    "ResponseMeta",
+    "success_response",
+    "error_response",
     # Common
     "APIError",
     "HealthCheckResponse",

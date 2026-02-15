@@ -275,7 +275,7 @@ class CCPAService:
         import uuid
 
         challenge_id = str(uuid.uuid4())
-        # FINDING-024: Use cryptographically secure random for verification codes.
+        # Use cryptographically secure random for verification codes.
         # secrets.randbelow() provides CSPRNG instead of random.randint().
         verification_code = f"{secrets.randbelow(900000) + 100000}"
         now = datetime.now(UTC)

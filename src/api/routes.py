@@ -2,6 +2,7 @@
 REST API Routes for Aurora Sun V1.
 
 Implements all API endpoints for mobile app using FastAPI.
+All responses use the ResponseEnvelope pattern (REFACTOR-005).
 
 Endpoints (all under /api/v1 prefix):
 - /health - Health check
@@ -29,11 +30,14 @@ from typing import Any
 from fastapi import APIRouter as FastAPIRouter
 from pydantic import BaseModel, Field
 
+from src.api.schemas import error_response, success_response
+from src.lib.errors import AUTH_REQUIRED, NOT_IMPLEMENTED
+
 logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# FINDING-020: Pydantic Request Models for API Input Validation
+# Pydantic Request Models for API Input Validation
 # =============================================================================
 
 
@@ -121,17 +125,17 @@ router = FastAPIRouter(prefix="/api/v1")
 
 
 @router.get("/health")
-async def health_check() -> dict[str, str]:
+async def health_check() -> dict[str, Any]:
     """
     Health check endpoint (unauthenticated).
 
-    FINDING-028: Returns only status, no version or internal details.
+    Returns only status, no version or internal details (information disclosure prevention).
     Detailed health info is available at /health/detailed (requires auth).
 
     Returns:
-        Minimal health status
+        Envelope with minimal health status
     """
-    return {"status": "ok"}
+    return success_response({"status": "ok"})
 
 
 @router.get("/health/detailed")
@@ -139,25 +143,25 @@ async def health_check_detailed(user_id: int | None = None) -> dict[str, Any]:
     """
     Detailed health check endpoint (requires authentication/admin role).
 
-    FINDING-028: Moved detailed info here, separate from public /health.
+    Detailed info separated from public /health (information disclosure prevention).
 
     Args:
         user_id: Authenticated admin user ID (placeholder for auth middleware)
 
     Returns:
-        Detailed health status with version and timestamps
+        Envelope with detailed health status or error
     """
     from datetime import datetime
 
     # TODO: Add actual authentication/admin role check via middleware
     if user_id is None:
-        return {"error": "Authentication required"}
+        return error_response(AUTH_REQUIRED, "Authentication required")
 
-    return {
+    return success_response({
         "status": "healthy",
         "version": "0.1.0",
         "timestamp": datetime.now().isoformat(),
-    }
+    })
 
 
 @router.post("/auth/token")
@@ -165,20 +169,19 @@ async def get_auth_token(telegram_id: int) -> dict[str, Any]:
     """
     Get authentication token for a Telegram user.
 
-    FINDING-003: This endpoint is disabled until proper authentication is
-    implemented. Returns 501 Not Implemented.
+    This endpoint is disabled until proper authentication is
+    implemented. Returns NOT_IMPLEMENTED error.
 
     Args:
         telegram_id: Telegram user ID
 
     Returns:
-        501 Not Implemented response
+        Envelope with NOT_IMPLEMENTED error
     """
-    return {
-        "status": 501,
-        "error": "Not Implemented",
-        "message": "Authentication not yet implemented. Use Telegram bot.",
-    }
+    return error_response(
+        NOT_IMPLEMENTED,
+        "Authentication not yet implemented. Use Telegram bot.",
+    )
 
 
 # =============================================================================
@@ -195,10 +198,10 @@ async def list_visions(user_id: int) -> dict[str, Any]:
         user_id: User ID
 
     Returns:
-        List of visions
+        Envelope with list of visions
     """
     # Placeholder
-    return {"visions": [], "total": 0}
+    return success_response({"visions": [], "total": 0})
 
 
 @router.post("/visions")
@@ -206,17 +209,17 @@ async def create_vision(user_id: int, data: CreateVisionRequest) -> dict[str, An
     """
     Create a new vision.
 
-    FINDING-020: Input validated via CreateVisionRequest Pydantic model.
+    Input validated via CreateVisionRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated vision data
 
     Returns:
-        Created vision
+        Envelope with created vision
     """
     # Placeholder
-    return {"id": 1, "user_id": user_id, **data.model_dump(exclude_none=True)}
+    return success_response({"id": 1, "user_id": user_id, **data.model_dump(exclude_none=True)})
 
 
 @router.get("/goals")
@@ -229,10 +232,10 @@ async def list_goals(user_id: int, vision_id: int | None = None) -> dict[str, An
         vision_id: Optional vision ID filter
 
     Returns:
-        List of goals
+        Envelope with list of goals
     """
     # Placeholder
-    return {"goals": [], "total": 0}
+    return success_response({"goals": [], "total": 0})
 
 
 @router.post("/goals")
@@ -240,17 +243,17 @@ async def create_goal(user_id: int, data: CreateGoalRequest) -> dict[str, Any]:
     """
     Create a new goal.
 
-    FINDING-020: Input validated via CreateGoalRequest Pydantic model.
+    Input validated via CreateGoalRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated goal data
 
     Returns:
-        Created goal
+        Envelope with created goal
     """
     # Placeholder
-    return {"id": 1, "user_id": user_id, **data.model_dump(exclude_none=True)}
+    return success_response({"id": 1, "user_id": user_id, **data.model_dump(exclude_none=True)})
 
 
 @router.get("/tasks")
@@ -268,10 +271,10 @@ async def list_tasks(
         status: Optional status filter
 
     Returns:
-        List of tasks
+        Envelope with list of tasks
     """
     # Placeholder
-    return {"tasks": [], "total": 0}
+    return success_response({"tasks": [], "total": 0})
 
 
 @router.post("/tasks")
@@ -279,17 +282,17 @@ async def create_task(user_id: int, data: CreateTaskRequest) -> dict[str, Any]:
     """
     Create a new task.
 
-    FINDING-020: Input validated via CreateTaskRequest Pydantic model.
+    Input validated via CreateTaskRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated task data
 
     Returns:
-        Created task
+        Envelope with created task
     """
     # Placeholder
-    return {"id": 1, "user_id": user_id, **data.model_dump(exclude_none=True)}
+    return success_response({"id": 1, "user_id": user_id, **data.model_dump(exclude_none=True)})
 
 
 # =============================================================================
@@ -302,17 +305,17 @@ async def create_capture(user_id: int, data: CreateCaptureRequest) -> dict[str, 
     """
     Create a new capture (text, voice, link, image).
 
-    FINDING-020: Input validated via CreateCaptureRequest Pydantic model.
+    Input validated via CreateCaptureRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated capture data
 
     Returns:
-        Created capture
+        Envelope with created capture
     """
     # Placeholder
-    return {"id": 1, "user_id": user_id, **data.model_dump()}
+    return success_response({"id": 1, "user_id": user_id, **data.model_dump()})
 
 
 @router.post("/captures/voice")
@@ -330,16 +333,16 @@ async def create_voice_capture(
         metadata: Capture metadata
 
     Returns:
-        Created capture with transcription
+        Envelope with created capture and transcription
     """
     # Placeholder - in production, transcribe audio using Whisper API
-    return {
+    return success_response({
         "id": 1,
         "user_id": user_id,
         "capture_type": "voice",
         "transcription": "[Transcription placeholder]",
         "voice_url": "https://example.com/voice/1.mp3",
-    }
+    })
 
 
 @router.post("/recall")
@@ -353,10 +356,10 @@ async def recall_knowledge(user_id: int, query: str, limit: int = 10) -> dict[st
         limit: Max results
 
     Returns:
-        Recall results
+        Envelope with recall results
     """
     # Placeholder - in production, query Neo4j/Qdrant for semantic search
-    return {"query": query, "results": [], "total": 0}
+    return success_response({"query": query, "results": [], "total": 0})
 
 
 # =============================================================================
@@ -381,10 +384,10 @@ async def list_transactions(
         end_date: Optional end date filter
 
     Returns:
-        List of transactions
+        Envelope with list of transactions
     """
     # Placeholder
-    return {"transactions": [], "total": 0}
+    return success_response({"transactions": [], "total": 0})
 
 
 @router.post("/transactions")
@@ -392,17 +395,17 @@ async def create_transaction(user_id: int, data: CreateTransactionRequest) -> di
     """
     Create a new transaction.
 
-    FINDING-020: Input validated via CreateTransactionRequest Pydantic model.
+    Input validated via CreateTransactionRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated transaction data
 
     Returns:
-        Created transaction
+        Envelope with created transaction
     """
     # Placeholder
-    return {"id": 1, "user_id": user_id, **data.model_dump()}
+    return success_response({"id": 1, "user_id": user_id, **data.model_dump()})
 
 
 @router.get("/balance")
@@ -414,15 +417,15 @@ async def get_balance(user_id: int) -> dict[str, Any]:
         user_id: User ID
 
     Returns:
-        Balance information
+        Envelope with balance information
     """
     # Placeholder
-    return {
+    return success_response({
         "user_id": user_id,
         "total_income": 0.0,
         "total_expenses": 0.0,
         "balance": 0.0,
-    }
+    })
 
 
 # =============================================================================
@@ -435,17 +438,17 @@ async def log_energy(user_id: int, data: LogEnergyRequest) -> dict[str, Any]:
     """
     Log energy level.
 
-    FINDING-020: Input validated via LogEnergyRequest Pydantic model.
+    Input validated via LogEnergyRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated energy log data
 
     Returns:
-        Created energy log
+        Envelope with created energy log
     """
     # Placeholder
-    return {"id": 1, "user_id": user_id, **data.model_dump()}
+    return success_response({"id": 1, "user_id": user_id, **data.model_dump()})
 
 
 @router.post("/wearables")
@@ -453,17 +456,17 @@ async def submit_wearable_data(user_id: int, data: SubmitWearableDataRequest) ->
     """
     Submit wearable data (heart rate, steps, sleep, etc.).
 
-    FINDING-020: Input validated via SubmitWearableDataRequest Pydantic model.
+    Input validated via SubmitWearableDataRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated wearable data
 
     Returns:
-        Acknowledgment
+        Envelope with acknowledgment
     """
     # Placeholder - in production, process wearable data for energy inference
-    return {"status": "received", "data_points": 1}
+    return success_response({"status": "received", "data_points": 1})
 
 
 # =============================================================================
@@ -486,10 +489,10 @@ async def list_calendar_events(
         end_date: Optional end date filter
 
     Returns:
-        List of calendar events
+        Envelope with list of calendar events
     """
     # Placeholder
-    return {"events": [], "total": 0}
+    return success_response({"events": [], "total": 0})
 
 
 @router.post("/calendar/events")
@@ -497,17 +500,17 @@ async def create_calendar_event(user_id: int, data: CreateCalendarEventRequest) 
     """
     Create a calendar event.
 
-    FINDING-020: Input validated via CreateCalendarEventRequest Pydantic model.
+    Input validated via CreateCalendarEventRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated event data
 
     Returns:
-        Created event
+        Envelope with created event
     """
     # Placeholder
-    return {"id": 1, "user_id": user_id, **data.model_dump()}
+    return success_response({"id": 1, "user_id": user_id, **data.model_dump()})
 
 
 # =============================================================================
@@ -524,15 +527,15 @@ async def get_user_profile(user_id: int) -> dict[str, Any]:
         user_id: User ID
 
     Returns:
-        User profile
+        Envelope with user profile
     """
     # Placeholder
-    return {
+    return success_response({
         "user_id": user_id,
         "name": "User",
         "language": "en",
         "segment": "NT",
-    }
+    })
 
 
 @router.put("/user/preferences")
@@ -540,17 +543,17 @@ async def update_user_preferences(user_id: int, data: UpdatePreferencesRequest) 
     """
     Update user preferences.
 
-    FINDING-020: Input validated via UpdatePreferencesRequest Pydantic model.
+    Input validated via UpdatePreferencesRequest Pydantic model.
 
     Args:
         user_id: User ID
         data: Validated preferences data
 
     Returns:
-        Updated preferences
+        Envelope with updated preferences
     """
     # Placeholder
-    return {"user_id": user_id, **data.model_dump(exclude_none=True)}
+    return success_response({"user_id": user_id, **data.model_dump(exclude_none=True)})
 
 
 # =============================================================================
@@ -598,7 +601,7 @@ router.get_routes = get_routes  # type: ignore[attr-defined]
 __all__ = [
     "router",
     "get_routes",
-    # FINDING-020: Pydantic request models
+    # Pydantic request models for input validation
     "CreateVisionRequest",
     "CreateGoalRequest",
     "CreateTaskRequest",

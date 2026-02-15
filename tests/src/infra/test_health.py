@@ -12,7 +12,7 @@ Test coverage:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -217,35 +217,35 @@ async def test_check_all_healthy() -> None:
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=10.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_redis", return_value=HealthCheckResult(
             service_name="redis",
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=5.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_neo4j", return_value=HealthCheckResult(
             service_name="neo4j",
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=15.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_qdrant", return_value=HealthCheckResult(
             service_name="qdrant",
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=8.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_letta", return_value=HealthCheckResult(
             service_name="letta",
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=12.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
     ):
         report = await service.check_all()
@@ -268,35 +268,35 @@ async def test_check_all_degraded() -> None:
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=10.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_redis", return_value=HealthCheckResult(
             service_name="redis",
             status=ServiceStatus.UNHEALTHY,
             message="Connection failed",
             response_time_ms=0.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_neo4j", return_value=HealthCheckResult(
             service_name="neo4j",
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=15.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_qdrant", return_value=HealthCheckResult(
             service_name="qdrant",
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=8.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
         patch.object(service, "check_letta", return_value=HealthCheckResult(
             service_name="letta",
             status=ServiceStatus.HEALTHY,
             message="OK",
             response_time_ms=12.0,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )),
     ):
         report = await service.check_all()
@@ -337,13 +337,13 @@ def test_system_health_report_to_dict() -> None:
         status=ServiceStatus.HEALTHY,
         message="OK",
         response_time_ms=5.0,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(UTC),
     )
 
     report = SystemHealthReport(
         status=ServiceStatus.HEALTHY,
         services=[result1],
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(UTC),
     )
 
     data = report.to_dict()
@@ -365,7 +365,7 @@ async def test_check_system_health_convenience() -> None:
         mock_check_all.return_value = SystemHealthReport(
             status=ServiceStatus.HEALTHY,
             services=[],
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
         )
 
         report = await check_system_health(db_url="postgresql://test")

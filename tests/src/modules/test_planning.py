@@ -2,7 +2,8 @@
 Unit tests for the Planning Module.
 
 Tests cover:
-- State machine transitions (SCOPE -> VISION -> OVERVIEW -> PRIORITIES -> BREAKDOWN -> SEGMENT_CHECK -> COMMITMENT -> DONE)
+- State machine transitions (SCOPE -> VISION -> OVERVIEW -> PRIORITIES ->
+  BREAKDOWN -> SEGMENT_CHECK -> COMMITMENT -> DONE)
 - Segment-specific behavior (ADHD, Autism, AuDHD, NT)
 - GDPR export/delete/freeze/unfreeze
 - Vision alignment check
@@ -75,6 +76,10 @@ def _make_ctx(
 def planning_module() -> PlanningModule:
     """Provide a fresh PlanningModule with a test state store."""
     module = PlanningModule()
+    # Close the old coroutine to prevent "coroutine never awaited" warnings
+    old_coro = module._state_store
+    if hasattr(old_coro, "close"):
+        old_coro.close()
     store = _make_test_state_store()
     module._state_store = _ReusableAwait(store)  # type: ignore[assignment]
     return module
@@ -358,7 +363,9 @@ class TestCommitment:
         assert response.side_effects[0].effect_type == SideEffectType.CUSTOM
 
     @pytest.mark.asyncio
-    async def test_commitment_no_goes_back_to_breakdown(self, planning_module: PlanningModule) -> None:
+    async def test_commitment_no_goes_back_to_breakdown(
+        self, planning_module: PlanningModule,
+    ) -> None:
         """Cancelling commitment goes back to breakdown."""
         ctx = _make_ctx("NT", state=PlanningState.COMMITMENT)
         await planning_module.on_enter(ctx)

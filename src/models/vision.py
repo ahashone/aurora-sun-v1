@@ -19,6 +19,9 @@ from src.models.base import Base
 if TYPE_CHECKING:
     pass
 
+# PERF-009: Sentinel for distinguishing "not cached" from "cached as None"
+_SENTINEL = object()
+
 
 class Vision(Base):
     """
@@ -81,23 +84,38 @@ class Vision(Base):
 
     @property
     def content(self) -> str | None:
-        """Get decrypted content."""
+        """Get decrypted content (PERF-009: cached after first access)."""
+        cached = self.__dict__.get("_cached_content", _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached  # type: ignore[no-any-return]
         if self._content_plaintext is None:
+            self.__dict__["_cached_content"] = None
             return None
         try:
             import json
             data = json.loads(str(self._content_plaintext))
             if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
+                from src.lib.encryption import (
+                    EncryptedField,
+                    get_encryption_service,
+                )
                 encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "content")
+                svc = get_encryption_service()
+                result = svc.decrypt_field(
+                    encrypted, int(self.user_id), "content"
+                )
+                self.__dict__["_cached_content"] = result
+                return result
         except (json.JSONDecodeError, KeyError, ValueError):
             pass
-        return str(self._content_plaintext) if self._content_plaintext else None
+        fallback: str | None = str(self._content_plaintext) if self._content_plaintext else None
+        self.__dict__["_cached_content"] = fallback
+        return fallback
 
     @content.setter
     def content(self, value: str | None) -> None:
         """Set encrypted content."""
+        self.__dict__.pop("_cached_content", None)
         if value is None:
             setattr(self, '_content_plaintext', None)
             return

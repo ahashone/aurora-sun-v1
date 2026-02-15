@@ -364,7 +364,7 @@ class FullCoachingEngine:
         Returns:
             CoachingResult with the coaching response
         """
-        # FINDING-017: Sanitize user message before it enters the LLM pipeline
+        # Sanitize user message before it enters the LLM pipeline (prompt injection prevention)
         sanitized_message = sanitize_for_llm(message)
 
         # Build context

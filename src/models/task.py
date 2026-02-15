@@ -19,6 +19,9 @@ from src.models.base import Base
 if TYPE_CHECKING:
     pass
 
+# PERF-009: Sentinel for distinguishing "not cached" from "cached as None"
+_SENTINEL = object()
+
 
 class Task(Base):
     """
@@ -103,23 +106,38 @@ class Task(Base):
 
     @property
     def title(self) -> str | None:
-        """Get decrypted title."""
+        """Get decrypted title (PERF-009: cached after first access)."""
+        cached = self.__dict__.get("_cached_title", _SENTINEL)
+        if cached is not _SENTINEL:
+            return cached  # type: ignore[no-any-return]
         if self._title_plaintext is None:
+            self.__dict__["_cached_title"] = None
             return None
         try:
             import json
             data = json.loads(str(self._title_plaintext))
             if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
+                from src.lib.encryption import (
+                    EncryptedField,
+                    get_encryption_service,
+                )
                 encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "title")
+                svc = get_encryption_service()
+                result = svc.decrypt_field(
+                    encrypted, int(self.user_id), "title"
+                )
+                self.__dict__["_cached_title"] = result
+                return result
         except (json.JSONDecodeError, KeyError, ValueError):
             pass
-        return str(self._title_plaintext) if self._title_plaintext else None
+        fallback: str | None = str(self._title_plaintext) if self._title_plaintext else None
+        self.__dict__["_cached_title"] = fallback
+        return fallback
 
     @title.setter
     def title(self, value: str | None) -> None:
         """Set encrypted title."""
+        self.__dict__.pop("_cached_title", None)
         if value is None:
             setattr(self, '_title_plaintext', None)
             return

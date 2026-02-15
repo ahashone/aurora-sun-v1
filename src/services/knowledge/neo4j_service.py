@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Allowed Values Whitelist (FINDING-008: Cypher injection prevention)
+# Allowed Values Whitelist (Cypher injection prevention)
 # =============================================================================
 
 # Only these node type labels are allowed in Cypher queries.
@@ -58,7 +58,7 @@ ALLOWED_RELATIONSHIP_TYPES: frozenset[str] = frozenset({
 def _validate_node_label(label: str) -> str:
     """Validate a node label against the whitelist.
 
-    FINDING-008: Prevents Cypher injection via f-string interpolation
+    Prevents Cypher injection via f-string interpolation
     by ensuring only known labels are used in queries.
 
     Args:
@@ -81,7 +81,7 @@ def _validate_node_label(label: str) -> str:
 def _validate_relationship_type(rel_type: str) -> str:
     """Validate a relationship type against the whitelist.
 
-    FINDING-008: Prevents Cypher injection via f-string interpolation
+    Prevents Cypher injection via f-string interpolation
     by ensuring only known relationship types are used in queries.
 
     Args:
@@ -296,7 +296,7 @@ class Neo4jService:
 
     async def _create_node_live(self, node: GraphNode) -> None:
         """Create a node in the live Neo4j database."""
-        # FINDING-008: Validate node type against whitelist before interpolation
+        # Validate node type against whitelist before interpolation (Cypher injection prevention)
         validated_label = _validate_node_label(str(node.node_type))
         query = (
             f"CREATE (n:{validated_label} $props) "
@@ -368,7 +368,7 @@ class Neo4jService:
 
     async def _create_relationship_live(self, rel: GraphRelationship) -> None:
         """Create a relationship in the live Neo4j database."""
-        # FINDING-008: Validate relationship type against whitelist before interpolation
+        # Validate relationship type against whitelist before interpolation (Cypher injection prevention)
         validated_rel_type = _validate_relationship_type(str(rel.relationship_type))
         query = (
             "MATCH (a {node_id: $source_id}), (b {node_id: $target_id}) "
@@ -438,14 +438,14 @@ class Neo4jService:
         max_depth: int,
     ) -> list[GraphNode]:
         """Query subgraph from live Neo4j."""
-        # FINDING-008: Validate all node type labels against whitelist
+        # Validate all node type labels against whitelist (Cypher injection prevention)
         type_filter = ""
         if node_types:
             validated_labels = [_validate_node_label(str(nt)) for nt in node_types]
             labels = ":".join(validated_labels)
             type_filter = f":{labels}"
 
-        # FINDING-008: Explicitly cast max_depth to int to prevent injection
+        # Explicitly cast max_depth to int to prevent injection
         safe_limit = int(max_depth) * 100
 
         query = (

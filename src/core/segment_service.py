@@ -12,12 +12,17 @@ Reference: ARCHITECTURE.md Section 3 (Neurotype Segmentation)
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import cast
 
 from src.core.segment_context import (
     SegmentContext,
     WorkingStyleCode,
 )
+
+# Max entries in segment context cache (only 5 valid codes exist,
+# but this prevents unbounded growth from edge cases)
+_CONTEXT_CACHE_MAXLEN = 500
 
 
 class SegmentService:
@@ -34,8 +39,8 @@ class SegmentService:
         >>> print(context.features.icnu_enabled)  # True
     """
 
-    # Cache of segment contexts for performance
-    _context_cache: dict[str, SegmentContext] = {}
+    # Cache of segment contexts for performance (bounded)
+    _context_cache: OrderedDict[str, SegmentContext] = OrderedDict()
 
     @classmethod
     def get_segment_context(cls, segment_code: str) -> SegmentContext:
@@ -78,7 +83,9 @@ class SegmentService:
         # Get context from SegmentContext
         context = SegmentContext.from_code(cast(WorkingStyleCode, code))
 
-        # Cache for future use
+        # Cache for future use (bounded)
+        if len(cls._context_cache) >= _CONTEXT_CACHE_MAXLEN:
+            cls._context_cache.popitem(last=False)
         cls._context_cache[code] = context
 
         return context

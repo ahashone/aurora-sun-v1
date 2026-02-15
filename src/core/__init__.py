@@ -17,6 +17,7 @@ Exports:
 
 from .buttons import Button, ButtonGrid, ButtonRow, ButtonType
 from .daily_workflow_hooks import DailyWorkflowHook, DailyWorkflowHooks
+from .gdpr_mixin import GDPRModuleMixin
 from .module_context import ModuleContext
 from .module_protocol import Module
 from .module_registry import ModuleRegistry, get_registry, set_registry
@@ -35,6 +36,8 @@ from .side_effects import SideEffect, SideEffectBatch, SideEffectExecutor, SideE
 __all__ = [
     # Protocol
     "Module",
+    # GDPR Mixin
+    "GDPRModuleMixin",
     # Registry
     "ModuleRegistry",
     "get_registry",

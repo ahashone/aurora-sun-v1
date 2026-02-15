@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-# FINDING-037: Allowed hostnames for internal service health checks.
+# Allowed hostnames for internal service health checks (SSRF prevention).
 # Only these hosts are permitted for HTTP-based health checks.
 ALLOWED_HEALTH_CHECK_HOSTS = {
     "localhost",
@@ -46,7 +46,7 @@ ALLOWED_HEALTH_CHECK_HOSTS = {
 
 def _validate_health_check_url(url: str) -> None:
     """
-    FINDING-037: Validate that a URL points to an allowed internal host.
+    Validate that a URL points to an allowed internal host (SSRF prevention).
     Prevents SSRF by rejecting any URL not on the allowlist.
 
     Args:
@@ -399,7 +399,7 @@ class HealthCheckService:
             )
 
         try:
-            # FINDING-037: Validate URL against allowlist before making HTTP request
+            # Validate URL against allowlist before making HTTP request (SSRF prevention)
             _validate_health_check_url(self.qdrant_url)
 
             import httpx
@@ -468,7 +468,7 @@ class HealthCheckService:
             )
 
         try:
-            # FINDING-037: Validate URL against allowlist before making HTTP request
+            # Validate URL against allowlist before making HTTP request (SSRF prevention)
             _validate_health_check_url(self.letta_url)
 
             import httpx

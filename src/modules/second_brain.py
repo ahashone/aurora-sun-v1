@@ -23,6 +23,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.lib.security import sanitize_for_storage
@@ -114,7 +115,7 @@ class SecondBrainState:
     ALL: list[str] = [IDLE, SEARCH, ROUTE, CONFIRM]
 
 
-class SecondBrainModule:
+class SecondBrainModule(GDPRModuleMixin):
     """
     Second Brain Module with semantic search and knowledge graph integration.
 
@@ -335,7 +336,7 @@ class SecondBrainModule:
         # Classify content type
         classification = await self._classify_content(message)
 
-        # FINDING-018: Sanitize content before storing in Neo4j/Qdrant
+        # Sanitize content before storing in Neo4j/Qdrant (injection prevention)
         sanitized_content, was_modified = sanitize_for_storage(
             classification["content"], max_length=10000
         )
@@ -589,31 +590,13 @@ class SecondBrainModule:
         # For now, return None
         return None
 
-    # GDPR Methods
-
-    async def export_user_data(self, user_id: int) -> dict[str, Any]:
-        """GDPR Art. 15: Export all second brain data for a user."""
-        # TODO: Query database + Qdrant + Neo4j for user's second brain data
+    def _gdpr_data_categories(self) -> dict[str, list[str]]:
+        """Declare second brain data categories for GDPR."""
         return {
-            "second_brain_entries": [],
-            "qdrant_vectors": [],
-            "neo4j_nodes": [],
+            "second_brain_entries": ["content", "content_type", "metadata_json"],
+            "qdrant_vectors": ["embedding"],
+            "neo4j_nodes": ["properties"],
         }
-
-    async def delete_user_data(self, user_id: int) -> None:
-        """GDPR Art. 17: Delete all second brain data for a user."""
-        # TODO: Delete from database + Qdrant + Neo4j
-        pass
-
-    async def freeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Freeze processing of second brain data."""
-        # TODO: Mark records as frozen
-        pass
-
-    async def unfreeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Lift restriction on second brain data processing."""
-        # TODO: Unmark frozen records
-        pass
 
 
 # Export for module registry

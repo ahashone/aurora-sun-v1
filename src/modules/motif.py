@@ -24,12 +24,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.models.base import Base
@@ -234,7 +235,7 @@ class MotifExplorationSession:
 # Motif Module
 # =============================================================================
 
-class MotifModule:
+class MotifModule(GDPRModuleMixin):
     """
     Landscape of Motifs Module for Aurora Sun V1.
 
@@ -365,33 +366,12 @@ class MotifModule:
             priority=40,
         )
 
-    # =========================================================================
-    # GDPR Methods
-    # =========================================================================
-
-    async def export_user_data(self, user_id: int) -> dict[str, Any]:
-        """
-        GDPR Art. 15: Export all motif data for a user.
-        """
-        # TODO: Query database
+    def _gdpr_data_categories(self) -> dict[str, list[str]]:
+        """Declare motif data categories for GDPR."""
         return {
-            "motifs": [],
-            "motif_signals": [],
+            "motifs": ["name", "motif_type", "description"],
+            "motif_signals": ["signal_text", "source"],
         }
-
-    async def delete_user_data(self, user_id: int) -> None:
-        """GDPR Art. 17: Delete all motif data for a user."""
-        # TODO: DELETE FROM motif_signals WHERE user_id = ?
-        # TODO: DELETE FROM motifs WHERE user_id = ?
-        pass
-
-    async def freeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Restrict processing of motif data."""
-        pass
-
-    async def unfreeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Lift restriction on motif data processing."""
-        pass
 
     # =========================================================================
     # State Handlers

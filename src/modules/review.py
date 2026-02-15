@@ -15,12 +15,13 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.core.segment_context import WorkingStyleCode
@@ -77,7 +78,7 @@ SEGMENT_REFLECTION_PROMPTS: dict[WorkingStyleCode, dict[str, str]] = {
 }
 
 
-class ReviewModule:
+class ReviewModule(GDPRModuleMixin):
     """
     Review Module for daily reflection and review.
 
@@ -610,51 +611,12 @@ class ReviewModule:
             priority=10,  # Run after other evening hooks
         )
 
-    async def export_user_data(self, user_id: int) -> dict[str, Any]:
-        """
-        GDPR export for this module's data.
-
-        Args:
-            user_id: The user's ID
-
-        Returns:
-            Dict containing all user data from this module
-        """
-        # In production, query the database for user's review data
+    def _gdpr_data_categories(self) -> dict[str, list[str]]:
+        """Declare review data categories for GDPR."""
         return {
-            "reviews": [],  # Would contain review sessions
-            "daily_plans": [],  # Would contain daily plan data
+            "reviews": ["accomplishments", "challenges", "energy", "reflection"],
+            "daily_plans": ["tasks", "committed_date"],
         }
-
-    async def delete_user_data(self, user_id: int) -> None:
-        """
-        GDPR delete for this module's data.
-
-        Args:
-            user_id: The user's ID
-        """
-        # In production, delete user's review data from database
-        pass
-
-    async def freeze_user_data(self, user_id: int) -> None:
-        """
-        GDPR Art. 18: Restriction of processing.
-
-        Args:
-            user_id: The user's ID
-        """
-        # In production, mark user's data as frozen
-        pass
-
-    async def unfreeze_user_data(self, user_id: int) -> None:
-        """
-        GDPR Art. 18: Lift restriction of processing.
-
-        Args:
-            user_id: The user's ID
-        """
-        # In production, unmark user's data as frozen
-        pass
 
 
 # Module instance for registration

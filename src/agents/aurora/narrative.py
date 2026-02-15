@@ -255,7 +255,7 @@ class NarrativeEngine:
         if date is None:
             date = datetime.now(UTC).strftime("%Y-%m-%d")
 
-        # FINDING-019: Sanitize narrative content before storing
+        # Sanitize narrative content before storing (Cypher/query injection prevention)
         sanitized_content, was_modified = sanitize_for_storage(content, max_length=10000)
         if was_modified:
             logger.info(

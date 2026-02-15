@@ -13,7 +13,7 @@ Test coverage:
 from __future__ import annotations
 
 import tempfile
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -176,7 +176,7 @@ async def test_backup_all(temp_backup_dir: Path) -> None:
             status=BackupStatus.SUCCESS,
             backup_path="/path/pg.sql",
             size_bytes=1024,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             message="OK",
         )
         mock_redis.return_value = BackupResult(
@@ -184,7 +184,7 @@ async def test_backup_all(temp_backup_dir: Path) -> None:
             status=BackupStatus.SUCCESS,
             backup_path="/path/redis.rdb",
             size_bytes=512,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             message="OK",
         )
         mock_neo4j.return_value = BackupResult(
@@ -192,7 +192,7 @@ async def test_backup_all(temp_backup_dir: Path) -> None:
             status=BackupStatus.SUCCESS,
             backup_path="/path/neo4j.dump",
             size_bytes=2048,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             message="OK",
         )
         mock_qdrant.return_value = BackupResult(
@@ -200,7 +200,7 @@ async def test_backup_all(temp_backup_dir: Path) -> None:
             status=BackupStatus.SUCCESS,
             backup_path="/path/qdrant.json",
             size_bytes=256,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             message="OK",
         )
 
@@ -244,6 +244,10 @@ async def test_restore_postgresql_success(temp_backup_dir: Path) -> None:
     """Test successful PostgreSQL restore."""
     service = RestoreService(backup_dir=str(temp_backup_dir))
 
+    # SEC-006: Create backup file inside the backup directory
+    backup_file = temp_backup_dir / "backup.sql"
+    backup_file.touch()
+
     mock_process = AsyncMock()
     mock_process.returncode = 0
     mock_process.communicate = AsyncMock(return_value=(b"", b""))
@@ -251,7 +255,7 @@ async def test_restore_postgresql_success(temp_backup_dir: Path) -> None:
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         result = await service.restore_postgresql(
             db_url="postgresql://test",
-            backup_path="/path/backup.sql",
+            backup_path=str(backup_file),
         )
 
         assert result.service == "postgresql"
@@ -263,6 +267,10 @@ async def test_restore_postgresql_failure(temp_backup_dir: Path) -> None:
     """Test PostgreSQL restore failure."""
     service = RestoreService(backup_dir=str(temp_backup_dir))
 
+    # SEC-006: Create backup file inside the backup directory
+    backup_file = temp_backup_dir / "backup.sql"
+    backup_file.touch()
+
     mock_process = AsyncMock()
     mock_process.returncode = 1
     mock_process.communicate = AsyncMock(return_value=(b"", b"Restore failed"))
@@ -270,11 +278,26 @@ async def test_restore_postgresql_failure(temp_backup_dir: Path) -> None:
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         result = await service.restore_postgresql(
             db_url="postgresql://test",
-            backup_path="/path/backup.sql",
+            backup_path=str(backup_file),
         )
 
         assert result.status == BackupStatus.FAILED
         assert result.error is not None
+
+
+@pytest.mark.asyncio
+async def test_restore_postgresql_path_traversal(temp_backup_dir: Path) -> None:
+    """SEC-006: Test that restore rejects paths outside backup directory."""
+    service = RestoreService(backup_dir=str(temp_backup_dir))
+
+    result = await service.restore_postgresql(
+        db_url="postgresql://test",
+        backup_path="/etc/passwd",
+    )
+
+    assert result.status == BackupStatus.FAILED
+    assert result.error is not None
+    assert "traversal" in result.error.lower() or "outside" in result.error.lower()
 
 
 # =============================================================================

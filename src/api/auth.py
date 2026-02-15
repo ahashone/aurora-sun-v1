@@ -6,7 +6,7 @@ Implements:
 - User identification via token
 - Rate limiting
 - Request verification
-- Startup secrets validation (FINDING-030)
+- Startup secrets validation (fail-fast if missing)
 
 Reference: ROADMAP 5.4, ARCHITECTURE.md Section 14 (SW-14: REST API)
 """
@@ -101,7 +101,7 @@ class AuthService:
     RATE_LIMIT = 1000
     RATE_LIMIT_WINDOW_SECONDS = 3600
 
-    # FINDING-014: Maximum entries in the rate limit dictionary to prevent
+    # Maximum entries in the rate limit dictionary to prevent
     # unbounded memory growth. When exceeded, oldest 20% are evicted.
     MAX_RATE_LIMIT_ENTRIES = 10000
 
@@ -109,7 +109,7 @@ class AuthService:
         """
         Initialize auth service.
 
-        FINDING-002: No hardcoded fallback secret. If AURORA_API_SECRET_KEY
+        No hardcoded fallback secret. If AURORA_API_SECRET_KEY
         is not set and no explicit key is provided, raise RuntimeError.
 
         Args:
@@ -129,7 +129,7 @@ class AuthService:
 
     def _evict_stale_rate_limits(self) -> None:
         """
-        FINDING-014: Evict oldest 20% of rate limit entries when the dict
+        Evict oldest 20% of rate limit entries when the dict
         exceeds MAX_RATE_LIMIT_ENTRIES. Entries are sorted by window_start
         so the oldest (least recently active) are removed first.
         """
@@ -177,7 +177,7 @@ class AuthService:
 
     def encode_token(self, token: AuthToken) -> str:
         """
-        Encode token to JWT string using PyJWT (FINDING-016 Claude).
+        Encode token to JWT string using PyJWT.
 
         Args:
             token: Auth token
@@ -196,7 +196,7 @@ class AuthService:
 
     def decode_token(self, jwt_token: str) -> AuthToken | None:
         """
-        Decode JWT token using PyJWT (FINDING-016 Claude).
+        Decode JWT token using PyJWT.
 
         Args:
             jwt_token: JWT string
@@ -258,7 +258,7 @@ class AuthService:
         Returns:
             True if within limit, False if exceeded
         """
-        # FINDING-014: Evict stale entries before adding new ones
+        # Evict stale entries before adding new ones (memory bound enforcement)
         self._evict_stale_rate_limits()
 
         if user_id not in self._rate_limits:
@@ -293,7 +293,7 @@ class AuthService:
 
 def validate_secrets() -> None:
     """
-    FINDING-030: Validate that required secrets are set at startup.
+    Validate that required secrets are set at startup (fail-fast).
 
     Checks AURORA_MASTER_KEY, AURORA_HMAC_SECRET, and AURORA_API_SECRET_KEY
     are present and non-empty. In dev mode (AURORA_DEV_MODE=1), AURORA_MASTER_KEY

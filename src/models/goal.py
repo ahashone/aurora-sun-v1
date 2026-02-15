@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import relationship
 
+from src.lib.encrypted_field import EncryptedFieldDescriptor
+from src.lib.encryption import DataClassification
 from src.models.base import Base
 
 if TYPE_CHECKING:
@@ -78,6 +80,19 @@ class Goal(Base):
     _key_results_plaintext = Column("key_results", Text, nullable=True)  # Encrypted storage
     status = Column(String(20), default="active", nullable=False)  # active | completed | archived
 
+    # Encrypted field descriptors (REFACTOR-002: replaces manual property boilerplate)
+    # PERF-009: Caching is built into the descriptor
+    title = EncryptedFieldDescriptor(
+        plaintext_attr="_title_plaintext",
+        field_name="title",
+        classification=DataClassification.SENSITIVE,
+    )
+    key_results = EncryptedFieldDescriptor(
+        plaintext_attr="_key_results_plaintext",
+        field_name="key_results",
+        classification=DataClassification.SENSITIVE,
+    )
+
     # Timestamps
     created_at = Column(
         DateTime(timezone=True),
@@ -99,84 +114,11 @@ class Goal(Base):
         Index("idx_goal_created_at", "created_at"),
     )
 
-    @property
-    def title(self) -> str | None:
-        """Get decrypted title."""
-        if self._title_plaintext is None:
-            return None
-        try:
-            import json
-            data = json.loads(str(self._title_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "title")
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._title_plaintext) if self._title_plaintext else None
-
-    @title.setter
-    def title(self, value: str | None) -> None:
-        """Set encrypted title."""
-        if value is None:
-            setattr(self, '_title_plaintext', None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value, int(self.user_id), DataClassification.SENSITIVE, "title"
-            )
-            setattr(self, '_title_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(
-                "Encryption failed for field 'title', refusing to store plaintext",
-                extra={"error": type(e).__name__},
-            )
-            raise ValueError("Cannot store data: encryption service unavailable") from e
-
-    @property
-    def key_results(self) -> str | None:
-        """Get decrypted key results."""
-        if self._key_results_plaintext is None:
-            return None
-        try:
-            import json
-            data = json.loads(str(self._key_results_plaintext))
-            if isinstance(data, dict) and "ciphertext" in data:
-                from src.lib.encryption import EncryptedField, get_encryption_service
-                encrypted = EncryptedField.from_db_dict(data)
-                return get_encryption_service().decrypt_field(encrypted, int(self.user_id), "key_results")
-        except (json.JSONDecodeError, KeyError, ValueError):
-            pass
-        return str(self._key_results_plaintext) if self._key_results_plaintext else None
-
-    @key_results.setter
-    def key_results(self, value: str | None) -> None:
-        """Set encrypted key results."""
-        if value is None:
-            setattr(self, '_key_results_plaintext', None)
-            return
-        try:
-            import json
-
-            from src.lib.encryption import DataClassification, get_encryption_service
-            encrypted = get_encryption_service().encrypt_field(
-                value, int(self.user_id), DataClassification.SENSITIVE, "key_results"
-            )
-            setattr(self, '_key_results_plaintext', json.dumps(encrypted.to_db_dict()))
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(
-                "Encryption failed for field 'key_results', refusing to store plaintext",
-                extra={"error": type(e).__name__},
-            )
-            raise ValueError("Cannot store data: encryption service unavailable") from e
-
     def __repr__(self) -> str:
-        return f"<Goal(id={self.id}, user_id={self.user_id}, type={self.type}, status={self.status})>"
+        return (
+            f"<Goal(id={self.id}, user_id={self.user_id},"
+            f" type={self.type}, status={self.status})>"
+        )
 
 
 __all__ = ["Goal"]

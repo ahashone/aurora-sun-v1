@@ -157,7 +157,7 @@ class InputSanitizer:
         """
         SQL injection prevention note.
 
-        FINDING-015: SQL keyword replacement was removed because it changes user
+        SQL keyword replacement was removed because it changes user
         meaning (e.g. "I want to SELECT a goal" -> "I want to [SELECT_BLOCKED] a goal").
         SQL injection MUST be prevented by parameterized queries, not input mangling.
 
@@ -171,7 +171,7 @@ class InputSanitizer:
         Returns:
             The input text unchanged (SQL protection via parameterized queries)
         """
-        # FINDING-015: No-op. SQL injection prevention is handled by parameterized
+        # No-op. SQL injection prevention is handled by parameterized
         # queries in the database layer, not by mangling user input.
         return input_text
 
@@ -260,7 +260,7 @@ class InputSanitizer:
         Apply all sanitization methods in order.
 
         Order: XSS -> Path -> Markdown
-        (SQL sanitization removed per FINDING-015; use parameterized queries.)
+        (SQL sanitization is a no-op; use parameterized queries instead.)
 
         Args:
             input_text: Raw user input
@@ -276,7 +276,7 @@ class InputSanitizer:
 
 
 # ============================================
-# LLM Prompt Sanitizer (FINDING-017)
+# LLM Prompt Sanitizer (prompt injection prevention)
 # ============================================
 
 
@@ -284,7 +284,7 @@ def sanitize_for_llm(text: str, max_length: int = 4000) -> str:
     """
     Sanitize user input before it enters the LLM prompt pipeline.
 
-    FINDING-017: Prevents prompt injection by:
+    Prevents prompt injection by:
     1. Stripping known prompt injection patterns (system prompt overrides,
        role switching attempts)
     2. Truncating to max_length
@@ -344,7 +344,7 @@ def sanitize_for_storage(text: str, max_length: int = 10000) -> tuple[str, bool]
     """
     Sanitize content before storing in Neo4j/Qdrant/database.
 
-    FINDING-018 / FINDING-019: Prevents content injection by:
+    Prevents content injection by:
     1. Stripping potential injection patterns (Cypher, query language)
     2. Truncating to max_length
     3. Returning whether content was modified (for logging)
@@ -421,7 +421,7 @@ class RateLimitConfig:
 RATE_LIMIT_CONFIGS: dict[RateLimitTier, RateLimitConfig] = {
     RateLimitTier.CHAT: RateLimitConfig(requests_per_minute=30, requests_per_hour=100),
     RateLimitTier.VOICE: RateLimitConfig(requests_per_minute=10, requests_per_hour=50),
-    # FINDING-039: Reduced from 100 to 30 req/min. Webhook rate limiting handled separately.
+    # Reduced from 100 to 30 req/min for defense-in-depth. Webhook rate limiting handled separately.
     RateLimitTier.API: RateLimitConfig(requests_per_minute=30, requests_per_hour=300),
     RateLimitTier.ADMIN: RateLimitConfig(requests_per_minute=60, requests_per_hour=300),
 }
@@ -478,11 +478,12 @@ class InMemoryRateLimiter:
         requests_list2 = bucket["requests"]
         if isinstance(requests_list2, list):
             if len(requests_list2) >= max_requests:
-                oldest = requests_list2[0]
-                if isinstance(oldest, float):
-                    retry_after = int(oldest + window_seconds - now) + 1
-                    return False, max(retry_after, 1)
-                return False, 1
+                if requests_list2:
+                    oldest = requests_list2[0]
+                    if isinstance(oldest, float):
+                        retry_after = int(oldest + window_seconds - now) + 1
+                        return False, max(retry_after, 1)
+                return False, max(window_seconds, 1)
 
             # Record this request
             requests_list2.append(now)

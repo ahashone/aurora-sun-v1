@@ -17,12 +17,27 @@ Reference: ARCHITECTURE.md Section 5 (Aurora Agent - Milestone Detection)
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
 from src.core.segment_context import SegmentContext
+
+# Confidence scores for each milestone type
+_CONFIDENCE_PATTERN_BROKEN = 0.85
+_CONFIDENCE_BELIEF_REFUTED = 0.80
+_CONFIDENCE_GOAL_ACHIEVED = 1.0
+_CONFIDENCE_HABIT_ESTABLISHED = 0.95
+
+# Mapping from MilestoneType to the metadata key used for deduplication
+_MILESTONE_META_KEY: dict[str, str] = {
+    "pattern_broken": "pattern_name",
+    "belief_refuted": "belief",
+    "goal_achieved": "goal_name",
+    "habit_established": "habit_name",
+}
 
 
 class MilestoneType(StrEnum):
@@ -112,36 +127,33 @@ class MilestoneDetector:
         """
         milestones: list[MilestoneEvent] = []
 
-        if broken_patterns:
-            for pattern in broken_patterns:
-                event = self.detect_pattern_broken(
-                    user_id=user_id,
-                    segment_ctx=segment_ctx,
-                    pattern_name=pattern,
-                )
-                if event is not None:
-                    milestones.append(event)
+        # Collect milestones from simple list-based detectors
+        _detector_items: list[tuple[list[str] | None, str]] = [
+            (broken_patterns, "pattern_broken"),
+            (refuted_beliefs, "belief_refuted"),
+            (achieved_goals, "goal_achieved"),
+        ]
+        _detect_funcs: dict[str, Callable[[str], MilestoneEvent | None]] = {
+            "pattern_broken": lambda item: self.detect_pattern_broken(
+                user_id=user_id, segment_ctx=segment_ctx, pattern_name=item,
+            ),
+            "belief_refuted": lambda item: self.detect_belief_refuted(
+                user_id=user_id, segment_ctx=segment_ctx, belief=item,
+            ),
+            "goal_achieved": lambda item: self.detect_goal_achieved(
+                user_id=user_id, segment_ctx=segment_ctx, goal_name=item,
+            ),
+        }
 
-        if refuted_beliefs:
-            for belief in refuted_beliefs:
-                event = self.detect_belief_refuted(
-                    user_id=user_id,
-                    segment_ctx=segment_ctx,
-                    belief=belief,
-                )
-                if event is not None:
-                    milestones.append(event)
+        for items, kind in _detector_items:
+            if items:
+                detect = _detect_funcs[kind]
+                for item in items:
+                    event = detect(item)
+                    if event is not None:
+                        milestones.append(event)
 
-        if achieved_goals:
-            for goal in achieved_goals:
-                event = self.detect_goal_achieved(
-                    user_id=user_id,
-                    segment_ctx=segment_ctx,
-                    goal_name=goal,
-                )
-                if event is not None:
-                    milestones.append(event)
-
+        # Habit streaks need special handling (dict with days parameter)
         if habit_streaks:
             for habit_name, days in habit_streaks.items():
                 event = self.detect_habit_established(
@@ -198,7 +210,7 @@ class MilestoneDetector:
                 "This is significant progress."
             ),
             evidence=evidence or [f"Pattern '{pattern_name}' not observed for full cycle"],
-            confidence=0.85,
+            confidence=_CONFIDENCE_PATTERN_BROKEN,
             segment_code=segment_ctx.core.code,
             metadata={"pattern_name": pattern_name},
         )
@@ -241,7 +253,7 @@ class MilestoneDetector:
                 "Evidence suggests a different reality."
             ),
             evidence=evidence or [f"Belief '{belief}' contradicted by user actions"],
-            confidence=0.80,
+            confidence=_CONFIDENCE_BELIEF_REFUTED,
             segment_code=segment_ctx.core.code,
             metadata={"belief": belief},
         )
@@ -281,7 +293,7 @@ class MilestoneDetector:
                 "Take a moment to acknowledge this."
             ),
             evidence=evidence or [f"Goal '{goal_name}' marked as completed"],
-            confidence=1.0,
+            confidence=_CONFIDENCE_GOAL_ACHIEVED,
             segment_code=segment_ctx.core.code,
             metadata={"goal_name": goal_name},
         )
@@ -338,7 +350,7 @@ class MilestoneDetector:
                 f"{consecutive_days} consecutive days "
                 f"(threshold: {threshold})"
             ],
-            confidence=0.95,
+            confidence=_CONFIDENCE_HABIT_ESTABLISHED,
             segment_code=segment_ctx.core.code,
             metadata={
                 "habit_name": habit_name,
@@ -411,22 +423,13 @@ class MilestoneDetector:
         Returns:
             True if already detected, False otherwise
         """
+        meta_key = _MILESTONE_META_KEY.get(milestone_type.value)
+        if meta_key is None:
+            return False
+
         existing = self._detected.get(user_id, [])
-        for event in existing:
-            if event.milestone_type != milestone_type:
-                continue
-            # Check metadata for matching identifier
-            meta = event.metadata
-            if milestone_type == MilestoneType.PATTERN_BROKEN:
-                if meta.get("pattern_name") == identifier:
-                    return True
-            elif milestone_type == MilestoneType.BELIEF_REFUTED:
-                if meta.get("belief") == identifier:
-                    return True
-            elif milestone_type == MilestoneType.GOAL_ACHIEVED:
-                if meta.get("goal_name") == identifier:
-                    return True
-            elif milestone_type == MilestoneType.HABIT_ESTABLISHED:
-                if meta.get("habit_name") == identifier:
-                    return True
-        return False
+        return any(
+            event.milestone_type == milestone_type
+            and event.metadata.get(meta_key) == identifier
+            for event in existing
+        )

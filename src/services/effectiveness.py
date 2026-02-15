@@ -331,7 +331,7 @@ class EffectivenessService:
         """Initialize with database session."""
         self.session = session
 
-    # FINDING-025: Maximum confidence for user-reported outcomes.
+    # Maximum confidence for user-reported outcomes (system-verified can reach 1.0).
     # Only system-verified outcomes can reach 1.0.
     MAX_USER_REPORTED_CONFIDENCE = 0.9
 
@@ -416,7 +416,7 @@ class EffectivenessService:
         """
         Log outcome after 48h window.
 
-        FINDING-025: Validates that the intervention belongs to the claiming user
+        Validates that the intervention belongs to the claiming user
         and applies a confidence ceiling for user-reported outcomes.
 
         Args:
@@ -436,14 +436,14 @@ class EffectivenessService:
         if not instance:
             raise ValueError(f"Intervention instance not found: {intervention_instance_id}")
 
-        # FINDING-025: Validate that TASK_COMPLETED outcomes require a corresponding
+        # Validate that TASK_COMPLETED outcomes require a corresponding
         # intervention that belongs to the reporting user.
         if user_id is not None and instance.user_id != user_id:
             raise ValueError(
                 f"Intervention {intervention_instance_id} does not belong to user {user_id}"
             )
 
-        # FINDING-025: Apply confidence ceiling for user-reported outcomes.
+        # Apply confidence ceiling for user-reported outcomes.
         # Only system-verified outcomes can have confidence up to 1.0.
         if behavioral_signals and not system_verified:
             if behavioral_signals.task_completion_after is not None:

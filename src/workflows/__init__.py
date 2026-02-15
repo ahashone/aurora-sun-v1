@@ -25,6 +25,10 @@ from src.workflows.daily_workflow import (
     WorkflowTrigger,
     get_daily_workflow,
 )
+from src.workflows.shutdown import (
+    GracefulShutdownHandler,
+    get_shutdown_handler,
+)
 
 __all__ = [
     # Daily Workflow Engine
@@ -41,4 +45,7 @@ __all__ = [
     "build_daily_graph",
     "run_daily_graph",
     "get_segment_adaptive_schedule",
+    # Shutdown
+    "GracefulShutdownHandler",
+    "get_shutdown_handler",
 ]

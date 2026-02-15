@@ -30,6 +30,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import relationship
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.models.base import Base
@@ -181,7 +182,7 @@ class HabitCreationSession:
 # Habit Module
 # =============================================================================
 
-class HabitModule:
+class HabitModule(GDPRModuleMixin):
     """
     Habit Module implementing the Atomic Habits framework.
 
@@ -314,40 +315,12 @@ class HabitModule:
             priority=20,
         )
 
-    # =========================================================================
-    # GDPR Methods
-    # =========================================================================
-
-    async def export_user_data(self, user_id: int) -> dict[str, Any]:
-        """
-        GDPR Art. 15: Export all habit data for a user.
-
-        Returns:
-            Dict containing habits and habit logs.
-        """
-        # TODO: Query database for user's habits and logs
+    def _gdpr_data_categories(self) -> dict[str, list[str]]:
+        """Declare habit data categories for GDPR."""
         return {
-            "habits": [],
-            "habit_logs": [],
+            "habits": ["name", "identity_statement", "cue", "craving", "response", "reward"],
+            "habit_logs": ["notes"],
         }
-
-    async def delete_user_data(self, user_id: int) -> None:
-        """
-        GDPR Art. 17: Delete all habit data for a user.
-        """
-        # TODO: DELETE FROM habit_logs WHERE user_id = ?
-        # TODO: DELETE FROM habits WHERE user_id = ?
-        pass
-
-    async def freeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Restrict processing of habit data."""
-        # TODO: Mark habit records as frozen
-        pass
-
-    async def unfreeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Lift restriction on habit data processing."""
-        # TODO: Unmark frozen records
-        pass
 
     # =========================================================================
     # State Handlers

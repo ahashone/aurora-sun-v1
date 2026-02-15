@@ -122,7 +122,7 @@ class RIACycleLog(Base):
 
     Data Classification: INTERNAL
 
-    FINDING-047: Each log entry includes an HMAC integrity hash computed
+    Each log entry includes an HMAC integrity hash computed
     over the immutable fields (cycle_id, cycle_date, phase, metrics,
     started_at). This allows tamper detection on audit review.
     """
@@ -146,7 +146,7 @@ class RIACycleLog(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     duration_seconds = Column(Float, nullable=True)
 
-    # FINDING-047: HMAC integrity hash for tamper detection
+    # HMAC integrity hash for tamper detection on audit review
     integrity_hash = Column(String(64), nullable=True)
 
 
@@ -272,7 +272,7 @@ class RIAReport:
 
 def _compute_cycle_log_hmac(log: RIACycleLog) -> str:
     """
-    FINDING-047: Compute HMAC-SHA256 integrity hash for a RIA cycle log entry.
+    Compute HMAC-SHA256 integrity hash for a RIA cycle log entry.
 
     The HMAC is computed over the immutable fields of the log entry:
     cycle_id, cycle_date, phase, findings_ingested, patterns_analyzed,
@@ -317,7 +317,7 @@ def _compute_cycle_log_hmac(log: RIACycleLog) -> str:
 
 def verify_cycle_log_integrity(log: RIACycleLog) -> bool:
     """
-    FINDING-047: Verify the HMAC integrity of a RIA cycle log entry.
+    Verify the HMAC integrity of a RIA cycle log entry.
 
     Args:
         log: The RIACycleLog entry to verify.
@@ -429,7 +429,7 @@ class RIAService:
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
 
-        # FINDING-047: Compute HMAC integrity hash before persisting
+        # Compute HMAC integrity hash before persisting (tamper detection)
         log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
 
         self.session.add(log)
@@ -470,7 +470,7 @@ class RIAService:
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
 
-        # FINDING-047: Compute HMAC integrity hash before persisting
+        # Compute HMAC integrity hash before persisting (tamper detection)
         log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
 
         self.session.add(log)
@@ -512,7 +512,7 @@ class RIAService:
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
 
-        # FINDING-047: Compute HMAC integrity hash before persisting
+        # Compute HMAC integrity hash before persisting (tamper detection)
         log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
 
         self.session.add(log)
@@ -551,7 +551,7 @@ class RIAService:
         log.completed_at = datetime.now(UTC)  # type: ignore[assignment]
         log.duration_seconds = (log.completed_at - log.started_at).total_seconds()
 
-        # FINDING-047: Compute HMAC integrity hash before persisting
+        # Compute HMAC integrity hash before persisting (tamper detection)
         log.integrity_hash = _compute_cycle_log_hmac(log)  # type: ignore[assignment]
 
         self.session.add(log)

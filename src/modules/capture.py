@@ -16,6 +16,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.models.base import Base
@@ -95,7 +96,7 @@ class CapturedContent(Base):
             setattr(self, '_content_plaintext', value)
 
 
-class CaptureModule:
+class CaptureModule(GDPRModuleMixin):
     """
     Capture Module for quick thought and task capture.
 
@@ -598,61 +599,11 @@ Respond with just the category name."""
         # For now, return None (no database integration yet)
         return None
 
-    # GDPR Methods
-
-    async def export_user_data(self, user_id: int) -> dict[str, Any]:
-        """
-        Export all captured content for a user.
-
-        GDPR Art. 15: Right of access
-
-        Args:
-            user_id: The user's ID
-
-        Returns:
-            Dict containing all captured content
-        """
-        # TODO: Query database for user's captured content
+    def _gdpr_data_categories(self) -> dict[str, list[str]]:
+        """Declare capture data categories for GDPR."""
         return {
-            "captured_content": [],  # TODO: Populate from DB
+            "captured_content": ["content", "content_type", "metadata_json"],
         }
-
-    async def delete_user_data(self, user_id: int) -> None:
-        """
-        Delete all captured content for a user.
-
-        GDPR Art. 17: Right to erasure
-
-        Args:
-            user_id: The user's ID
-        """
-        # TODO: Delete from database
-        # DELETE FROM captured_content WHERE user_id = user_id
-        pass
-
-    async def freeze_user_data(self, user_id: int) -> None:
-        """
-        Freeze processing of captured content.
-
-        GDPR Art. 18: Restriction of processing
-
-        Args:
-            user_id: The user's ID
-        """
-        # TODO: Mark records as frozen
-        pass
-
-    async def unfreeze_user_data(self, user_id: int) -> None:
-        """
-        Unfreeze processing of captured content.
-
-        GDPR Art. 18: Lift restriction
-
-        Args:
-            user_id: The user's ID
-        """
-        # TODO: Unmark frozen records
-        pass
 
 
 # Export for module registry

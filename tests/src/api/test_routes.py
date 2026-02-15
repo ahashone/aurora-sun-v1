@@ -90,23 +90,28 @@ class TestAPIRoutes:
 
     @pytest.mark.asyncio
     async def test_health_check_endpoint(self) -> None:
-        """Test health check endpoint returns correct structure."""
+        """Test health check endpoint returns envelope with status ok."""
         routes = router.get_routes()
         health_handler = routes["GET /health"]["handler"]
         result = await health_handler()
 
-        assert "status" in result
-        assert result["status"] == "ok"
+        # Verify envelope structure
+        assert result["success"] is True
+        assert result["data"]["status"] == "ok"
+        assert result["error"] is None
+        assert "timestamp" in result["meta"]
 
     @pytest.mark.asyncio
     async def test_auth_token_endpoint(self) -> None:
-        """Test auth token endpoint returns 501 (not implemented)."""
+        """Test auth token endpoint returns NOT_IMPLEMENTED error envelope."""
         routes = router.get_routes()
         auth_handler = routes["POST /auth/token"]["handler"]
         result = await auth_handler(telegram_id=12345)
 
-        assert result["status"] == 501
-        assert result["error"] == "Not Implemented"
+        # Verify error envelope structure
+        assert result["success"] is False
+        assert result["error"]["code"] == "NOT_IMPLEMENTED"
+        assert result["data"] is None
 
     def test_all_routes_have_handlers(self) -> None:
         """Test that all routes have handler functions."""

@@ -15,11 +15,28 @@ Reference: ARCHITECTURE.md Section 5 (Aurora Agent - Growth Tracker)
 
 from __future__ import annotations
 
+import bisect
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from src.core.segment_context import SegmentContext
+
+# Maximum recovery time in hours (1 week) for resilience normalization
+_MAX_RECOVERY_HOURS = 168.0
+
+# Default self-awareness score when no energy prediction data is available
+_DEFAULT_AWARENESS = 0.5
+
+# Interoception adjustment multipliers for self-awareness scoring
+_INTEROCEPTION_VERY_LOW_MULTIPLIER = 1.5  # AuDHD: even moderate accuracy is impressive
+_INTEROCEPTION_LOW_MULTIPLIER = 1.3  # Autism: moderate accuracy is good
+
+# Dimension delta threshold for classifying improving/declining
+_DIMENSION_DELTA_THRESHOLD = 0.05
+
+# Trend determination: minimum advantage needed to classify as growing/declining
+_TREND_ADVANTAGE_THRESHOLD = 1
 
 
 @dataclass
@@ -130,33 +147,33 @@ class WindowComparison:
 
     @property
     def improving_dimensions(self) -> list[str]:
-        """List of dimensions that are improving (delta > 0.05)."""
+        """List of dimensions that are improving (delta > threshold)."""
         dims: list[str] = []
-        if self.delta_consistency > 0.05:
+        if self.delta_consistency > _DIMENSION_DELTA_THRESHOLD:
             dims.append("consistency")
-        if self.delta_resilience > 0.05:
+        if self.delta_resilience > _DIMENSION_DELTA_THRESHOLD:
             dims.append("resilience")
-        if self.delta_self_awareness > 0.05:
+        if self.delta_self_awareness > _DIMENSION_DELTA_THRESHOLD:
             dims.append("self_awareness")
-        if self.delta_goal_progress > 0.05:
+        if self.delta_goal_progress > _DIMENSION_DELTA_THRESHOLD:
             dims.append("goal_progress")
-        if self.delta_wellbeing > 0.05:
+        if self.delta_wellbeing > _DIMENSION_DELTA_THRESHOLD:
             dims.append("wellbeing")
         return dims
 
     @property
     def declining_dimensions(self) -> list[str]:
-        """List of dimensions that are declining (delta < -0.05)."""
+        """List of dimensions that are declining (delta < -threshold)."""
         dims: list[str] = []
-        if self.delta_consistency < -0.05:
+        if self.delta_consistency < -_DIMENSION_DELTA_THRESHOLD:
             dims.append("consistency")
-        if self.delta_resilience < -0.05:
+        if self.delta_resilience < -_DIMENSION_DELTA_THRESHOLD:
             dims.append("resilience")
-        if self.delta_self_awareness < -0.05:
+        if self.delta_self_awareness < -_DIMENSION_DELTA_THRESHOLD:
             dims.append("self_awareness")
-        if self.delta_goal_progress < -0.05:
+        if self.delta_goal_progress < -_DIMENSION_DELTA_THRESHOLD:
             dims.append("goal_progress")
-        if self.delta_wellbeing < -0.05:
+        if self.delta_wellbeing < -_DIMENSION_DELTA_THRESHOLD:
             dims.append("wellbeing")
         return dims
 
@@ -230,6 +247,8 @@ class GrowthTracker:
         """Initialize the growth tracker."""
         # In-memory storage (production: PostgreSQL)
         self._scores: dict[int, list[TrajectoryScore]] = {}
+        # Parallel sorted timestamp index per user for O(log n) lookup
+        self._score_timestamps: dict[int, list[float]] = {}
 
     def record_score(
         self,
@@ -238,13 +257,19 @@ class GrowthTracker:
     ) -> None:
         """Record a trajectory score for a user.
 
+        Maintains a parallel sorted timestamp index for O(log n)
+        historical lookups.
+
         Args:
             user_id: The user's unique identifier
             score: The trajectory score to record
         """
         if user_id not in self._scores:
             self._scores[user_id] = []
+            self._score_timestamps[user_id] = []
         self._scores[user_id].append(score)
+        ts = _parse_timestamp(score.timestamp).timestamp()
+        bisect.insort(self._score_timestamps[user_id], ts)
 
     def calculate_trajectory(
         self,
@@ -288,10 +313,9 @@ class GrowthTracker:
         consistency = min(1.0, max(0.0, consistency))
 
         # Resilience: inverse of recovery time, normalized to 0-1
-        # 0h = perfect (1.0), 168h (1 week) = worst (0.0)
-        max_recovery = 168.0  # 1 week in hours
+        # 0h = perfect (1.0), _MAX_RECOVERY_HOURS = worst (0.0)
         resilience = max(
-            0.0, 1.0 - (setback_recovery_hours / max_recovery)
+            0.0, 1.0 - (setback_recovery_hours / _MAX_RECOVERY_HOURS)
         )
 
         # Self-awareness: accuracy of energy self-report
@@ -301,16 +325,16 @@ class GrowthTracker:
                 energy_predictions_correct / energy_predictions_total
             )
         else:
-            raw_awareness = 0.5  # Default if no data
+            raw_awareness = _DEFAULT_AWARENESS
 
         # Adjust for interoception reliability
         interoception = segment_ctx.neuro.interoception_reliability
         if interoception == "very_low":
             # AuDHD: even moderate accuracy is impressive
-            self_awareness = min(1.0, raw_awareness * 1.5)
+            self_awareness = min(1.0, raw_awareness * _INTEROCEPTION_VERY_LOW_MULTIPLIER)
         elif interoception == "low":
             # Autism: moderate accuracy is good
-            self_awareness = min(1.0, raw_awareness * 1.3)
+            self_awareness = min(1.0, raw_awareness * _INTEROCEPTION_LOW_MULTIPLIER)
         else:
             self_awareness = raw_awareness
 
@@ -424,11 +448,15 @@ class GrowthTracker:
             user_id: The user's unique identifier
         """
         self._scores.pop(user_id, None)
+        self._score_timestamps.pop(user_id, None)
 
     def _get_historical_score(
         self, user_id: int, weeks_ago: int
     ) -> TrajectoryScore:
         """Get the trajectory score from N weeks ago.
+
+        Uses binary search on sorted timestamp index for O(log n)
+        lookup instead of O(n) linear scan.
 
         Args:
             user_id: The user's unique identifier
@@ -441,23 +469,35 @@ class GrowthTracker:
         if not scores:
             return TrajectoryScore()
 
-        # Find score closest to N weeks ago
-        target_date = datetime.now(UTC) - timedelta(weeks=weeks_ago)
+        timestamps = self._score_timestamps.get(user_id, [])
+        if not timestamps:
+            return scores[0]
 
-        best_score = scores[0]
-        best_distance = abs(
-            _parse_timestamp(best_score.timestamp) - target_date
-        ).total_seconds()
+        target_ts = (
+            datetime.now(UTC) - timedelta(weeks=weeks_ago)
+        ).timestamp()
 
-        for score in scores[1:]:
-            distance = abs(
-                _parse_timestamp(score.timestamp) - target_date
-            ).total_seconds()
-            if distance < best_distance:
-                best_distance = distance
-                best_score = score
+        # Binary search for nearest timestamp
+        pos = bisect.bisect_left(timestamps, target_ts)
 
-        return best_score
+        # Check candidates at pos-1 and pos
+        best_ts_idx = 0
+        best_distance = float("inf")
+        for idx in (pos - 1, pos):
+            if 0 <= idx < len(timestamps):
+                dist = abs(timestamps[idx] - target_ts)
+                if dist < best_distance:
+                    best_distance = dist
+                    best_ts_idx = idx
+
+        # Map back to score by matching timestamp
+        best_ts = timestamps[best_ts_idx]
+        for score in scores:
+            parsed_ts = _parse_timestamp(score.timestamp).timestamp()
+            if abs(parsed_ts - best_ts) < 0.001:
+                return score
+
+        return scores[0]
 
     def _determine_trend(
         self,
@@ -481,9 +521,9 @@ class GrowthTracker:
         total_improving = improving_4 + improving_12
         total_declining = declining_4 + declining_12
 
-        if total_improving > total_declining + 1:
+        if total_improving > total_declining + _TREND_ADVANTAGE_THRESHOLD:
             return "growing"
-        elif total_declining > total_improving + 1:
+        elif total_declining > total_improving + _TREND_ADVANTAGE_THRESHOLD:
             return "declining"
         return "stable"
 

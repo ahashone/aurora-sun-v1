@@ -3,7 +3,7 @@ global:
   smtp_smarthost: "smtp.example.com:587"
   smtp_from: "alerts@aurora-sun.example.com"
   smtp_auth_username: "alerts@aurora-sun.example.com"
-  smtp_auth_password: "PLACEHOLDER_PASSWORD"
+  smtp_auth_password: "${ALERTMANAGER_SMTP_PASSWORD}"  # Set via environment variable before deployment
   smtp_require_tls: true
 
 route:

@@ -24,12 +24,13 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.models.base import Base
@@ -217,7 +218,7 @@ class BeliefSession:
 # Belief Module
 # =============================================================================
 
-class BeliefModule:
+class BeliefModule(GDPRModuleMixin):
     """
     Limiting Beliefs Module for Aurora Sun V1.
 
@@ -348,36 +349,12 @@ class BeliefModule:
             priority=30,
         )
 
-    # =========================================================================
-    # GDPR Methods
-    # =========================================================================
-
-    async def export_user_data(self, user_id: int) -> dict[str, Any]:
-        """
-        GDPR Art. 15: Export all belief data for a user.
-
-        Note: Belief data is ART_9_SPECIAL (mental health).
-        Export must be encrypted or anonymized per policy.
-        """
-        # TODO: Query database
+    def _gdpr_data_categories(self) -> dict[str, list[str]]:
+        """Declare belief data categories for GDPR (ART_9_SPECIAL)."""
         return {
-            "beliefs": [],
-            "belief_evidence": [],
+            "beliefs": ["belief_text", "belief_type", "contradiction_index"],
+            "belief_evidence": ["evidence_text", "evidence_type"],
         }
-
-    async def delete_user_data(self, user_id: int) -> None:
-        """GDPR Art. 17: Delete all belief data for a user."""
-        # TODO: DELETE FROM belief_evidence WHERE user_id = ?
-        # TODO: DELETE FROM beliefs WHERE user_id = ?
-        pass
-
-    async def freeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Restrict processing of belief data."""
-        pass
-
-    async def unfreeze_user_data(self, user_id: int) -> None:
-        """GDPR Art. 18: Lift restriction on belief data processing."""
-        pass
 
     # =========================================================================
     # State Handlers

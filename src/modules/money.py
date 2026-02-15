@@ -32,6 +32,7 @@ from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import relationship
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.lib.encryption import (
@@ -441,6 +442,42 @@ def _encrypt_art9(
     return json.dumps(encrypted.to_db_dict())
 
 
+def _decrypt_or_fallback(
+    stored_json: str,
+    user_id: int,
+    field_name: str,
+    encryption: EncryptionService,
+    classification: DataClassification = DataClassification.FINANCIAL,
+) -> str:
+    """Decrypt a field value, falling back to plaintext_fallback if present.
+
+    Centralizes the common decrypt-or-fallback pattern used throughout the module.
+
+    Args:
+        stored_json: JSON-serialised EncryptedField dict from DB
+        user_id: User ID
+        field_name: Field name
+        encryption: EncryptionService instance
+        classification: Data classification (default: FINANCIAL)
+
+    Returns:
+        Decrypted plaintext string, or the plaintext_fallback value
+
+    Raises:
+        EncryptionServiceError: If decryption fails and no fallback is available
+        json.JSONDecodeError: If stored_json is not valid JSON
+        ValueError: If the decrypted value cannot be processed
+        KeyError: If required fields are missing
+    """
+    data: dict[str, Any] = json.loads(stored_json)
+    if "plaintext_fallback" in data:
+        return str(data["plaintext_fallback"])
+
+    if classification == DataClassification.ART_9_SPECIAL:
+        return _decrypt_art9(stored_json, user_id, field_name, encryption)
+    return _decrypt_financial(stored_json, user_id, field_name, encryption)
+
+
 def _decrypt_art9(
     stored_json: str,
     user_id: int,
@@ -771,7 +808,7 @@ def detect_patterns(
 # MoneyModule
 # =============================================================================
 
-class MoneyModule:
+class MoneyModule(GDPRModuleMixin):
     """Money Management Module implementing the Module Protocol.
 
     This module provides:
@@ -1215,15 +1252,9 @@ class MoneyModule:
         result: list[ParsedTransaction] = []
         for record in self._transactions[user_id][-20:]:  # last 20
             try:
-                amount_json = record["amount_encrypted"]
-                data = json.loads(amount_json)
-                if "plaintext_fallback" in data:
-                    amount = float(data["plaintext_fallback"])
-                else:
-                    amount_str = _decrypt_financial(
-                        amount_json, user_id, "amount", self._encryption
-                    )
-                    amount = float(amount_str)
+                amount = float(_decrypt_or_fallback(
+                    record["amount_encrypted"], user_id, "amount", self._encryption
+                ))
             except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
                 continue
 
@@ -1259,30 +1290,18 @@ class MoneyModule:
         for record in self._transactions.get(user_id, []):
             if record.get("is_income"):
                 try:
-                    amount_json = record["amount_encrypted"]
-                    data = json.loads(amount_json)
-                    if "plaintext_fallback" in data:
-                        income += float(data["plaintext_fallback"])
-                    else:
-                        amount_str = _decrypt_financial(
-                            amount_json, user_id, "amount", self._encryption
-                        )
-                        income += float(amount_str)
+                    income += float(_decrypt_or_fallback(
+                        record["amount_encrypted"], user_id, "amount", self._encryption
+                    ))
                 except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
                     continue
 
         # Sum recurring expenses as committed
         for rec in self._recurring.get(user_id, []):
             try:
-                amount_json = rec["amount_encrypted"]
-                data = json.loads(amount_json)
-                if "plaintext_fallback" in data:
-                    committed += float(data["plaintext_fallback"])
-                else:
-                    amount_str = _decrypt_financial(
-                        amount_json, user_id, "amount", self._encryption
-                    )
-                    committed += float(amount_str)
+                committed += float(_decrypt_or_fallback(
+                    rec["amount_encrypted"], user_id, "amount", self._encryption
+                ))
             except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
                 continue
 
@@ -1378,15 +1397,9 @@ class MoneyModule:
         total = 0.0
         for t in today_transactions:
             try:
-                amount_json = t["amount_encrypted"]
-                data = json.loads(amount_json)
-                if "plaintext_fallback" in data:
-                    total += float(data["plaintext_fallback"])
-                else:
-                    amount_str = _decrypt_financial(
-                        amount_json, user_id, "amount", self._encryption
-                    )
-                    total += float(amount_str)
+                total += float(_decrypt_or_fallback(
+                    t["amount_encrypted"], user_id, "amount", self._encryption
+                ))
             except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
                 continue
 
@@ -1397,6 +1410,63 @@ class MoneyModule:
             "transaction_count": len(today_transactions),
             "safe_to_spend_remaining": safe.safe_amount,
         }
+
+    # -----------------------------------------------------------------
+    # GDPR export helpers
+    # -----------------------------------------------------------------
+
+    def _export_transaction_fields(
+        self, user_id: int, record: dict[str, Any]
+    ) -> tuple[str, str]:
+        """Decrypt amount and description fields for GDPR export.
+
+        Args:
+            user_id: User ID
+            record: Stored transaction record
+
+        Returns:
+            Tuple of (amount_str, description_str)
+        """
+        try:
+            amount = _decrypt_or_fallback(
+                record["amount_encrypted"], user_id, "amount", self._encryption
+            )
+            desc_json = record.get("description_encrypted", "")
+            description = (
+                _decrypt_or_fallback(
+                    desc_json, user_id, "description", self._encryption
+                )
+                if desc_json
+                else ""
+            )
+        except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
+            amount = "[decryption failed]"
+            description = "[decryption failed]"
+        return amount, description
+
+    def _export_recurring_fields(
+        self, user_id: int, rec: dict[str, Any]
+    ) -> tuple[str, str]:
+        """Decrypt name and amount fields for GDPR export of recurring expenses.
+
+        Args:
+            user_id: User ID
+            rec: Stored recurring expense record
+
+        Returns:
+            Tuple of (name_str, amount_str)
+        """
+        try:
+            name = _decrypt_or_fallback(
+                rec["name_encrypted"], user_id, "recurring_name", self._encryption
+            )
+            rec_amount = _decrypt_or_fallback(
+                rec["amount_encrypted"], user_id, "amount", self._encryption
+            )
+        except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
+            name = "[decryption failed]"
+            rec_amount = "[decryption failed]"
+        return name, rec_amount
 
     # -----------------------------------------------------------------
     # GDPR Methods
@@ -1416,30 +1486,7 @@ class MoneyModule:
         """
         exported_transactions: list[dict[str, Any]] = []
         for record in self._transactions.get(user_id, []):
-            try:
-                amount_json = record["amount_encrypted"]
-                data = json.loads(amount_json)
-                if "plaintext_fallback" in data:
-                    amount = data["plaintext_fallback"]
-                else:
-                    amount = _decrypt_financial(
-                        amount_json, user_id, "amount", self._encryption
-                    )
-                desc_json = record.get("description_encrypted", "")
-                if desc_json:
-                    desc_data = json.loads(desc_json)
-                    if "plaintext_fallback" in desc_data:
-                        description = desc_data["plaintext_fallback"]
-                    else:
-                        description = _decrypt_financial(
-                            desc_json, user_id, "description", self._encryption
-                        )
-                else:
-                    description = ""
-            except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
-                amount = "[decryption failed]"
-                description = "[decryption failed]"
-
+            amount, description = self._export_transaction_fields(user_id, record)
             exported_transactions.append({
                 "amount": amount,
                 "currency": record.get("currency", "EUR"),
@@ -1452,26 +1499,7 @@ class MoneyModule:
 
         exported_recurring: list[dict[str, Any]] = []
         for rec in self._recurring.get(user_id, []):
-            try:
-                name_json = rec["name_encrypted"]
-                name_data = json.loads(name_json)
-                if "plaintext_fallback" in name_data:
-                    name = name_data["plaintext_fallback"]
-                else:
-                    name = _decrypt_financial(
-                        name_json, user_id, "recurring_name", self._encryption
-                    )
-                amount_json = rec["amount_encrypted"]
-                amount_data = json.loads(amount_json)
-                if "plaintext_fallback" in amount_data:
-                    rec_amount = amount_data["plaintext_fallback"]
-                else:
-                    rec_amount = _decrypt_financial(
-                        amount_json, user_id, "amount", self._encryption
-                    )
-            except (EncryptionServiceError, json.JSONDecodeError, ValueError, KeyError):
-                name = "[decryption failed]"
-                rec_amount = "[decryption failed]"
+            name, rec_amount = self._export_recurring_fields(user_id, rec)
             exported_recurring.append({
                 "name": name,
                 "amount": rec_amount,

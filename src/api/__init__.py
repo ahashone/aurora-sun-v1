@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes import router
+from src.lib.security import create_security_middleware
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,26 @@ def create_app() -> FastAPI:
         logger.info("CORS enabled for origins: %s", cors_origins)
     else:
         logger.info("CORS: no origins configured (restrictive default)")
+
+    # -------------------------------------------------------------------------
+    # CODEX-CRIT-1 + SEC-007: Security Headers + Rate Limiting Middleware
+    # Adds X-Content-Type-Options, X-Frame-Options, HSTS, CSP, etc.
+    # to all API responses.
+    # -------------------------------------------------------------------------
+    create_security_middleware(app)
+
+    # -------------------------------------------------------------------------
+    # SEC-008: HTTPS Redirect Middleware (production only)
+    # -------------------------------------------------------------------------
+    environment = os.getenv("AURORA_ENVIRONMENT", "development")
+    if environment == "production":
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        from src.infra.middleware import HTTPSRedirectMiddleware
+        app.add_middleware(
+            BaseHTTPMiddleware,
+            dispatch=HTTPSRedirectMiddleware(),
+        )
 
     # -------------------------------------------------------------------------
     # Include API v1 router (all routes under /api/v1)

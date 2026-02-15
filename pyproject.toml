@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 license = {text = "Proprietary"}
 
 dependencies = [
-    # FINDING-029: All dependencies pinned to exact versions for reproducibility.
+    # All dependencies pinned to exact versions for reproducibility.
 
     # Core
     "fastapi==0.115.6",

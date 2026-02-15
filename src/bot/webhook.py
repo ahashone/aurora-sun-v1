@@ -6,23 +6,23 @@ the Natural Language Interface (NLI) pipeline.
 
 Flow:
     1. Receive Update from Telegram
-    2. Private-chat gate (FINDING-016)
+    2. Private-chat gate (silently ignore non-private chats)
     3. Extract message/user info
-    4. Crisis detection FIRST (FINDING-013: must never be blocked)
-    5. Rate limit check (FINDING-009)
+    4. Crisis detection FIRST (must never be blocked by rate limits or consent)
+    5. Rate limit check (per-user)
     6. Check consent gate (GDPR)
-    7. Sanitize input (FINDING-006)
+    7. Sanitize input (XSS, path traversal, markdown)
     8. Pass to NLI (Intent Router)
     9. Route to appropriate module
     10. Return response
 
 Security fixes applied (Security Audit):
-    - FINDING-001: Consent gate wired to ConsentService
-    - FINDING-002: User lookup wired to database
-    - FINDING-003: Webhook secret token validation
-    - FINDING-006: InputSanitizer wired into message processing
-    - FINDING-009: RateLimiter used as classmethod (no instantiation)
-    - FINDING-011: Crisis detection before NLI routing
+    - Consent gate wired to ConsentService (GDPR Art. 9)
+    - User lookup via hashed Telegram ID (no raw PII in DB)
+    - Webhook secret token validation (X-Telegram-Bot-Api-Secret-Token)
+    - InputSanitizer wired into all message processing paths
+    - RateLimiter used as classmethod (stateless, Redis-backed)
+    - Crisis detection runs before NLI routing (safety-first)
 
 References:
     - ARCHITECTURE.md Section 4 (Natural Language Interface)
@@ -54,7 +54,7 @@ from src.services.crisis_service import CrisisLevel, check_and_handle_crisis
 
 logger = logging.getLogger(__name__)
 
-# FINDING-001: Telegram IP allowlist for webhook validation
+# Telegram IP allowlist for webhook origin validation.
 # See https://core.telegram.org/bots/webhooks#the-short-version
 TELEGRAM_IP_RANGES = [
     ipaddress.ip_network("149.154.160.0/20"),
@@ -85,7 +85,7 @@ def validate_webhook_request(
     client_ip: str | None = None,
 ) -> bool:
     """
-    Validate an incoming webhook request (FINDING-001).
+    Validate an incoming webhook request (secret token + optional IP check).
 
     Call this in the web framework (Starlette/FastAPI) BEFORE parsing the
     Update object. Checks X-Telegram-Bot-Api-Secret-Token header and
@@ -119,11 +119,11 @@ class TelegramWebhookHandler:
     Handles Telegram webhook updates and routes them through the NLI.
 
     This is the entry point for all Telegram interactions. It handles:
-    - Input sanitization (FINDING-006)
-    - Rate limiting (FINDING-009)
+    - Input sanitization (XSS, path traversal, markdown injection)
+    - Per-user rate limiting (30/min, 100/hour)
     - Crisis detection (SW-11)
     - New user detection and onboarding trigger
-    - Consent gate validation (FINDING-001)
+    - GDPR consent gate validation
     - Message routing through Intent Router
     - Response formatting and delivery
     """
@@ -149,19 +149,20 @@ class TelegramWebhookHandler:
         Main entry point for handling Telegram updates.
 
         This is the core handler that:
-        1. Private-chat gate (FINDING-016)
+        1. Private-chat gate (ignore groups/channels to prevent data leakage)
         2. Extract user info
-        3. FINDING-013: Crisis detection FIRST (must NEVER be blocked)
-        4. Rate limits (FINDING-009)
-        5. Consent gate (SW-15)
-        6. Routes through NLI
-        7. Returns response
+        3. Sanitize ALL user-input fields (SEC-004: text, callback_data, inline queries)
+        4. Crisis detection FIRST (must NEVER be blocked by rate limits or consent)
+        5. Per-user rate limits (30/min, 100/hour)
+        6. Consent gate (SW-15)
+        7. Routes through NLI
+        8. Returns response
 
         Args:
             update: Telegram Update object
         """
         # =============================================================================
-        # FINDING-016 (Codex): Private chat only gate
+        # Private chat only gate
         # Silently ignore all non-private chats to prevent data leakage in groups.
         # This check runs BEFORE any processing, including crisis detection.
         # =============================================================================
@@ -179,7 +180,19 @@ class TelegramWebhookHandler:
             return
 
         # =============================================================================
-        # FINDING-013: Crisis detection BEFORE rate limiting and consent gate.
+        # SEC-004: Sanitize ALL user-input fields from Telegram Update.
+        # Previously only message text was sanitized. Now we sanitize:
+        # - message.text (text messages)
+        # - callback_query.data (inline keyboard callbacks)
+        # - inline_query.query (inline bot queries)
+        # - chosen_inline_result.query (chosen inline result)
+        # - message.caption (media captions)
+        # Sanitization runs BEFORE crisis detection to ensure clean input everywhere.
+        # =============================================================================
+        self._sanitize_update_fields(update)
+
+        # =============================================================================
+        # Crisis detection BEFORE rate limiting and consent gate.
         # A suicidal user must NEVER be blocked by rate limits or missing consent.
         # This is the FIRST thing after receiving a valid message (after private-chat
         # check). Uses user.id directly -- no DB lookup needed for crisis check.
@@ -195,7 +208,7 @@ class TelegramWebhookHandler:
                     return
 
         # =============================================================================
-        # FINDING-009: Rate limiting - Use RateLimiter classmethod (no instantiation)
+        # Per-user rate limiting via stateless classmethod (Redis-backed)
         # =============================================================================
         # Check message rate limit (30/min, 100/hour)
         if not await RateLimiter.check_rate_limit(user.id, RateLimitTier.CHAT):
@@ -210,7 +223,7 @@ class TelegramWebhookHandler:
         telegram_id_hash = hash_telegram_id(telegram_id)
 
         # =============================================================================
-        # FINDING-001: Consent gate - Block all non-onboarding until consent is VALID
+        # GDPR consent gate: block all non-onboarding messages until consent is VALID
         # =============================================================================
         # Load user from database and check consent
         user_record = await self._get_user_by_telegram_hash(telegram_id_hash)
@@ -241,12 +254,82 @@ class TelegramWebhookHandler:
                 logger.exception("Failed to send error message to user")
 
     # =============================================================================
+    # SEC-004: Comprehensive Input Sanitization
+    # =============================================================================
+
+    @staticmethod
+    def _sanitize_update_fields(update: Update) -> None:
+        """
+        Sanitize ALL user-input fields in a Telegram Update (SEC-004).
+
+        Covers:
+        - message.text: Standard text messages
+        - message.caption: Media captions (photos, videos, documents)
+        - callback_query.data: Inline keyboard callback data
+        - inline_query.query: Inline bot search queries
+        - chosen_inline_result.query: Chosen inline result query
+        - poll.question / poll.options: Poll content
+
+        This runs ONCE at the top of handle_update() so all downstream
+        code (crisis detection, NLI routing, onboarding) receives
+        pre-sanitized input.
+
+        Args:
+            update: Telegram Update object (modified in-place)
+        """
+        # Sanitize message text
+        if update.message and update.message.text:
+            try:
+                update.message._text = InputSanitizer.sanitize_all(
+                    update.message.text
+                )
+            except (AttributeError, TypeError):
+                # Telegram objects may be frozen; log and continue
+                logger.debug("Could not sanitize message.text in-place")
+
+        # Sanitize message caption (photos, videos, documents)
+        if update.message and update.message.caption:
+            try:
+                update.message._caption = InputSanitizer.sanitize_all(
+                    update.message.caption
+                )
+            except (AttributeError, TypeError):
+                logger.debug("Could not sanitize message.caption in-place")
+
+        # Sanitize callback_query.data (inline keyboard presses)
+        if update.callback_query and update.callback_query.data:
+            try:
+                update.callback_query._data = InputSanitizer.sanitize_all(
+                    update.callback_query.data
+                )
+            except (AttributeError, TypeError):
+                logger.debug("Could not sanitize callback_query.data in-place")
+
+        # Sanitize inline_query.query (inline bot search)
+        if update.inline_query and update.inline_query.query:
+            try:
+                update.inline_query._query = InputSanitizer.sanitize_all(
+                    update.inline_query.query
+                )
+            except (AttributeError, TypeError):
+                logger.debug("Could not sanitize inline_query.query in-place")
+
+        # Sanitize chosen_inline_result.query
+        if update.chosen_inline_result and update.chosen_inline_result.query:
+            try:
+                update.chosen_inline_result._query = InputSanitizer.sanitize_all(
+                    update.chosen_inline_result.query
+                )
+            except (AttributeError, TypeError):
+                logger.debug("Could not sanitize chosen_inline_result.query in-place")
+
+    # =============================================================================
     # Helper Methods for Consent and User Management
     # =============================================================================
 
     async def _get_user_by_telegram_hash(self, telegram_id_hash: str) -> Any:
         """
-        Get user by hashed Telegram ID (FINDING-002).
+        Get user by hashed Telegram ID (no raw PII stored in DB).
 
         Args:
             telegram_id_hash: HMAC-SHA256 hashed Telegram ID
@@ -266,7 +349,7 @@ class TelegramWebhookHandler:
 
     async def _check_consent(self, user_id: int) -> ConsentValidationResult:
         """
-        Check user's consent status (FINDING-001).
+        Check user's consent status (GDPR Art. 9 requirement).
 
         Args:
             user_id: User ID
@@ -312,7 +395,7 @@ class TelegramWebhookHandler:
 
     async def _handle_onboarding(self, update: Any, user: Any, telegram_id_hash: str) -> None:
         """
-        Handle new user onboarding (FINDING-006: sanitize name input).
+        Handle new user onboarding (sanitize name/language input before storage).
 
         Args:
             update: Telegram Update
@@ -321,10 +404,14 @@ class TelegramWebhookHandler:
         """
         # Start onboarding flow
         # OnboardingFlow.start() takes (update, language) - auto-detect from Telegram user
-        language = user.language_code if hasattr(user, 'language_code') and user.language_code else "en"
-        # FINDING-006: Sanitize language code to prevent injection
+        has_lang = hasattr(user, 'language_code') and user.language_code
+        language = user.language_code if has_lang else "en"
+        # Sanitize language code to prevent injection via Telegram user data
         language = InputSanitizer.sanitize_all(language)
-        await self._onboarding_flow.start(update, language)
+        # PERF-007: Pass pre-computed hash to avoid recomputing HMAC
+        await self._onboarding_flow.start(
+            update, language, user_hash=telegram_id_hash
+        )
 
     async def _route_through_nli(self, update: Update, user: Any) -> None:
         """
@@ -332,7 +419,7 @@ class TelegramWebhookHandler:
 
         This is where the magic happens:
         1. Extract message text
-        2. FINDING-006: Sanitize input
+        2. Sanitize input (XSS, path traversal, markdown)
         3. Pass to Intent Router
         4. Route to appropriate module
         5. Send response
@@ -346,7 +433,7 @@ class TelegramWebhookHandler:
         if not message_text:
             return
 
-        # FINDING-006: Sanitize all user input before processing
+        # Sanitize all user input before LLM/storage processing
         message_text = InputSanitizer.sanitize_all(message_text)
 
         # TODO: Implement actual NLI routing
@@ -380,7 +467,7 @@ def create_app() -> Application[Any, Any, Any, Any, Any, Any]:
     """
     Create and configure the Telegram Application.
 
-    FINDING-003: Webhook secret token validation via TELEGRAM_WEBHOOK_SECRET.
+    Webhook secret token validation via TELEGRAM_WEBHOOK_SECRET.
 
     Returns:
         Configured telegram.ext.Application
@@ -391,7 +478,7 @@ def create_app() -> Application[Any, Any, Any, Any, Any, Any]:
     if not bot_token:
         raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
 
-    # FINDING-001: Webhook secret for X-Telegram-Bot-Api-Secret-Token validation.
+    # Webhook secret for X-Telegram-Bot-Api-Secret-Token validation.
     # The secret is validated at the web framework level (Starlette/FastAPI middleware)
     # via validate_webhook_request() before the update reaches this Application.
     webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")

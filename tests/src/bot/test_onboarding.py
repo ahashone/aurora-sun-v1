@@ -551,3 +551,346 @@ async def test_get_user_data_returns_none_when_no_data(onboarding_flow: Onboardi
     """Test that get_user_data returns None when no data exists."""
     data = await onboarding_flow.get_user_data("nonexistent_hash")
     assert data == {} or data is None
+
+
+# =============================================================================
+# Test: Process Step
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_process_step_not_in_onboarding(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test that process_step ignores users not in onboarding."""
+    # No state set, so user is not in onboarding
+    # Should return without error
+    await onboarding_flow.process_step(mock_update_with_message)
+
+
+@pytest.mark.asyncio
+async def test_process_step_completed_state(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test that process_step ignores completed state."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.COMPLETED)
+
+    # Should return without error
+    await onboarding_flow.process_step(mock_update_with_message)
+
+
+@pytest.mark.asyncio
+async def test_process_step_with_callback_query(onboarding_flow: OnboardingFlow, mock_update_with_callback):
+    """Test process_step with callback query delegates to _handle_callback."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_callback)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.LANGUAGE)
+    await onboarding_flow._set_data(user_hash, {"language": "en", "name": None, "segment": None, "consented": False})
+
+    mock_update_with_callback.callback_query.data = "lang_en"
+
+    with patch.object(onboarding_flow, '_handle_callback', new_callable=AsyncMock) as mock_handler:
+        await onboarding_flow.process_step(mock_update_with_callback)
+        mock_handler.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_process_step_with_text_message(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test process_step with text message delegates to _handle_text."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.NAME)
+    await onboarding_flow._set_data(user_hash, {"language": "en", "name": None, "segment": None, "consented": False})
+
+    mock_update_with_message.message.text = "Alice"
+
+    with patch.object(onboarding_flow, '_handle_text', new_callable=AsyncMock) as mock_handler:
+        await onboarding_flow.process_step(mock_update_with_message)
+        mock_handler.assert_called_once()
+
+
+# =============================================================================
+# Test: _send_prompt
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_language_state(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _send_prompt for LANGUAGE state sends welcome message with keyboard."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.LANGUAGE)
+    await onboarding_flow._set_data(user_hash, {"language": "en"})
+
+    await onboarding_flow._send_prompt(mock_update_with_message, user_hash)
+
+    mock_update_with_message.message.reply_text.assert_called_once()
+    call_args = mock_update_with_message.message.reply_text.call_args
+    assert "Welcome" in call_args[0][0] or "language" in call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_name_state(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _send_prompt for NAME state asks for name."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.NAME)
+    await onboarding_flow._set_data(user_hash, {"language": "en"})
+
+    await onboarding_flow._send_prompt(mock_update_with_message, user_hash)
+
+    call_args = mock_update_with_message.message.reply_text.call_args
+    assert "name" in call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_working_style_state(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _send_prompt for WORKING_STYLE state asks about brain style."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.WORKING_STYLE)
+    await onboarding_flow._set_data(user_hash, {"language": "en"})
+
+    await onboarding_flow._send_prompt(mock_update_with_message, user_hash)
+
+    call_args = mock_update_with_message.message.reply_text.call_args
+    assert "brain" in call_args[0][0].lower() or "operating" in call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_consent_state(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _send_prompt for CONSENT state shows consent text."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.CONSENT)
+    await onboarding_flow._set_data(user_hash, {"language": "en"})
+
+    await onboarding_flow._send_prompt(mock_update_with_message, user_hash)
+
+    call_args = mock_update_with_message.message.reply_text.call_args
+    assert "data" in call_args[0][0].lower() or "consent" in call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_consent_state_german(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _send_prompt for CONSENT state shows German consent text."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.CONSENT)
+    await onboarding_flow._set_data(user_hash, {"language": "de"})
+
+    await onboarding_flow._send_prompt(mock_update_with_message, user_hash)
+
+    call_args = mock_update_with_message.message.reply_text.call_args
+    assert "Daten" in call_args[0][0] or "Einwilligung" in call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_confirmation_state(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _send_prompt for CONFIRMATION state shows completion message."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.CONFIRMATION)
+    await onboarding_flow._set_data(user_hash, {"language": "en", "name": "Alice", "segment": "AD"})
+
+    await onboarding_flow._send_prompt(mock_update_with_message, user_hash)
+
+    call_args = mock_update_with_message.message.reply_text.call_args
+    assert "Alice" in call_args[0][0]
+    assert "ADHD" in call_args[0][0]
+
+    # Confirmation state should set state to COMPLETED
+    state = await onboarding_flow._get_state(user_hash)
+    assert state == OnboardingStates.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_via_callback_message(onboarding_flow: OnboardingFlow, mock_update_with_callback):
+    """Test _send_prompt sends via callback_query.message.edit_text when no message."""
+    mock_update_with_callback.message = None  # No direct message
+
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_callback)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.NAME)
+    await onboarding_flow._set_data(user_hash, {"language": "en"})
+
+    await onboarding_flow._send_prompt(mock_update_with_callback, user_hash)
+
+    mock_update_with_callback.callback_query.message.edit_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_with_keyboard_via_callback(onboarding_flow: OnboardingFlow, mock_update_with_callback):
+    """Test _send_prompt with keyboard sends via callback_query.message.edit_text."""
+    mock_update_with_callback.message = None  # No direct message
+
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_callback)
+    await onboarding_flow._set_state(user_hash, OnboardingStates.LANGUAGE)
+    await onboarding_flow._set_data(user_hash, {"language": "en"})
+
+    await onboarding_flow._send_prompt(mock_update_with_callback, user_hash)
+
+    mock_update_with_callback.callback_query.message.edit_text.assert_called_once()
+
+
+# =============================================================================
+# Test: State Transition Validation
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_advance_state_rejects_invalid_transition(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test that _advance_state rejects invalid state transitions."""
+    user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+    # Set state to CONSENT, which can only go to CONFIRMATION or COMPLETED
+    await onboarding_flow._set_state(user_hash, OnboardingStates.CONSENT)
+
+    # Monkey-patch _steps to try to force an invalid transition from CONSENT to LANGUAGE
+    original_steps = onboarding_flow._steps
+    from src.bot.onboarding import OnboardingStep
+    onboarding_flow._steps = [
+        OnboardingStep(state=OnboardingStates.CONSENT, prompt_key="consent"),
+        OnboardingStep(state=OnboardingStates.LANGUAGE, prompt_key="lang"),  # Invalid next
+    ]
+
+    with patch.object(onboarding_flow, '_send_prompt', new_callable=AsyncMock) as mock_prompt:
+        await onboarding_flow._advance_state(mock_update_with_message, user_hash)
+        # Should NOT call _send_prompt because transition is invalid
+        mock_prompt.assert_not_called()
+
+    onboarding_flow._steps = original_steps
+
+
+# =============================================================================
+# Test: User Hash Error
+# =============================================================================
+
+
+def test_get_user_hash_no_effective_user(onboarding_flow: OnboardingFlow):
+    """Test _get_user_hash raises ValueError when no effective user."""
+    import pytest as pt
+    update = MagicMock(spec=Update)
+    update.effective_user = None
+    with pt.raises(ValueError, match="No effective user"):
+        onboarding_flow._get_user_hash(update)
+
+
+# =============================================================================
+# Test: Start with pre-computed user_hash
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_start_with_precomputed_hash(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test start() with pre-computed user_hash skips HMAC computation."""
+    with patch.object(onboarding_flow, '_send_prompt', new_callable=AsyncMock):
+        await onboarding_flow.start(mock_update_with_message, language="en", user_hash="precomputed123")
+
+        state = await onboarding_flow._get_state("precomputed123")
+        assert state == OnboardingStates.LANGUAGE
+
+
+@pytest.mark.asyncio
+async def test_start_with_unsupported_language_defaults_to_english(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test start() with unsupported language falls back to English."""
+    with patch.object(onboarding_flow, '_send_prompt', new_callable=AsyncMock):
+        await onboarding_flow.start(mock_update_with_message, language="xx")
+
+        user_hash = onboarding_flow._get_user_hash(mock_update_with_message)
+        data = await onboarding_flow._get_data(user_hash)
+        assert data["language"] == "en"
+
+
+# =============================================================================
+# Test: Get State public method
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_state_public_method(onboarding_flow: OnboardingFlow):
+    """Test public get_state() method."""
+    user_hash = "test_public_state"
+    await onboarding_flow._set_state(user_hash, OnboardingStates.WORKING_STYLE)
+
+    state = await onboarding_flow.get_state(user_hash)
+    assert state == OnboardingStates.WORKING_STYLE
+
+
+@pytest.mark.asyncio
+async def test_get_state_returns_none_for_unknown_user(onboarding_flow: OnboardingFlow):
+    """Test get_state() returns None for unknown user."""
+    state = await onboarding_flow.get_state("unknown_user_hash")
+    assert state is None
+
+
+# =============================================================================
+# Test: Redis Data Persistence
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_state_from_redis(onboarding_flow: OnboardingFlow):
+    """Test _get_state retrieves from Redis when available."""
+    user_hash = "redis_test"
+    with patch.object(onboarding_flow._redis, 'get', new_callable=AsyncMock, return_value='"name"') as mock_get:
+        state = await onboarding_flow._get_state(user_hash)
+        mock_get.assert_called_once()
+        assert state == OnboardingStates.NAME
+
+
+@pytest.mark.asyncio
+async def test_get_data_from_redis(onboarding_flow: OnboardingFlow):
+    """Test _get_data retrieves from Redis when available."""
+    import json
+    user_hash = "redis_data_test"
+    test_data = {"language": "de", "name": "Test"}
+    with patch.object(onboarding_flow._redis, 'get', new_callable=AsyncMock, return_value=json.dumps(test_data)):
+        data = await onboarding_flow._get_data(user_hash)
+        assert data == test_data
+
+
+@pytest.mark.asyncio
+async def test_set_data_falls_back_to_memory_on_redis_error(onboarding_flow: OnboardingFlow):
+    """Test _set_data falls back to in-memory on Redis error."""
+    user_hash = "data_fallback_test"
+    test_data = {"language": "en"}
+    with patch.object(onboarding_flow._redis, 'set', side_effect=Exception("Redis unavailable")):
+        await onboarding_flow._set_data(user_hash, test_data)
+        assert onboarding_flow._user_data_fallback[user_hash] == test_data
+
+
+# =============================================================================
+# Test: Callback handling edge cases
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_handle_callback_no_query_data(onboarding_flow: OnboardingFlow, mock_update_with_callback):
+    """Test _handle_callback does nothing when no callback data."""
+    mock_update_with_callback.callback_query.data = None
+    user_hash = "test_no_data"
+    step = onboarding_flow._steps[0]
+
+    # Should return without error
+    await onboarding_flow._handle_callback(mock_update_with_callback, user_hash, step)
+
+
+@pytest.mark.asyncio
+async def test_handle_callback_no_query(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _handle_callback does nothing when no callback_query."""
+    mock_update_with_message.callback_query = None
+    user_hash = "test_no_query"
+    step = onboarding_flow._steps[0]
+
+    # Should return without error
+    await onboarding_flow._handle_callback(mock_update_with_message, user_hash, step)
+
+
+@pytest.mark.asyncio
+async def test_handle_text_no_message(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _handle_text does nothing when no message."""
+    mock_update_with_message.message = None
+    user_hash = "test_no_msg"
+    step = onboarding_flow._steps[1]
+
+    # Should return without error
+    await onboarding_flow._handle_text(mock_update_with_message, user_hash, step)
+
+
+@pytest.mark.asyncio
+async def test_handle_text_no_text(onboarding_flow: OnboardingFlow, mock_update_with_message):
+    """Test _handle_text does nothing when message has no text."""
+    mock_update_with_message.message.text = None
+    user_hash = "test_no_text"
+    step = onboarding_flow._steps[1]
+
+    # Should return without error
+    await onboarding_flow._handle_text(mock_update_with_message, user_hash, step)

@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from src.core.daily_workflow_hooks import DailyWorkflowHooks
+from src.core.gdpr_mixin import GDPRModuleMixin
 from src.core.module_context import ModuleContext
 from src.core.module_response import ModuleResponse
 from src.core.segment_context import SegmentContext, WorkingStyleCode
@@ -144,7 +145,7 @@ class FutureLetterSession:
 # Future Letter Module
 # =============================================================================
 
-class FutureLetterModule:
+class FutureLetterModule(GDPRModuleMixin):
     """
     Future Letter Module for Aurora Sun V1.
 
@@ -318,54 +319,11 @@ class FutureLetterModule:
             priority=50,  # Lower priority - primarily manual trigger
         )
 
-    # =========================================================================
-    # GDPR Methods
-    # =========================================================================
-
-    async def export_user_data(self, user_id: int) -> dict[str, Any]:
-        """
-        GDPR export for future letter data.
-
-        Args:
-            user_id: The user's ID
-
-        Returns:
-            Dict containing all future letter data
-        """
-        # TODO: Load from database when implemented
+    def _gdpr_data_categories(self) -> dict[str, list[str]]:
+        """Declare future letter data categories for GDPR."""
         return {
-            "future_letters": [],
+            "future_letters": ["content", "time_horizon", "sections"],
         }
-
-    async def delete_user_data(self, user_id: int) -> None:
-        """
-        GDPR delete for future letter data.
-
-        Args:
-            user_id: The user's ID
-        """
-        # TODO: Implement actual deletion from database
-        pass
-
-    async def freeze_user_data(self, user_id: int) -> None:
-        """
-        GDPR Art. 18: Restriction of processing.
-
-        Args:
-            user_id: The user's ID
-        """
-        # TODO: Mark user data as restricted
-        pass
-
-    async def unfreeze_user_data(self, user_id: int) -> None:
-        """
-        GDPR Art. 18: Lift restriction.
-
-        Args:
-            user_id: The user's ID
-        """
-        # TODO: Remove restriction flag
-        pass
 
     # =========================================================================
     # State Handlers

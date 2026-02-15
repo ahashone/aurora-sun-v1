@@ -74,6 +74,10 @@ def _make_ctx(
 def future_letter_module() -> FutureLetterModule:
     """Provide a fresh FutureLetterModule with a test state store."""
     module = FutureLetterModule()
+    # Close the old coroutine to prevent "coroutine never awaited" warnings
+    old_coro = module._state_store
+    if hasattr(old_coro, "close"):
+        old_coro.close()
     store = _make_test_state_store()
     # Replace the coroutine with a re-awaitable wrapper so multiple
     # awaits in the module methods work correctly in tests
@@ -141,7 +145,9 @@ class TestOnEnter:
         assert response.next_state == FutureLetterState.SETTING
 
     @pytest.mark.asyncio
-    async def test_on_enter_includes_metadata(self, future_letter_module: FutureLetterModule) -> None:
+    async def test_on_enter_includes_metadata(
+        self, future_letter_module: FutureLetterModule,
+    ) -> None:
         """on_enter includes time horizon options in metadata."""
         ctx = _make_ctx("NT")
         response = await future_letter_module.on_enter(ctx)
@@ -261,7 +267,9 @@ class TestSetting:
         assert "10 years" in response.text
 
     @pytest.mark.asyncio
-    async def test_setting_invalid_reprompts(self, future_letter_module: FutureLetterModule) -> None:
+    async def test_setting_invalid_reprompts(
+        self, future_letter_module: FutureLetterModule,
+    ) -> None:
         """Invalid time horizon re-prompts."""
         ctx = _make_ctx("NT", state=FutureLetterState.SETTING)
         await future_letter_module.on_enter(ctx)
@@ -351,7 +359,9 @@ class TestWisdom:
         assert response.is_end_of_flow is True
 
     @pytest.mark.asyncio
-    async def test_wisdom_creates_side_effect(self, future_letter_module: FutureLetterModule) -> None:
+    async def test_wisdom_creates_side_effect(
+        self, future_letter_module: FutureLetterModule,
+    ) -> None:
         """WISDOM creates vision_anchor side effect."""
         ctx = _make_ctx("NT", state=FutureLetterState.WISDOM)
         await future_letter_module.on_enter(ctx)

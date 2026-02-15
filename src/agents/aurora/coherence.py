@@ -17,12 +17,30 @@ Reference: ARCHITECTURE.md Section 5 (Aurora Agent - Coherence Auditor)
 from __future__ import annotations
 
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
 from src.core.segment_context import SegmentContext
+
+# Maximum number of users in the in-memory audit history cache
+_AUDIT_HISTORY_MAXLEN = 1000
+
+# Common stop words removed from keyword overlap scoring
+_STOP_WORDS: frozenset[str] = frozenset(
+    {"a", "the", "and", "or", "to", "for", "my", "i"}
+)
+
+# Coherence summary thresholds
+_COHERENCE_HIGH_THRESHOLD = 0.8  # Vision/goals/habits well aligned
+_COHERENCE_MODERATE_THRESHOLD = 0.5  # Moderate alignment
+
+# Coherence sub-score weights (must sum to 1.0)
+_WEIGHT_VISION_GOAL = 0.35
+_WEIGHT_GOAL_HABIT = 0.40
+_WEIGHT_VISION_HABIT = 0.25
 
 
 class GapType(StrEnum):
@@ -159,7 +177,8 @@ class CoherenceAuditor:
     def __init__(self) -> None:
         """Initialize the coherence auditor."""
         # In-memory storage (production: PostgreSQL)
-        self._audit_history: dict[int, list[CoherenceResult]] = {}
+        # Bounded to _AUDIT_HISTORY_MAXLEN users to prevent unbounded growth
+        self._audit_history: OrderedDict[int, list[CoherenceResult]] = OrderedDict()
 
     def audit_coherence(
         self,
@@ -211,9 +230,9 @@ class CoherenceAuditor:
         # Overall score is weighted average of sub-scores
         if vision and goals and habits:
             overall = (
-                vision_goal_score * 0.35
-                + goal_habit_score * 0.40
-                + vision_habit_score * 0.25
+                vision_goal_score * _WEIGHT_VISION_GOAL
+                + goal_habit_score * _WEIGHT_GOAL_HABIT
+                + vision_habit_score * _WEIGHT_VISION_HABIT
             )
             coherence_ratio = max(coherence_ratio, overall)
 
@@ -347,13 +366,40 @@ class CoherenceAuditor:
         """
         self._audit_history.pop(user_id, None)
 
+    @staticmethod
+    def _score_keyword_alignment(
+        reference: str, items: list[str]
+    ) -> float:
+        """Score alignment between a reference text and a list of items.
+
+        Uses keyword overlap heuristic (stop words excluded).
+        In production, this would use semantic similarity.
+
+        Args:
+            reference: The reference text (e.g., vision statement)
+            items: List of items to compare against (e.g., goals or habits)
+
+        Returns:
+            Score 0.0-1.0 (fraction of items with keyword overlap)
+        """
+        if not reference or not items:
+            return 0.0
+
+        ref_words = set(reference.lower().split())
+        aligned_count = 0
+        for item in items:
+            item_words = set(item.lower().split())
+            overlap = ref_words & item_words
+            overlap -= _STOP_WORDS
+            if overlap:
+                aligned_count += 1
+
+        return aligned_count / len(items)
+
     def _score_vision_goal(
         self, vision: str, goals: list[str]
     ) -> float:
         """Score vision-goal alignment.
-
-        In production, uses semantic similarity.
-        For now, uses keyword overlap heuristic.
 
         Args:
             vision: The user's vision statement
@@ -362,20 +408,7 @@ class CoherenceAuditor:
         Returns:
             Score 0.0-1.0
         """
-        if not vision or not goals:
-            return 0.0
-
-        vision_words = set(vision.lower().split())
-        aligned_count = 0
-        for goal in goals:
-            goal_words = set(goal.lower().split())
-            overlap = vision_words & goal_words
-            # Remove common words
-            overlap -= {"a", "the", "and", "or", "to", "for", "my", "i"}
-            if overlap:
-                aligned_count += 1
-
-        return aligned_count / len(goals) if goals else 0.0
+        return self._score_keyword_alignment(vision, goals)
 
     def _score_goal_habit(
         self,
@@ -422,19 +455,7 @@ class CoherenceAuditor:
         Returns:
             Score 0.0-1.0
         """
-        if not vision or not habits:
-            return 0.0
-
-        vision_words = set(vision.lower().split())
-        aligned_count = 0
-        for habit in habits:
-            habit_words = set(habit.lower().split())
-            overlap = vision_words & habit_words
-            overlap -= {"a", "the", "and", "or", "to", "for", "my", "i"}
-            if overlap:
-                aligned_count += 1
-
-        return aligned_count / len(habits) if habits else 0.0
+        return self._score_keyword_alignment(vision, habits)
 
     def _detect_gaps(
         self,
@@ -555,11 +576,11 @@ class CoherenceAuditor:
         """
         parts: list[str] = []
 
-        if ratio >= 0.8:
+        if ratio >= _COHERENCE_HIGH_THRESHOLD:
             parts.append(
                 "Your vision, goals, and habits are well aligned."
             )
-        elif ratio >= 0.5:
+        elif ratio >= _COHERENCE_MODERATE_THRESHOLD:
             parts.append(
                 "There is moderate alignment between your vision, "
                 "goals, and habits."
@@ -586,12 +607,16 @@ class CoherenceAuditor:
     def _record_audit(
         self, user_id: int, result: CoherenceResult
     ) -> None:
-        """Record an audit result.
+        """Record an audit result (bounded LRU cache).
 
         Args:
             user_id: The user's unique identifier
             result: The audit result to record
         """
         if user_id not in self._audit_history:
+            if len(self._audit_history) >= _AUDIT_HISTORY_MAXLEN:
+                self._audit_history.popitem(last=False)
             self._audit_history[user_id] = []
+        else:
+            self._audit_history.move_to_end(user_id)
         self._audit_history[user_id].append(result)

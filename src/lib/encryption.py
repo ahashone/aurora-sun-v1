@@ -259,7 +259,7 @@ class EncryptionService:
         if env_key:
             try:
                 decoded = base64.b64decode(env_key)
-                # FINDING-024: Validate master key is exactly 32 bytes (256 bits)
+                # Validate master key is exactly 32 bytes (256 bits)
                 if len(decoded) != 32:
                     raise ValueError(
                         f"AURORA_MASTER_KEY must be exactly 32 bytes (256 bits) "
@@ -296,7 +296,7 @@ class EncryptionService:
         # Last resort: deterministic dev key (development only)
         # SECURITY: This key is NOT secret. Data encrypted with it is recoverable
         # across restarts, but offers zero security. Never use in production.
-        # FINDING-006: Block dev key in production environment
+        # Block dev key in production environment
         if os.environ.get("AURORA_DEV_MODE") == "1":
             if os.environ.get("AURORA_ENVIRONMENT") == "production":
                 raise RuntimeError(
@@ -323,7 +323,7 @@ class EncryptionService:
         The salt is derived from the user_id and stored persistently.
         This ensures the same user always gets the same key.
 
-        FINDING-023: Uses keyring with file-based fallback. Never silently
+        Uses keyring with file-based fallback. Never silently
         generates a new salt if an existing one cannot be read.
 
         Args:
@@ -465,7 +465,7 @@ class EncryptionService:
         user_key = self._derive_user_key(user_id)
 
         if field_salt is None:
-            # FINDING-043: Mix field name with a per-deployment secret to avoid
+            # Mix field name with a per-deployment secret to avoid
             # deterministic field salts. Uses AURORA_HASH_SALT (or master key as
             # fallback) so salt varies per deployment.
             deployment_secret = os.environ.get("AURORA_HASH_SALT", "").encode() or self._master_key
@@ -744,7 +744,7 @@ class EncryptionService:
     @staticmethod
     def needs_re_encryption(encrypted_data: EncryptedField, current_version: int | None = None) -> bool:
         """
-        FINDING-035: Check if data was encrypted with an old key version
+        Check if data was encrypted with an old key version
         and needs re-encryption.
 
         Args:
@@ -778,7 +778,7 @@ class EncryptionService:
         and increments the version. Existing encrypted data
         remains decryptable with the old version.
 
-        FINDING-035: Use needs_re_encryption() to check if existing data
+        Use needs_re_encryption() to check if existing data
         needs re-encryption after key rotation.
 
         For full key rotation, you must re-encrypt all user data
@@ -883,7 +883,7 @@ class HashService:
             if env_salt:
                 self._salt = base64.b64decode(env_salt)
             elif os.environ.get("AURORA_DEV_MODE") == "1":
-                # FINDING-007: Block dev hash salt in production environment
+                # Block dev hash salt in production environment
                 if os.environ.get("AURORA_ENVIRONMENT") == "production":
                     raise RuntimeError(
                         "FATAL: AURORA_DEV_MODE=1 is set but AURORA_ENVIRONMENT=production. "

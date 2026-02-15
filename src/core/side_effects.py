@@ -11,8 +11,9 @@ Reference: ARCHITECTURE.md Section 2 (Module System)
 from __future__ import annotations
 
 import uuid
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -90,7 +91,7 @@ class SideEffect:
     effect_type: SideEffectType
     payload: dict[str, Any] = field(default_factory=dict)
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    created_at: datetime = field(default_factory=lambda: datetime.utcnow())
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     priority: int = 0  # Lower = execute first
 
     def __post_init__(self) -> None:
@@ -214,13 +215,14 @@ class SideEffectBatch:
 
 
 # Side effect executor interface (to be implemented by the system)
-class SideEffectExecutor:
-    """Interface for executing side effects.
+class SideEffectExecutor(ABC):
+    """Abstract interface for executing side effects.
 
     This is implemented by the Module System to execute
     side effects returned by modules.
     """
 
+    @abstractmethod
     async def execute(self, effect: SideEffect, user_id: int) -> bool:
         """Execute a single side effect.
 
@@ -231,7 +233,6 @@ class SideEffectExecutor:
         Returns:
             True if execution was successful
         """
-        raise NotImplementedError
 
     async def execute_batch(self, batch: SideEffectBatch) -> list[bool]:
         """Execute a batch of side effects.

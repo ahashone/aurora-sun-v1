@@ -303,7 +303,7 @@ class BurnoutAssessment(Base):
         nullable=True,
     )
 
-    # Supporting indicators (encrypted JSON) - FINDING-022: ART_9 data must be encrypted
+    # Supporting indicators (encrypted JSON) - ART_9 health data, encrypted at rest (GDPR Art. 9)
     _indicators_plaintext = Column("indicators", Text, nullable=True)
 
     # Assessment notes (encrypted)
@@ -489,13 +489,13 @@ class ChannelState(Base):
     # Dominant channel for this period
     dominant_channel = Column(String(20), nullable=False)  # ChannelType enum values
 
-    # Channel scores (0-100 for each channel) - FINDING-022: ART_9 data must be encrypted
+    # Channel scores (0-100 for each channel) - ART_9 health data, encrypted at rest (GDPR Art. 9)
     _channel_scores_plaintext = Column("channel_scores", Text, nullable=False)
 
     # Confidence in dominance detection (0-1)
     confidence = Column(Float, default=0.0, nullable=False)
 
-    # Supporting signals - FINDING-022: ART_9 data must be encrypted
+    # Supporting signals - ART_9 health data, encrypted at rest (GDPR Art. 9)
     _supporting_signals_plaintext = Column("supporting_signals", Text, nullable=True)
 
     # Period start
@@ -641,7 +641,7 @@ class InertiaEvent(Base):
     # Trigger (what caused the inertia)
     trigger = Column(String(100), nullable=True)
 
-    # Attempted interventions - FINDING-022: ART_9 data must be encrypted
+    # Attempted interventions - ART_9 health data, encrypted at rest (GDPR Art. 9)
     _attempted_interventions_plaintext = Column("attempted_interventions", Text, nullable=True)
 
     # Outcome ("resolved", "ongoing", "escalated")
@@ -797,7 +797,7 @@ class EnergyLevelRecord(Base):
     # Numeric score (0-100)
     energy_score = Column(Float, default=50.0, nullable=False)
 
-    # Behavioral proxies used - FINDING-022: ART_9 data must be encrypted
+    # Behavioral proxies used - ART_9 health data, encrypted at rest (GDPR Art. 9)
     _behavioral_proxies_plaintext = Column("behavioral_proxies", Text, nullable=True)
 
     # Session ID (if applicable)

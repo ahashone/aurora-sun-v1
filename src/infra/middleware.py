@@ -535,3 +535,41 @@ def create_security_headers() -> dict[str, str]:
     """
     middleware = SecurityHeadersMiddleware()
     return middleware.get_headers()
+
+
+# =============================================================================
+# SEC-008: HTTPS Redirect Middleware (production only)
+# =============================================================================
+
+
+class HTTPSRedirectMiddleware:
+    """Redirect HTTP to HTTPS in production.
+
+    Checks X-Forwarded-Proto header (set by reverse proxy / Caddy)
+    to determine the original protocol. Only active when registered
+    in src/api/__init__.py (production environment only).
+    """
+
+    async def __call__(
+        self,
+        request: Any,
+        call_next: Callable[[Any], Any],
+    ) -> Any:
+        """Check protocol and redirect HTTP to HTTPS."""
+        forwarded_proto = None
+        if hasattr(request, "headers"):
+            forwarded_proto = request.headers.get("x-forwarded-proto")
+
+        url_scheme = None
+        if hasattr(request, "url") and hasattr(request.url, "scheme"):
+            url_scheme = request.url.scheme
+
+        if forwarded_proto == "http" or (
+            forwarded_proto is None and url_scheme == "http"
+        ):
+            from starlette.responses import RedirectResponse
+
+            https_url = str(request.url).replace("http://", "https://", 1)
+            return RedirectResponse(url=https_url, status_code=301)
+
+        return await call_next(request)
